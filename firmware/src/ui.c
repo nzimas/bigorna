@@ -23,7 +23,11 @@
  *                               the 3rd   TRIG on or off: on, a step held shows its own page -- KNOB 1 its note (in
  *                                         the scale), 2 its velocity, 3 its length, 4 its trig condition; PRESETS
  *                                         right, its other half: KNOB 1 its RATCHET (the step played 2 .. 8 times)
- *                               the 4th .. 6th   the track's direction: REVERSE, PING-PONG, RANDOM (again: forward)
+ *                               the 4th   MOD on or off (TRIG off): on, a step held shows its MOD page -- KNOB 1
+ *                                         MUTATE (its note moved -N .. +N steps of the scale, or RND: at random up to
+ *                                         an octave either way), 2 MUT EVERY (every so many times the step plays), 3
+ *                                         MIDI FX, 4 FX EVERY
+ *                               the 6th .. 8th   the track's direction: REVERSE, PING-PONG, RANDOM (again: forward)
  *                             A step held, TRIG off: the knobs lock what they set on the track's view on it (FREQ,
  *                             RESO, the delay and reverb sends; SHIFT: chorus, overdrive), as a dial; SELECT locks its
  *                             level, ALGORITHM its pan. With the EDIT pages up, the knobs lock what they turn on the
@@ -77,7 +81,8 @@ static const uint8_t KNOB[4] = {EN_K1, EN_K2, EN_K3, EN_K4};
 #define KEY_GEN 1u                   /* (the 1st black key from the left: in the step view, a new phrase) */
 #define KEY_TRK 3u                   /* (the 2nd: in the step view, the TRACK page) */
 #define KEY_TRIG 5u                  /* (the 3rd: TRIG, the step held's own page) */
-static const uint8_t KEY_DIR[3] = {8, 10, 13};   /* (the 4th .. 6th: REVERSE, PING-PONG, RANDOM; the 7th, 8th free) */
+#define KEY_MOD 8u                   /* (the 4th: MOD, the step held's MUTATE and MIDI FX; the 5th free) */
+static const uint8_t KEY_DIR[3] = {13, 15, 17};  /* (the 6th .. 8th: REVERSE, PING-PONG, RANDOM) */
 static const char *const DIR_NAME[NDIR] = {"FORWARD", "REVERSE", "PING-PONG", "RANDOM"};
 #define SHOWN_DIAL 30u               /* (ui.shown_page: the dial up; the step's own page) */
 #define SHOWN_STEP 31u
@@ -110,12 +115,14 @@ static struct {
     uint32_t gen_t0;
     uint8_t gen_den[NTRACK], gen_cx[NTRACK];   /* the phrase generator's DENSITY and COMPLEXITY, 0 .. 100, a track's */
     uint8_t trig;                /* TRIG on (the 3rd black key): a step held shows its own page */
+    uint8_t mod;                 /* MOD on (the 4th): a step held shows its MOD page */
     uint8_t play_down, play_long;   /* PLAY held: since play_t0; held 0.8 s (the TEMPO page) */
     uint32_t play_t0;
     uint8_t sk, sk_long;         /* SHIFT and a step key held (KEY_NONE none): since sk_t0; held 0.8 s */
     uint32_t sk_t0;
     struct {                     /* a step copied (SHIFT + a step held): from where, and all it held */
-        uint8_t on, t, i, note, vel, glen, cond, rtg, lid[NPL];
+        uint8_t on, t, i, note, vel, glen, cond, rtg, lid[NPL], mcy, mfx, fcy;
+        int8_t mut;
         int16_t lv[NPL];
     } sclip;
     uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
@@ -274,7 +281,10 @@ static int32_t scale_move(int32_t n, int32_t d)
 static int step_view(void) { return ui.sv; }
 static int step_held(void) { return ui.sv && ui.step_key != KEY_NONE; }
 /* the step's own page (NOTE, VEL, LEN, COND), while a step is held and the EDIT pages are not up */
-static int step_page(void) { return step_held() && ui.trig && ui.page != PG_EDIT && ui.page != PG_TRK && ui.page != PG_GEN; }
+static int step_page(void)
+{
+    return step_held() && (ui.trig || ui.mod) && ui.page != PG_EDIT && ui.page != PG_TRK && ui.page != PG_GEN;
+}
 
 /* the steps' locks (the sequencer's, tracks.c): a lock is a parameter (page x 8 + knob; PL_PAN) and its value */
 static int pl_find(uint32_t t, uint32_t i, uint32_t id)
@@ -567,6 +577,8 @@ static void rec_note(uint32_t note, uint32_t vel, uint32_t k)
     seq_glen[t][i] = GLEN_DEF;
     seq_cond[t][i] = CD_NONE;
     seq_rtg[t][i] = 0;
+    seq_mut[t][i] = 0;
+    seq_mcy[t][i] = seq_mfx[t][i] = seq_fcy[t][i] = 0;
     pl_clear(t, i);
     seq_note[t][i] = (uint8_t)note;
     pat_dirty = 1;
@@ -647,6 +659,8 @@ static void step_down(uint32_t k)
         seq_glen[ui.sel][i] = GLEN_DEF;
         seq_cond[ui.sel][i] = CD_NONE;
         seq_rtg[ui.sel][i] = 0;
+        seq_mut[ui.sel][i] = 0;
+        seq_mcy[ui.sel][i] = seq_mfx[ui.sel][i] = seq_fcy[ui.sel][i] = 0;
         seq_note[ui.sel][i] = (uint8_t)n;
         pat_dirty = 1;
     }
@@ -678,7 +692,21 @@ static void pl_turn(uint32_t id, int32_t s, int show)
 static void step_knob(uint32_t j, int32_t s)
 {
     uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key);
-    if (j >= 4u) {                               /* (the other half: E the ratchet) */
+    if (ui.mod) {                                /* MOD: MUTATE (-N .. -1, OFF, +1 .. +N, RND), its EVERY, MIDI FX, its
+                                                  * EVERY */
+        if (j == 0u) {
+            int32_t n = SCALE_N[ui.scale], v = seq_mut[t][i], x = v == MUT_RND ? 2 * n + 1 : clampi(v, -n, n) + n;
+            x = clampi(x + s, 0, 2 * n + 1);
+            seq_mut[t][i] = (int8_t)(x == 2 * n + 1 ? MUT_RND : x - n);
+        } else if (j == 1u)
+            seq_mcy[t][i] = (uint8_t)clampi((int32_t)seq_mcy[t][i] + s, 0, 15);
+        else if (j == 2u)
+            seq_mfx[t][i] = (uint8_t)clampi((int32_t)seq_mfx[t][i] + s, 0, NMFX - 1);
+        else if (j == 3u)
+            seq_fcy[t][i] = (uint8_t)clampi((int32_t)seq_fcy[t][i] + s, 0, 15);
+        else
+            return;
+    } else if (j >= 4u) {                               /* (the other half: E the ratchet) */
         if (j == 4u)
             seq_rtg[t][i] = (uint8_t)clampi((int32_t)seq_rtg[t][i] + s, 0, NRTG - 1);
         else
@@ -728,6 +756,10 @@ static void step_copy_hold(uint32_t i)
         seq_glen[t][i] = ui.sclip.glen;
         seq_cond[t][i] = ui.sclip.cond;
         seq_rtg[t][i] = ui.sclip.rtg;
+        seq_mut[t][i] = ui.sclip.mut;
+        seq_mcy[t][i] = ui.sclip.mcy;
+        seq_mfx[t][i] = ui.sclip.mfx;
+        seq_fcy[t][i] = ui.sclip.fcy;
         pl_clear(t, i);
         for (j = 0; j < NPL; j++)
             if (ui.sclip.lid[j] != PL_NONE)
@@ -749,6 +781,10 @@ static void step_copy_hold(uint32_t i)
     ui.sclip.glen = seq_glen[t][i];
     ui.sclip.cond = seq_cond[t][i];
     ui.sclip.rtg = seq_rtg[t][i];
+    ui.sclip.mut = seq_mut[t][i];
+    ui.sclip.mcy = seq_mcy[t][i];
+    ui.sclip.mfx = seq_mfx[t][i];
+    ui.sclip.fcy = seq_fcy[t][i];
     for (j = 0; j < NPL; j++) {
         ui.sclip.lid[j] = seq_lid[t][i][j];
         ui.sclip.lv[j] = seq_lv[t][i][j];
@@ -764,6 +800,13 @@ static void ui_input(void)
     int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u);
     (void)rel;
     pat_poll();                                      /* (a pattern switched as the sequencer took it in) */
+    {   /* the scale, for the sequencer's MUTATE and MIDI FX */
+        uint32_t m = 0, q;
+        for (q = 0; q < SCALE_N[ui.scale]; q++)
+            m |= 1u << SCALE_STEP[ui.scale][q];
+        seq_smask = (uint16_t)m;
+        seq_sroot = ui.root;
+    }
     for (t = 0; t < NTRACK; t++)
         if (btn_bit(press, TRACK_BTN[t])) {
             ui.sel = (uint8_t)t;
@@ -1032,7 +1075,9 @@ static void ui_input(void)
             say(m, 1200);
         }
     }
-    if ((s = e_pre) != 0 && ui.page == PG_TEMPO) {   /* TEMPO: PRESETS the session's tempo */
+    if ((s = e_pre) != 0 && step_page() && ui.mod) {   /* (MOD: one page, no halves) */
+        ;
+    } else if ((s = e_pre) != 0 && ui.page == PG_TEMPO) {   /* TEMPO: PRESETS the session's tempo */
         ui.tempo = (int16_t)clampi(ui.tempo + s, 10, 300);
         tempo_apply();
         prj_dirty = 1;
@@ -1198,8 +1243,17 @@ static void ui_input(void)
             ui.gen_t0 = fm1_ms;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_TRIG) {   /* TRIG on or off */
+        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_MOD) {   /* MOD on or off (TRIG off) */
+            ui.mod = (uint8_t)!ui.mod;
+            ui.trig = 0;
+            ui.ehalf = 0;
+            say(ui.mod ? "MOD ON" : "MOD OFF", 700);
+            ui.force = 1;
+            continue;
+        }
+        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_TRIG) {   /* TRIG on or off (MOD off) */
             ui.trig = (uint8_t)!ui.trig;
+            ui.mod = 0;
             ui.ehalf = 0;
             say(ui.trig ? "TRIG ON" : "TRIG OFF", 700);
             ui.force = 1;
@@ -1295,6 +1349,11 @@ static void ui_leds(void)
         }
         if (step_view() && k == KEY_GEN) {           /* (the phrase key: dim, lit as it makes one) */
             fm1_led_key(14u + k, (int32_t)(ui.gen_until - fm1_ms) > 0 || ui.page == PG_GEN);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (step_view() && k == KEY_MOD) {           /* (MOD: dim, lit while on) */
+            fm1_led_key(14u + k, ui.mod);
             led_dim_key(14u + k, 1);
             continue;
         }
@@ -1572,11 +1631,45 @@ static void draw_step_page(void)
     static const char *const NAME[4] = {"NOTE", "VEL", "LEN", "COND"};
     uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key), j;
     int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
-    int full = ui.force || ui.shown_page != SHOWN_STEP || ui.shown_sub != i + 16u * ui.half;
+    int full = ui.force || ui.shown_page != SHOWN_STEP || ui.shown_sub != (ui.mod ? i + 48u : i + 16u * ui.half);
     if (full) {
         char t1[12] = "STEP ";
         fmt_int(t1 + 5, (int32_t)i + 1);
-        draw_rows_title(t1, "TRIG", TRACK_COL[t]);   /* (its half under the title: A .. D, E .. H) */
+        draw_rows_title(t1, ui.mod ? "MOD" : "TRIG", TRACK_COL[t]);   /* (its half under the title: A .. D, E .. H) */
+    }
+    if (ui.mod) {                                /* MOD: MUTATE, MUT EVERY, MIDI FX, FX EVERY */
+        static const char *const MN[4] = {"MUTATE", "MUT EVERY", "MIDI FX", "FX EVERY"};
+        int32_t n = SCALE_N[ui.scale];
+        for (j = 0; j < 4u; j++) {
+            int32_t v = j == 0u ? seq_mut[t][i] : j == 1u ? seq_mcy[t][i] : j == 2u ? seq_mfx[t][i] : seq_fcy[t][i];
+            int32_t fr, bip = 0;
+            char b[12];
+            if (!full && ui.shown_rows[j] == v && ((int32_t)j == tc) == ((int32_t)j == ui.shown_touch))
+                continue;
+            if (j == 0u) {
+                if (v == MUT_RND)
+                    str_cpy(b, "RND", 4);
+                else if (!v)
+                    str_cpy(b, "OFF", 4);
+                else {
+                    str_cpy(b, v > 0 ? "+" : "", 2);
+                    fmt_int(b + str_len(b), v);
+                }
+                fr = v == MUT_RND ? 1000 : (clampi(v, -n, n) + n) * 1000 / (2 * n + 1);
+                bip = v != MUT_RND;
+            } else if (j == 2u) {
+                str_cpy(b, MFX_NAME[v % NMFX], sizeof b);
+                fr = v * 1000 / (NMFX - 1);
+            } else {
+                fmt_int(b, v + 1);
+                fr = v * 1000 / 15;
+            }
+            draw_row(j, MN[j], b, fr, bip, (int32_t)j == tc, TRACK_COL[t]);
+            ui.shown_rows[j] = v;
+        }
+        ui.shown_touch = (int8_t)tc;
+        ui.shown_sub = (uint8_t)(i + 48u);
+        return;
     }
     if (ui.half) {                               /* E .. H: the ratchet */
         for (j = 0; j < 4u; j++) {

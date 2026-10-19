@@ -61,7 +61,9 @@ typedef struct {
  * mod 6, so that 0 -- every pattern before build 19 -- is 1X); seq[6] SEQ_V4; seq[7] the records; seq[8 + t] track
  * t's direction, seq[14 + t] its phrase DENSITY, seq[20 + t] its COMPLEXITY; from seq[32], a record for each step that
  * holds a note: its place (16 t + i), its note, velocity, its length (low 4 bits) and ratchet (top 4), its condition,
- * the number of its locks, then each lock: its parameter (tracks.c's ids) and its value, low byte first.
+ * the number of its locks (from build 23, its top bit: MOD's three bytes follow -- MUTATE, the two EVERYs (low 4
+ * bits MUT, top 4 FX, each less one), MIDI FX), then each lock: its parameter (tracks.c's ids) and its value, low byte
+ * first.
  * (Build 18 and 19, SEQ_V3: the records from seq[8], the length a byte of its own, no direction, settings, ratchet.)
  * (Builds 11 .. 17, SEQ_V2: the record's length shared a byte with the top of a mask of 12 locks -- the phrase
  * generator's, LK_* -- its low byte where the count is now, then a byte for each lock. Builds 9 and 10 kept every
@@ -230,8 +232,12 @@ static uint32_t pat_bytes(void)
     for (t = 0; t < NTRACK; t++)
         for (i = 0; i < NSTEP; i++)
             if (seq_note[t][i])
-                n += 6u + 3u * pl_n(t, i);
+                n += 6u + 3u * pl_n(t, i) + (seq_mut[t][i] || seq_mcy[t][i] || seq_mfx[t][i] || seq_fcy[t][i] ? 3u : 0u);
     return n;
+}
+static int mod_on(const seqbuf_t *b, uint32_t t, uint32_t i)
+{
+    return b->mut[t][i] || b->mcy[t][i] || b->mfx[t][i] || b->fcy[t][i];
 }
 static uint32_t pl_nb(const seqbuf_t *b, uint32_t t, uint32_t i)
 {
@@ -254,10 +260,12 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
         p->seq[SEQ_DEN + t] = b->den[t];
         p->seq[SEQ_CX + t] = b->cx[t];
         for (i = 0; i < NSTEP; i++) {
-            uint32_t j, nl = pl_nb(b, t, i), at;
+            uint32_t j, nl = pl_nb(b, t, i), at, md = (uint32_t)mod_on(b, t, i);
             if (!b->note[t][i] || o + 6u > PAT_SEQ_ROOM)
                 continue;
-            while (nl && o + 6u + 3u * nl > PAT_SEQ_ROOM)
+            if (md && o + 9u > PAT_SEQ_ROOM)
+                md = 0;
+            while (nl && o + 6u + 3u * md + 3u * nl > PAT_SEQ_ROOM)
                 nl--;
             p->seq[o++] = (uint8_t)(t * NSTEP + i);
             p->seq[o++] = b->note[t][i];
@@ -266,7 +274,12 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
             p->seq[o++] = b->cond[t][i];
             at = o++;
             p->seq[at] = 0;
-            for (j = 0; j < NPL && p->seq[at] < nl; j++) {
+            if (md) {                            /* (MOD) */
+                p->seq[o++] = (uint8_t)b->mut[t][i];
+                p->seq[o++] = (uint8_t)(b->mcy[t][i] | b->fcy[t][i] << 4);
+                p->seq[o++] = b->mfx[t][i];
+            }
+            for (j = 0; j < NPL && (p->seq[at] & 127u) < nl; j++) {
                 uint32_t id = b->lid[t][i][j];
                 int32_t v = b->lv[t][i][j];
                 if (id == PL_NONE)
@@ -276,6 +289,8 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
                 p->seq[o++] = (uint8_t)((uint32_t)v >> 8);
                 p->seq[at]++;
             }
+            if (md)
+                p->seq[at] |= 0x80u;
             n++;
         }
     }
@@ -301,6 +316,10 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
     memset(b->cond, CD_NONE, sizeof b->cond);
     memset(b->lid, PL_NONE, sizeof b->lid);
     memset(b->rtg, 0, sizeof b->rtg);
+    memset(b->mut, 0, sizeof b->mut);
+    memset(b->mcy, 0, sizeof b->mcy);
+    memset(b->mfx, 0, sizeof b->mfx);
+    memset(b->fcy, 0, sizeof b->fcy);
     for (t = 0; t < NTRACK; t++) {
         uint32_t bb = p->used ? p->seq[SEQ_LEN + t] : 0u, c = bb >> 5, v4 = p->used && p->seq[SEQ_FMT] == SEQ_V4;
         b->len[t] = (uint8_t)((bb & 31u) <= NSTEP ? bb & 31u : 0u);
@@ -312,7 +331,7 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
     if (p->used && (p->seq[SEQ_FMT] == SEQ_V3 || p->seq[SEQ_FMT] == SEQ_V4)) {
         uint32_t v4 = p->seq[SEQ_FMT] == SEQ_V4, o = v4 ? SEQ_REC4 : SEQ_REC, r;
         for (r = 0; r < p->seq[SEQ_NREC] && o + 6u <= PAT_SEQ_ROOM; r++) {
-            uint32_t id = p->seq[o], nl = p->seq[o + 5u], l;
+            uint32_t id = p->seq[o], nl = p->seq[o + 5u] & 127u, md = p->seq[o + 5u] >> 7, l;
             if (id >= NTRACK * NSTEP)
                 break;
             t = id / NSTEP;
@@ -326,6 +345,14 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
             b->cond[t][i] = (uint8_t)(p->seq[o + 4u] < NCOND ? p->seq[o + 4u] : CD_NONE);
             b->note[t][i] = p->seq[o + 1u];
             o += 6u;
+            if (md && o + 3u <= PAT_SEQ_ROOM) {  /* (MOD) */
+                int32_t mu = (int8_t)p->seq[o];
+                b->mut[t][i] = (int8_t)(mu == MUT_RND || (mu >= -12 && mu <= 12) ? mu : 0);
+                b->mcy[t][i] = (uint8_t)(p->seq[o + 1u] & 15u);
+                b->fcy[t][i] = (uint8_t)(p->seq[o + 1u] >> 4);
+                b->mfx[t][i] = (uint8_t)(p->seq[o + 2u] < NMFX ? p->seq[o + 2u] : 0u);
+                o += 3u;
+            }
             for (l = 0; l < nl && o + 3u <= PAT_SEQ_ROOM; l++, o += 3u)
                 if (p->seq[o] <= PL_PAN && l < NPL) {
                     b->lv[t][i][l] = (int16_t)(uint16_t)(p->seq[o + 1u] | p->seq[o + 2u] << 8);

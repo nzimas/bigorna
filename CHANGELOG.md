@@ -1,5 +1,26 @@
 # Changelog
 
+## Build 23
+
+Added
+- MOD, on the step view's fourth black key from the left (lit while on; TRIG goes off with it, and the other way
+  round): a step held shows its MOD page.
+  - KNOB 1 MUTATE: the step's note moved -N to +N steps of the scale (N its notes in an octave), OFF in the middle,
+    or RND (at the right end): a step of the scale drawn at random, up to an octave either way.
+  - KNOB 2 MUT EVERY: 1 to 16, how often MUTATE happens, counted in the times the step itself plays (its condition
+    met), from PLAY.
+  - KNOB 3 MIDI FX (after TONITOR's looper VARY and BRICKLAYER): ECHO (two echoes, quieter), ECHO UP and ECHO DN
+    (each a step of the scale higher or lower), STUTTER (three quick repeats), FLAM, LATE (a quarter of a step
+    late), GRACE (a step of the scale below just before it), FIFTH and TRIAD (with it), OCT UP, OCT DN, DROP (not
+    played).
+  - KNOB 4 FX EVERY: 1 to 16, counted the same way.
+  MOD is kept with the pattern and copied with the step. COMPLEXITY above 50 also draws MUTATE and MIDI FX now and
+  then, by role.
+
+Changed
+- The track's directions (REVERSE, PING-PONG, RANDOM) moved to the sixth, seventh and eighth black keys from the
+  left; the fifth is free.
+
 ## Build 22
 
 Fixed

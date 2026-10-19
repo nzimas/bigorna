@@ -472,6 +472,72 @@ static const char *const RTG_NAME[NRTG] = {"OFF", "2", "3", "4", "6", "8"};
 static volatile uint8_t seq_rtg[NTRACK][NSTEP];
 static uint8_t rt_left[NTRACK], rt_note[NTRACK], rt_vel[NTRACK], rt_step[NTRACK];
 static uint32_t rt_next[NTRACK], rt_int[NTRACK];
+/* a step's MOD (the step view's 4th black key): MUTATE -- its note moved by so many steps of the scale (-12 .. 12;
+ * MUT_RND: a step of the scale drawn at random, up to an octave either way) -- every (seq_mcy + 1) times it plays;
+ * and a MIDI FX every (seq_fcy + 1) times it plays (after TONITOR's looper VARY and BRICKLAYER): echoes (rising,
+ * falling), a stutter, a flam, late, a grace note before it, a fifth or a triad with it, an octave up or down, or
+ * dropped. The times are the step's own: counted as it plays (its condition met), from PLAY */
+#define MUT_RND 100
+enum { MFX_OFF, MFX_ECHO, MFX_ECHOUP, MFX_ECHODN, MFX_STUT, MFX_FLAM, MFX_LATE, MFX_GRACE, MFX_FIFTH, MFX_TRIAD,
+       MFX_OCTUP, MFX_OCTDN, MFX_DROP, NMFX };
+static const char *const MFX_NAME[NMFX] = {"OFF", "ECHO", "ECHO UP", "ECHO DN", "STUTTER", "FLAM", "LATE", "GRACE",
+                                           "FIFTH", "TRIAD", "OCT UP", "OCT DN", "DROP"};
+static volatile int8_t seq_mut[NTRACK][NSTEP];
+static volatile uint8_t seq_mcy[NTRACK][NSTEP], seq_mfx[NTRACK][NSTEP], seq_fcy[NTRACK][NSTEP];
+static uint8_t seq_plays[NTRACK][NSTEP];         /* (the ISR's: the times each step has played since PLAY) */
+static uint8_t seq_played[NTRACK];               /* (the note a track's step played last, mutated: the tests') */
+/* the scale, for MUTATE and the MIDI FX (the main loop's, as it is set): its notes from the root (bit k: k
+ * semitones up), the root */
+static volatile uint16_t seq_smask = 0xFFFu;
+static volatile uint8_t seq_sroot;
+static int sc_in(int32_t n) { return (int)((seq_smask >> ((uint32_t)(n - seq_sroot + 120) % 12u)) & 1u); }
+static int32_t sc_move(int32_t n, int32_t d)     /* n moved d steps of the scale */
+{
+    int32_t u = d > 0 ? 1 : -1, m;
+    for (; d; d -= u) {
+        for (m = n + u; m >= 12 && m <= 120 && !sc_in(m); m += u)
+            ;
+        if (m < 12 || m > 120)
+            break;
+        n = m;
+    }
+    return n;
+}
+static int32_t sc_snap(int32_t n)                /* the note of the scale nearest n (below first) */
+{
+    int32_t d;
+    for (d = 0; d < 6; d++) {
+        if (sc_in(n - d))
+            return n - d;
+        if (sc_in(n + d))
+            return n + d;
+    }
+    return n;
+}
+static int32_t sc_count(void)
+{
+    uint32_t m = seq_smask & 0xFFFu, c = 0;
+    for (; m; m &= m - 1u)
+        c++;
+    return (int32_t)(c ? c : 12u);
+}
+/* the MIDI FX's notes to come: a track's, each so many blocks from now (note 0: a free place) */
+#define FXQ 8u
+typedef struct { uint16_t left; uint8_t note, vel, len8, step; } fxq_t;
+static fxq_t fxq[NTRACK][FXQ];
+static void fxq_add(uint32_t t, uint32_t blocks, int32_t note, int32_t vel, uint32_t len8, uint32_t step)
+{
+    uint32_t k;
+    for (k = 0; k < FXQ && fxq[t][k].note; k++)
+        ;
+    if (k == FXQ || note < 12 || note > 120)
+        return;
+    fxq[t][k].left = (uint16_t)(blocks ? (blocks < 0xFFFFu ? blocks : 0xFFFFu) : 1u);
+    fxq[t][k].vel = (uint8_t)clampi(vel, 1, 127);
+    fxq[t][k].len8 = (uint8_t)clampi((int32_t)len8, 1, 255);
+    fxq[t][k].step = (uint8_t)step;
+    fxq[t][k].note = (uint8_t)note;
+}
 
 static volatile uint32_t seq_tacc_now[NTRACK];   /* (as the block ended: where in its step the track is) */
 static volatile uint8_t seq_run;          /* PLAY */
@@ -487,6 +553,7 @@ static uint16_t sq_left[NTRACK][SEQ_HOLD];   /* blocks left (0xFFFF: INF) */
 static void seq_release(void)
 {
     uint32_t t, i;
+    memset(fxq, 0, sizeof fxq);
     for (t = 0; t < NTRACK; t++)
         for (i = 0; i < SEQ_HOLD; i++)
             if (sq_note[t][i]) {
@@ -602,9 +669,37 @@ static void seq_trig(uint32_t t, uint32_t p)
     if (!n || !seq_cond_ok(t, seq_cond[t][p]))
         return;
     {
-        uint32_t r8 = DIV_R8[seq_div[t] % NDIV], rn = RTG_N[seq_rtg[t][p] % NRTG];
+        uint32_t r8 = DIV_R8[seq_div[t] % NDIV], rn = RTG_N[seq_rtg[t][p] % NRTG], c = ++seq_plays[t][p], fx = MFX_OFF;
         uint32_t len8 = g >= GLEN_INF ? 0u : (uint32_t)maxi(1, GLEN_8TH[g] * 8 / (int32_t)r8);   /* (in the tempo's
                                                                                               * 16ths) */
+        uint32_t sb = SEQ_STEP8 / (CTL * (uint32_t)clampi(fx_bpm10, 100, 3000) * r8);   /* (the step, in blocks) */
+        uint32_t vel = seq_vel[t][p], k, l8 = len8 ? len8 : 64u / r8;
+        int32_t m = seq_mut[t][p];
+        if (m && c % (seq_mcy[t][p] + 1u) == 0u) {   /* MUTATE */
+            int32_t d = m;
+            if (m == MUT_RND) {
+                int32_t nn = sc_count();
+                seq_rnd = seq_rnd * 1664525u + 1013904223u;
+                d = (int32_t)((seq_rnd >> 16) % (uint32_t)(2 * nn + 1)) - nn;
+            }
+            n = (uint32_t)sc_move((int32_t)n, d);
+        }
+        if (seq_mfx[t][p] && c % (seq_fcy[t][p] + 1u) == 0u)
+            fx = seq_mfx[t][p] % NMFX;
+        for (k = 0; k < NPL; k++) {              /* (the track's locks: until its next step plays) */
+            uint32_t id = seq_lid[t][p][k];
+            trk[t].tv[k] = seq_lv[t][p][k];
+            trk[t].tid[k] = (uint8_t)(id != PL_NONE && pl_track(id) ? id : PL_NONE);
+        }
+        seq_played[t] = (uint8_t)n;
+        if (fx == MFX_DROP)
+            return;
+        if (fx == MFX_LATE || fx == MFX_GRACE) { /* the note a little late (a grace note a step below before it) */
+            if (fx == MFX_GRACE)
+                seq_sound(t, (uint32_t)sc_move((int32_t)n, -1), vel * 3u / 5u, 2u, seq_lid[t][p], seq_lv[t][p]);
+            fxq_add(t, fx == MFX_LATE ? sb / 4u : sb / 6u, (int32_t)n, (int32_t)vel, l8, p);
+            return;
+        }
         if (rn > 1u) {                           /* a ratchet: the hits after the first, as the step goes on */
             uint32_t hit8 = (uint32_t)maxi(1, (int32_t)(64u / r8 / (2u * rn)));
             if (len8 == 0u || len8 > hit8)
@@ -616,13 +711,54 @@ static void seq_trig(uint32_t t, uint32_t p)
             rt_vel[t] = seq_vel[t][p];
             rt_step[t] = (uint8_t)p;
         }
-        seq_sound(t, n, seq_vel[t][p], len8, seq_lid[t][p], seq_lv[t][p]);
+        seq_sound(t, n, vel, len8, seq_lid[t][p], seq_lv[t][p]);
+        switch (fx) {                            /* the MIDI FX's notes with it, and to come */
+        case MFX_ECHO:
+        case MFX_ECHOUP:
+        case MFX_ECHODN: {
+            int32_t e = (int32_t)n, d = fx == MFX_ECHOUP ? 1 : fx == MFX_ECHODN ? -1 : 0;
+            for (k = 1; k <= 2u; k++) {
+                e = sc_move(e, d);
+                fxq_add(t, sb * k / 2u, e, (int32_t)(vel * (k == 1u ? 3u : 9u) / (k == 1u ? 5u : 25u)), l8, p);
+            }
+            break;
+        }
+        case MFX_STUT:
+            for (k = 1; k <= 3u; k++)
+                fxq_add(t, sb * k / 8u, (int32_t)n, (int32_t)(vel * (8u - k) / 8u), 1u, p);
+            break;
+        case MFX_FLAM:
+            fxq_add(t, 16u, (int32_t)n, (int32_t)(vel * 3u / 4u), l8, p);   /* (~12 ms) */
+            break;
+        case MFX_FIFTH:
+            seq_sound(t, (uint32_t)sc_snap((int32_t)n + 7), vel * 4u / 5u, len8, seq_lid[t][p], seq_lv[t][p]);
+            break;
+        case MFX_TRIAD:
+            seq_sound(t, (uint32_t)sc_move((int32_t)n, 2), vel * 4u / 5u, len8, seq_lid[t][p], seq_lv[t][p]);
+            seq_sound(t, (uint32_t)sc_snap((int32_t)n + 7), vel * 4u / 5u, len8, seq_lid[t][p], seq_lv[t][p]);
+            break;
+        case MFX_OCTUP:
+        case MFX_OCTDN:
+            if ((fx == MFX_OCTUP && n <= 108u) || (fx == MFX_OCTDN && n >= 24u))
+                seq_sound(t, fx == MFX_OCTUP ? n + 12u : n - 12u, vel * 4u / 5u, len8, seq_lid[t][p], seq_lv[t][p]);
+            break;
+        default:
+            break;
+        }
     }
-    for (i = 0; i < NPL; i++) {                  /* (the track's: until its next step plays) */
-        uint32_t id = seq_lid[t][p][i];
-        trk[t].tv[i] = seq_lv[t][p][i];
-        trk[t].tid[i] = (uint8_t)(id != PL_NONE && pl_track(id) ? id : PL_NONE);
-    }
+    (void)i;
+}
+static void fxq_block(void)                      /* (each block, playing: the MIDI FX's notes come due) */
+{
+    uint32_t t, k;
+    for (t = 0; t < NTRACK; t++)
+        for (k = 0; k < FXQ; k++) {
+            fxq_t *q = &fxq[t][k];
+            if (q->note && !--q->left) {
+                seq_sound(t, q->note, q->vel, q->len8, seq_lid[t][q->step], seq_lv[t][q->step]);
+                q->note = 0;
+            }
+        }
 }
 
 /* ---------------------------------------------------------------- the looper --- */
@@ -680,6 +816,8 @@ static void loop_step(void)
 /* a pattern's steps whole, as the sequencer plays them (projects.c fills one, the ISR takes it in) */
 typedef struct {
     uint8_t note[NTRACK][NSTEP], vel[NTRACK][NSTEP], glen[NTRACK][NSTEP], cond[NTRACK][NSTEP], rtg[NTRACK][NSTEP];
+    int8_t mut[NTRACK][NSTEP];
+    uint8_t mcy[NTRACK][NSTEP], mfx[NTRACK][NSTEP], fcy[NTRACK][NSTEP];
     uint8_t lid[NTRACK][NSTEP][NPL];
     int16_t lv[NTRACK][NSTEP][NPL];
     uint8_t len[NTRACK], div[NTRACK], dir[NTRACK];
@@ -692,6 +830,10 @@ static void seq_copy_out(seqbuf_t *b)            /* the steps playing, into b */
     memcpy(b->glen, (const void *)seq_glen, sizeof b->glen);
     memcpy(b->cond, (const void *)seq_cond, sizeof b->cond);
     memcpy(b->rtg, (const void *)seq_rtg, sizeof b->rtg);
+    memcpy(b->mut, (const void *)seq_mut, sizeof b->mut);
+    memcpy(b->mcy, (const void *)seq_mcy, sizeof b->mcy);
+    memcpy(b->mfx, (const void *)seq_mfx, sizeof b->mfx);
+    memcpy(b->fcy, (const void *)seq_fcy, sizeof b->fcy);
     memcpy(b->lid, (const void *)seq_lid, sizeof b->lid);
     memcpy(b->lv, (const void *)seq_lv, sizeof b->lv);
     memcpy(b->len, (const void *)seq_len, sizeof b->len);
@@ -705,6 +847,10 @@ static void seq_copy_in(const seqbuf_t *b)       /* b, as the steps playing */
     memcpy((void *)seq_glen, b->glen, sizeof b->glen);
     memcpy((void *)seq_cond, b->cond, sizeof b->cond);
     memcpy((void *)seq_rtg, b->rtg, sizeof b->rtg);
+    memcpy((void *)seq_mut, b->mut, sizeof b->mut);
+    memcpy((void *)seq_mcy, b->mcy, sizeof b->mcy);
+    memcpy((void *)seq_mfx, b->mfx, sizeof b->mfx);
+    memcpy((void *)seq_fcy, b->fcy, sizeof b->fcy);
     memcpy((void *)seq_lid, b->lid, sizeof b->lid);
     memcpy((void *)seq_lv, b->lv, sizeof b->lv);
     memcpy((void *)seq_len, b->len, sizeof b->len);
@@ -765,6 +911,7 @@ static void seq_block(void)
             seq_rnd_n[t] = 0;
             rt_left[t] = 0;
         }
+        memset(seq_plays, 0, sizeof seq_plays);
         seq_gstep = 15;
         seq_gcount = 0xFFFFFFFFu;
         for (t = 0; t < NTRACK; t++)             /* (the loops from their first steps) */
@@ -795,6 +942,7 @@ static void seq_block(void)
             rt_left[t] = 0;
             seq_tacc[t] = SEQ_STEP8;
         }
+        memset(seq_plays, 0, sizeof seq_plays);
         seq_pend = 2;
     }
     for (t = 0; t < NTRACK; t++) {               /* each track on its own clock */
@@ -816,6 +964,7 @@ static void seq_block(void)
         seq_tacc_now[t] = seq_tacc[t];
     }
     loop_kick();
+    fxq_block();
     seq_acc += CTL * (uint32_t)fx_bpm10;
     seq_acc_now = seq_acc;
 }

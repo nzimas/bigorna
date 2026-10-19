@@ -1291,6 +1291,73 @@ static int cmd_projects(const char *dir)
         seq_len[3] = 0;
         ui.gen_den[3] = ui.gen_cx[3] = 50;
     }
+    {   /* MOD (the step view's 4th black key): MUTATE every so many times, a MIDI FX */
+        int32_t out[2 * CTL];
+        uint32_t kw[16], k, i, seen[4], m;
+        static pat_t pp;
+        for (k = 0; k < NKEY; k++)
+            if (white_ix(k) >= 0)
+                kw[white_ix(k)] = k;
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        ui.sel = 3;
+        memset((void *)seq_note[3], 0, NSTEP);
+        seq_len[3] = 1;                          /* (one step: it plays every 16th) */
+        seq_dir[3] = DIR_FWD;
+        tap(KEY_STEP);
+        tap(KEY_MOD);
+        EXPECT(ui.mod && !ui.trig, "the 4th black key: MOD (TRIG off)");
+        fm1_in.notes |= 1u << kw[0];
+        ui_input();                              /* (an empty step: the last note, placed) */
+        m = seq_note[3][0];
+        turn(EN_K1, 2);                          /* MUTATE +2 */
+        turn(EN_K2, 1);                          /* .. every 2 */
+        turn(EN_K3, MFX_FIFTH);                  /* MIDI FX: FIFTH .. */
+        EXPECT(seq_mut[3][0] == 2 && seq_mcy[3][0] == 1u && seq_mfx[3][0] == MFX_FIFTH && seq_fcy[3][0] == 0u,
+               "KNOB 1 .. 4: MUTATE +2, every 2, FIFTH, every 1");
+        ui_draw();
+        shot(dir, "step_mod");
+        fm1_in.notes &= ~(1u << kw[0]);
+        ui_input();
+        seq_rtg[3][0] = 0;
+        seq_cond[3][0] = CD_NONE;
+        seq_run = 1;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        for (k = 0; k < 4u; k++) {               /* (the note the step played, four times) */
+            uint32_t a0 = seq_sounded[3], j;
+            while (seq_sounded[3] == a0)
+                mix_block(out);
+            seen[k] = seq_played[3];
+            (void)j;
+            for (i = 0; i < 60u; i++)
+                mix_block(out);
+        }
+        EXPECT(seen[0] == seen[2] && seen[1] == seen[3] && seen[0] != seen[1] &&
+               (seen[0] == m || seen[1] == m) && (seen[0] == (uint32_t)sc_move((int32_t)m, 2) ||
+                                                   seen[1] == (uint32_t)sc_move((int32_t)m, 2)),
+               "MUTATE +2 every 2: as it is and two steps of the scale up, in turn");
+        {
+            uint32_t j, two = 0;
+            for (j = 0; j < SEQ_HOLD; j++)
+                two += sq_note[3][j] != 0;
+            EXPECT(two >= 2u, "FIFTH: a second note with it");
+        }
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        pat_take(&pp);
+        seq_mut[3][0] = 0;
+        seq_mfx[3][0] = 0;
+        pat_store[12] = pp;
+        pat_give(12);
+        EXPECT(seq_mut[3][0] == 2 && seq_mcy[3][0] == 1u && seq_mfx[3][0] == MFX_FIFTH, "a pattern keeps MOD");
+        tap(KEY_MOD);
+        tap(KEY_STEP);
+        seq_len[3] = 0;
+        memset((void *)seq_note[3], 0, NSTEP);
+    }
     {   /* REC: armed (the metronome counts), the first note starts it on step 1; each note to the nearest step */
         int32_t out[2 * CTL];
         uint32_t kw[16], k, i, clicks = 0, n;

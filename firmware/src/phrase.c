@@ -457,6 +457,24 @@ static void ph_complexity(uint32_t role, uint32_t cx)
             for (l = 0; l < NLK; l++)
                 if (ph_ch(RL_P[role][l] * (cx - 50u) / 50u))
                     ph_lockval(i, l, (i & 3u) == 0u, &pan);
+        if (cx > 50u && role != RO_DRONE && ph_ch((cx - 50u) * 3u / 10u)) {   /* (MUTATE: now and then, every few
+                                                                             * times) */
+            seq_mut[ph_t][i] = (int8_t)(ph_ch(60) ? MUT_RND : ph_ri(-3, 3));
+            seq_mcy[ph_t][i] = (uint8_t)ph_ri(1, 3);
+        }
+        if (cx > 50u && ph_ch((cx - 50u) * 3u / 10u)) {   /* (a MIDI FX: now and then, every few times) */
+            static const uint8_t FXP[NRO][4] = {{MFX_FLAM, MFX_STUT, MFX_DROP, MFX_LATE},
+                                                {MFX_FLAM, MFX_STUT, MFX_ECHO, MFX_DROP},
+                                                {MFX_STUT, MFX_DROP, MFX_FLAM, MFX_LATE},
+                                                {MFX_ECHO, MFX_STUT, MFX_GRACE, MFX_DROP},
+                                                {MFX_STUT, MFX_ECHODN, MFX_DROP, MFX_FLAM},
+                                                {MFX_OCTDN, MFX_GRACE, MFX_LATE, MFX_ECHO},
+                                                {MFX_ECHOUP, MFX_FIFTH, MFX_GRACE, MFX_ECHODN},
+                                                {MFX_TRIAD, MFX_FIFTH, MFX_ECHO, MFX_OCTUP},
+                                                {MFX_FIFTH, MFX_OCTDN, MFX_ECHO, MFX_TRIAD}};
+            seq_mfx[ph_t][i] = FXP[role][ph_rnd(4)];
+            seq_fcy[ph_t][i] = (uint8_t)ph_ri(1, 3);
+        }
         if (cx > 40u && ph_ch(RT[role] * (cx - 40u) / 60u)) {
             static const uint8_t PICK[8] = {1, 1, 2, 2, 3, 3, 4, 5};   /* (2 and 3 most, 6 and 8 rarely) */
             seq_rtg[ph_t][i] = PICK[ph_rnd(role == RO_NOISE || role == RO_HAT ? 8 : 6)];
@@ -480,6 +498,8 @@ static void phrase_new(uint32_t t)
         seq_glen[t][i] = GLEN_DEF;
         seq_cond[t][i] = CD_NONE;
         seq_rtg[t][i] = 0;
+        seq_mut[t][i] = 0;
+        seq_mcy[t][i] = seq_mfx[t][i] = seq_fcy[t][i] = 0;
         pl_clear(t, i);
     }
     switch (role) {
