@@ -1,5 +1,32 @@
 # Changelog
 
+## Build 11
+
+Added
+- STEP, the third black key from the right (next to EDIT), turns the step view on and off. It is lit dimly, and
+  fully while the view is on. Everything the step view did on SHIFT in build 10 now works the same way under STEP.
+- A phrase generator: in the step view, the first black key from the left (lit dimly there) writes a new phrase on
+  the chosen track and flashes NEW PHRASE; the key lights fully as it does. A phrase sets the track's steps: their
+  notes (in the scale, from the track's last note played), velocities, lengths, trig conditions and parameter locks.
+  - The track's sound decides the phrase: its family gives it a role (kick, snare, hat, percussion, noise, bass,
+    lead, stab or drone; a sound with no family goes by its machine). Each role has its own ways of making a
+    rhythm (straight, broken, Euclidean, sparse, bursts), its own use of conditions (probability ghosts, A:B
+    variations, rolls that play every other time, PRE / !PRE pairs where one of two steps plays) and its own locks.
+  - Drums lock where they accent (more drive on a kick, a reverb throw on a snare, opened hats); percussion and
+    noise lock almost every step (pan, bit and sample rate reduction, filter, delay throws); bass moves its filter
+    step by step; leads and stabs throw notes into the delay; drones hold long notes under reverb and chorus.
+- Parameter locks, set per step by the phrase generator (they cannot be set by hand yet): FREQ, RESO and the
+  envelope depth of the filter, the amp's decay, VOL, overdrive, bit reduction, sample rate reduction, the delay,
+  reverb and chorus sends, and pan. The filter, decay, VOL, overdrive, bit and rate locks belong to the note; the
+  sends and the pan hold on the track from the step until the track's next step plays, and go back to the sound's
+  own when the sequencer stops.
+
+Changed
+- SHIFT no longer opens or latches the step view; it is SHIFT again everywhere.
+- A pattern now keeps only the steps that hold a note, each with its locks. A pattern holds about 670 bytes of
+  steps: a phrase that would not fit loses locks at random until it does; steps placed by hand beyond that room lose
+  their locks, then are left out, when the pattern is saved. Patterns saved with builds 9 and 10 still load.
+
 ## Build 10
 
 Added

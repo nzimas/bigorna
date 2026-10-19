@@ -6,6 +6,8 @@
  *   host check                every recipe, 12 seeds: none silent, none clipping hard, none running away, none
  *                             with DC; exits 1 on a failure
  *   host screens DIR          the screen in several states, as PPM images
+ *   host phrases DIR [N]      N starts (default 4), a phrase on every track, 8 s played: a WAV each, its peak and
+ *                             loudness
  * Build: tests/run_tests.sh */
 #define HOST 1
 #include <stdint.h>
@@ -116,6 +118,7 @@ static uint8_t host_led[64];
 static void fm1_led_key(uint32_t id, int on) { if (id < 64u) host_led[id] = (uint8_t)!!on; }
 #include "ui.c"
 #include "projects.c"
+#include "phrase.c"
 
 /* the flash, emulated: NOR (erased to 0xFF, programming only clears bits) */
 static uint8_t host_flash[0x100000];
@@ -509,6 +512,13 @@ static void btn(uint32_t b, int sh)
     fm1_in.notes &= ~(1u << KEY_SHIFT);
     fm1_ms += 2000;
 }
+static void tap(uint32_t k)                      /* a key pressed and let go */
+{
+    fm1_in.notes |= 1u << k;
+    ui_input();
+    fm1_in.notes &= ~(1u << k);
+    ui_input();
+}
 static void turn(uint32_t e, int32_t n)
 {
     host_enc[PANEL_ENC[e]] = n;
@@ -627,11 +637,13 @@ static int cmd_projects(const char *dir)
         ui_input();
         n0 = ui.last_note[5];
         EXPECT(n0 == key_note(kw[2], ui.oct[5]) && !pat_dirty, "the note played kept as the track's last");
-        fm1_in.notes |= 1u << KEY_SHIFT;
-        ui_input();
+        tap(KEY_STEP);
+        EXPECT(step_view(), "STEP: the step view");
+        ui_leds();
+        EXPECT(host_led[14u + KEY_STEP], "STEP lit");
         fm1_in.notes |= 1u << kw[0];
         ui_input();
-        EXPECT(seq_note[5][0] == n0 && pat_dirty, "SHIFT and an empty step: the last note there");
+        EXPECT(seq_note[5][0] == n0 && pat_dirty, "the step view and an empty step: the last note there");
         EXPECT(seq_vel[5][0] == VEL_DEF && seq_glen[5][0] == GLEN_DEF && !seq_cond[5][0], "a new step: the defaults");
         fm1_in.notes |= 1u << 8;                 /* the 4th black key: TRIG */
         ui_input();
@@ -678,13 +690,13 @@ static int cmd_projects(const char *dir)
         }
         EXPECT(!seq_note[5][4] && seq_note[5][8] == n0, "a step that holds a note, pressed and let go: emptied");
         ui_leds();
-        EXPECT(host_led[14u + kw[0]] && host_led[14u + kw[8]] && !host_led[14u + kw[4]], "SHIFT: the steps lit");
+        EXPECT(host_led[14u + kw[0]] && host_led[14u + kw[8]] && !host_led[14u + kw[4]], "the step view: the steps lit");
         fm1_ms += 2000;
         ui.force = 1;
         ui_draw();
         shot(dir, "steps");
-        fm1_in.notes &= ~(1u << KEY_SHIFT);
-        ui_input();
+        tap(KEY_STEP);
+        EXPECT(!step_view(), "STEP again: the view off");
         btn(B_PLAY, 0);
         EXPECT(seq_run, "PLAY: the sequencer runs");
         for (i = 0; i < 4000u && seq_pos[5] != 8u; i++)
@@ -716,12 +728,14 @@ static int cmd_projects(const char *dir)
         fm1_in.buttons = 0;
         ui_input();
         fm1_ms += 2000;
-        EXPECT(pat_cur == 0u && pat_store[0].used && !pat_dirty && pat_store[0].seq[SEQ_NOTE + 5 * NSTEP + 8] == n0,
+        EXPECT(pat_cur == 0u && pat_store[0].used && !pat_dirty && pat_store[0].seq[SEQ_FMT] == SEQ_V2 &&
+               pat_store[0].seq[SEQ_NREC] == 2u && pat_store[0].seq[SEQ_REC + 6u + 1u] == n0,
                "ARP held saves the pattern playing, its steps");
         {   /* (written into session 3's flash) */
             int rc = prj_read(2, 1u);
             const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
-            EXPECT(!rc && pp[0].used && pp[0].seq[SEQ_NOTE + 5 * NSTEP] == n1, "the steps are in the session's flash");
+            EXPECT(!rc && pp[0].used && pp[0].seq[SEQ_REC] == 5u * NSTEP && pp[0].seq[SEQ_REC + 1u] == n1,
+                   "the steps are in the session's flash");
         }
         btn(B_ARP, 0);
         EXPECT(ui.page == PG_PAT, "ARP opens the patterns");
@@ -772,32 +786,78 @@ static int cmd_projects(const char *dir)
         fm1_in.notes = 0;
         ui_input();
         EXPECT(!ui.quick && ui.page == PG_MAIN, "let go: back to what was shown");
-        /* SHIFT held 3 s: the step view latches; SHIFT again lets it go */
-        fm1_in.notes |= 1u << KEY_SHIFT;
-        ui_input();
-        fm1_ms += 3100;
-        ui_input();
-        fm1_in.notes &= ~(1u << KEY_SHIFT);
-        ui_input();
-        EXPECT(ui.sv_latch && step_view(), "SHIFT held 3 s: the view latched");
-        fm1_in.notes |= 1u << kw[3];
-        ui_input();
-        fm1_in.notes &= ~(1u << kw[3]);
-        ui_input();
-        EXPECT(seq_note[5][3] != 0, "latched: the white keys are the steps");
-        fm1_in.notes |= 1u << KEY_SHIFT;
-        ui_input();
-        fm1_in.notes &= ~(1u << KEY_SHIFT);
-        ui_input();
-        EXPECT(!ui.sv_latch && !step_view(), "SHIFT again: let go");
-        fm1_in.notes |= 1u << KEY_SHIFT;         /* SHIFT and a knob, held long: no latch */
-        ui_input();
-        turn(EN_K3, 1);
-        fm1_ms += 3100;
-        ui_input();
-        fm1_in.notes &= ~(1u << KEY_SHIFT);
-        ui_input();
-        EXPECT(!ui.sv_latch, "SHIFT used with a knob: no latch");
+        /* the phrase key: a new phrase on the track, from its sound's role */
+        tap(KEY_STEP);
+        ui_leds();
+        EXPECT(host_led[14u + KEY_GEN] == 0, "the phrase key dim");
+        tap(KEY_GEN);
+        ui_leds();
+        EXPECT(host_led[14u + KEY_GEN] && ui.flash_on && pat_dirty, "the phrase key: lit, NEW PHRASE, the pattern changed");
+        for (i = 0, k = 0; i < NSTEP; i++)
+            k += seq_note[5][i] != 0;
+        EXPECT(k > 0u, "a phrase has steps");
+        ui_draw();
+        shot(dir, "phrase_new");
+        fm1_ms += 2000;
+        tap(KEY_STEP);
+    }
+    {   /* every recipe's phrase: notes in the scale, room in the pattern, back the same from a pattern */
+        uint32_t f, t, i, l, locks = 0, bad = 0, roles[NRO];
+        static pat_t pp;
+        memset(roles, 0, sizeof roles);
+        for (f = 0; f < NRECIPE; f++)
+            for (t = 0; t < NTRACK; t++) {
+                gen_sound(&ui.snd[t][RECIPES[f].mach], RECIPES[f].mach, (int32_t)f, -1, f * 7u + t);
+                ui.eng[t] = RECIPES[f].mach;
+                phrase_new(t);
+                roles[phrase_role(&ui.snd[t][ui.eng[t]])]++;
+                for (i = 0; i < NSTEP; i++) {
+                    if (seq_note[t][i] && !in_scale(seq_note[t][i]))
+                        bad++;
+                    for (l = 0; l < NLK; l++)
+                        locks += seq_lock[t][i][l] != LK_NONE;
+                }
+                if (pat_bytes() > PAT_SEQ_ROOM)
+                    bad++;
+            }
+        EXPECT(!bad, "phrases: in the scale, within the pattern's room");
+        EXPECT(locks > NRECIPE * 6u * 3u, "phrases lock");
+        for (i = 0; i < NRO; i++)
+            EXPECT(roles[i] > 0u, "every role made");
+        {
+            uint8_t n0[NTRACK][NSTEP], l0[NTRACK][NSTEP][NLK], c0[NTRACK][NSTEP];
+            memcpy(n0, (const void *)seq_note, sizeof n0);
+            memcpy(l0, (const void *)seq_lock, sizeof l0);
+            memcpy(c0, (const void *)seq_cond, sizeof c0);
+            pat_take(&pp);
+            pat_store[15] = pp;
+            pat_give(15);
+            EXPECT(!memcmp(n0, (const void *)seq_note, sizeof n0) && !memcmp(l0, (const void *)seq_lock, sizeof l0) &&
+                   !memcmp(c0, (const void *)seq_cond, sizeof c0), "a pattern gives the phrases back as they were");
+        }
+        {   /* locks reach the voice: a step's FREQ lock cooks the voice's own chain */
+            int32_t out[2 * CTL];
+            memset((void *)seq_note, 0, sizeof seq_note);
+            memset((void *)seq_lock, LK_NONE, sizeof seq_lock);
+            seq_note[0][0] = 48;
+            seq_vel[0][0] = 100;
+            seq_glen[0][0] = GLEN_DEF;
+            seq_cond[0][0] = CD_NONE;
+            seq_lock[0][0][LK_FREQ] = 3;
+            seq_lock[0][0][LK_REV] = 127;
+            seq_run = 1;
+            for (i = 0; i < 4u; i++)
+                mix_block(out);
+            for (i = 0, t = NVOICE; i < NVOICE; i++)
+                if (vox[i].track == 0u && vox[i].sounding && vox[i].note == 48u)
+                    t = i;
+            EXPECT(t < NVOICE && vox[t].own && vmem[t].lck.f_v == 3 && trk[0].tlk[LK_REV - NVLK] == 127,
+                   "a step's locks: the voice's own FREQ, the track's reverb send");
+            seq_run = 0;
+            for (i = 0; i < 4u; i++)
+                mix_block(out);
+            EXPECT(trk[0].tlk[LK_REV - NVLK] == LK_NONE, "stopped: the track's locks gone");
+        }
     }
     /* the long presses: ARP held saves the pattern playing, HOME held the project */
     pat_tempo = 77;
@@ -829,11 +889,58 @@ static int cmd_projects(const char *dir)
     return fails ? 1 : 0;
 }
 
+/* host phrases DIR [N]: N sessions (default 4) as the start makes them, a phrase on every track, 8 s played: a WAV
+ * each and its peak and loudness */
+static int cmd_phrases(const char *dir, int n)
+{
+    static int16_t pb[44100 * 8 * 2];
+    int32_t out[2 * CTL];
+    uint32_t k, t, i, fr = 44100u * 8u / CTL, fails_ = 0;
+    for (k = 0; k < (uint32_t)n; k++) {
+        double sq = 0;
+        int32_t pk = 0;
+        char path[256];
+        tracks_init();
+        fm1_ticks();
+        host_ticks = k * 7919u;
+        ui_init();
+        for (t = 0; t < NTRACK; t++) {
+            phrase_new(t);
+            ui_publish();
+        }
+        seq_run = 1;
+        for (i = 0; i < fr; i++) {
+            uint32_t j;
+            ui_publish();
+            mix_block(out);
+            for (j = 0; j < 2u * CTL; j++) {
+                int32_t x = out[j] > 32767 ? 32767 : out[j] < -32768 ? -32768 : out[j];
+                pb[i * 2u * CTL + j] = (int16_t)x;
+                pk = x > pk ? x : -x > pk ? -x : pk;
+                sq += (double)x * x;
+            }
+        }
+        seq_run = 0;
+        snprintf(path, sizeof path, "%s/phrase_%02u.wav", dir, k);
+        wav_write(path, pb, fr * CTL);
+        printf("phrase %2u  peak %5.1f dBFS  rms %5.1f dBFS ", k, 20 * log10(pk / 32768.0 + 1e-9),
+               10 * log10(sq / (fr * CTL * 2.0) / (32768.0 * 32768.0) + 1e-12));
+        for (t = 0; t < NTRACK; t++)
+            printf(" %s", RO_NAME[phrase_role(&ui.snd[t][ui.eng[t]])]);
+        printf("\n");
+        if (pk < 1000)
+            fails_++;
+    }
+    return fails_ ? 1 : 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
     if (argc >= 3 && !strcmp(argv[1], "projects"))
         return cmd_projects(argv[2]);
+    if (argc >= 3 && !strcmp(argv[1], "phrases"))
+        return cmd_phrases(argv[2], argc >= 4 ? atoi(argv[3]) : 4);
     if (argc >= 2 && !strcmp(argv[1], "cost"))
         return cmd_cost();
     if (argc >= 4 && !strcmp(argv[1], "chord"))

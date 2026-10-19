@@ -7,13 +7,14 @@
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
- *   the rightmost black key   SHIFT: while held, the step view: the white keys are the track's 16 steps. A key on an
- *                             empty step puts the track's last note played there; a key on a step that holds a note,
- *                             let go soon (0.4 s) and nothing changed, empties it. Held 3 s, the view latches (SHIFT
- *                             blinks) until SHIFT is pressed again. In the view the black keys from the fourth on
- *                             (dim) choose what the knobs do to the step held:
- *                               the 4th   TRIG: KNOB 1 the note (in the scale), 2 its velocity, 3 its length, 4 its
- *                                         trig condition
+ *   the rightmost black key   SHIFT
+ *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
+ *                             16 steps: a key on an empty step puts the track's last note played there; a key on a
+ *                             step that holds a note, let go soon (0.4 s) and nothing changed, empties it. In the
+ *                             view the black keys, lit dimly:
+ *                               the 1st   a new phrase for the track (phrase.c): its steps, conditions and locks
+ *                               the 4th   TRIG: the knobs on the step held: KNOB 1 the note (in the scale), 2 its
+ *                                         velocity, 3 its length, 4 its trig condition
  *   PLAY                      the sequencer: plays, or stops
  *   the black key before it   EDIT: the parameter pages of the track's sound -- SYN 1 .. 4, FLTR 1, FLTR 2, AMP,
  *                             FX -- KNOB 1 .. 4 the page's A .. D, with SHIFT held E .. H
@@ -37,6 +38,8 @@ static const uint8_t KNOB[4] = {EN_K1, EN_K2, EN_K3, EN_K4};
 #define NKEY 27u
 #define KEY_SHIFT 25u
 #define KEY_EDIT 22u
+#define KEY_STEP 20u                 /* (the 3rd black key from the right) */
+#define KEY_GEN 1u                   /* (the 1st black key from the left: in the step view, a new phrase) */
 #define KEY_NONE 0xFFu
 
 static const uint16_t TRACK_COL[NTRACK] = {RGB(255, 214, 0), RGB(0, 214, 255), RGB(255, 92, 210),
@@ -59,9 +62,8 @@ static struct {
     uint8_t step_key;            /* SHIFT: the key of the step held (KEY_NONE none) */
     uint8_t step_new, step_edit;     /* .. its note put there as it was pressed; changed since */
     uint32_t step_t0;            /* .. pressed at */
-    uint8_t sv_latch;            /* the step view latched (SHIFT held 3 s; SHIFT again lets it go) */
-    uint8_t sh_nolatch;          /* .. not to latch on this hold of SHIFT */
-    uint32_t sh_t0;              /* SHIFT pressed at */
+    uint8_t sv;                  /* the step view on (STEP) */
+    uint32_t gen_until;          /* the phrase key lit fully until */
     uint8_t smode;               /* the step view's knobs: SM_* (the black key chosen) */
     uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
     uint8_t qk, qk_long;         /* SHIFT + ARP: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
@@ -115,6 +117,7 @@ static void prj_quick_save(void);
 static void pat_quick_save(void);
 static void pat_switch(uint32_t k);
 static void pat_clear(uint32_t k);
+static void phrase_new(uint32_t t);              /* (phrase.c) */
 static int pg_any(void) { return ui.page >= PG_PRJ; }   /* a projects' or patterns' page */
 
 static void say(const char *s, uint32_t ms)
@@ -170,7 +173,10 @@ static uint32_t key_note(uint32_t k, int32_t oct)
     q = w >= 0 ? w / n : -((n - 1 - w) / n);
     return (uint32_t)clampi(SCALE_BASE + ui.root + 12 * oct + 12 * q + SCALE_STEP[ui.scale][w - q * n], 12, 120);
 }
-static int key_plays(uint32_t k) { return k != KEY_SHIFT && k != KEY_EDIT && (ui.scale == 0 || white_ix(k) >= 0); }
+static int key_plays(uint32_t k)
+{
+    return k != KEY_SHIFT && k != KEY_EDIT && k != KEY_STEP && (ui.scale == 0 || white_ix(k) >= 0);
+}
 /* a note in the scale (and the root); the next one up or down from n, d times */
 static int in_scale(int32_t n)
 {
@@ -203,7 +209,7 @@ static uint32_t sm_of(uint32_t k)
             return m;
     return SM_NONE;
 }
-static int step_view(void) { return (int)(((fm1_in.notes >> KEY_SHIFT) & 1u) || ui.sv_latch); }
+static int step_view(void) { return ui.sv; }
 static int step_page(void) { return ui.smode && ui.step_key != KEY_NONE; }   /* (the step's knobs on the screen) */
 static void note_text(char *b, uint32_t n)     /* C#3 */
 {
@@ -458,22 +464,6 @@ static void ui_input(void)
         }
     }
     ui.half = (uint8_t)sh;
-    if ((fm1_in.notes & ~ui.keys) >> KEY_SHIFT & 1u) {   /* SHIFT pressed: a latched view let go */
-        ui.sh_t0 = fm1_ms;
-        ui.sh_nolatch = ui.sv_latch;
-        if (ui.sv_latch) {
-            ui.sv_latch = 0;
-            say("STEPS OFF", 700);
-        }
-    }
-    if (!sh)
-        ui.sh_nolatch = 0;
-    else if (press || ui.quick)
-        ui.sh_nolatch = 1;                           /* (SHIFT with a button: not to latch) */
-    else if (!ui.sv_latch && !ui.sh_nolatch && (uint32_t)(fm1_ms - ui.sh_t0) >= 3000u) {
-        ui.sv_latch = 1;
-        say("STEPS HELD", 900);
-    }
     if (step_page()) {                               /* a step held in the step view: the knobs its */
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0)
@@ -483,7 +473,6 @@ static void ui_input(void)
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0) {
                 par_turn(id, j + 4u * ui.half, s);
-                ui.sh_nolatch |= (uint8_t)sh;
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
             }
@@ -491,7 +480,6 @@ static void ui_input(void)
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0) {
                 fx_turn(j + 4u * ui.half, s);
-                ui.sh_nolatch |= (uint8_t)sh;
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
             }
@@ -502,8 +490,6 @@ static void ui_input(void)
             if ((s = enc_take(KNOB[j])) != 0) {
                 par_turn(ID[sh][j], J[sh][j], s);
                 dial(ID[sh][j], J[sh][j]);
-                if (sh)
-                    ui.sh_nolatch = 1;
             }
     }
     if (btn_bit(press, B_PLAY)) {                    /* the sequencer */
@@ -603,7 +589,19 @@ static void ui_input(void)
         return;
     }
     ui.qk = KEY_NONE;
+    if ((ch & keys) >> KEY_STEP & 1u) {              /* STEP: the step view on or off */
+        ui.sv = (uint8_t)!ui.sv;
+        if (!ui.sv && ui.step_key != KEY_NONE)
+            step_up();
+        ui.force = 1;
+    }
     for (k = 0; ch && k < NKEY; k++) {
+        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_GEN) {   /* a new phrase for the track */
+            phrase_new(ui.sel);
+            ui.gen_until = fm1_ms + 400u;
+            flash("NEW", "PHRASE", TRACK_COL[ui.sel]);
+            continue;
+        }
         if (((ch & keys) >> k & 1u) && step_view() && sm_of(k)) {   /* the step view: a black key, its knobs (again:
                                                                       * none) */
             ui.smode = (uint8_t)(ui.smode == sm_of(k) ? SM_NONE : sm_of(k));
@@ -670,6 +668,11 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
+        if (step_view() && k == KEY_GEN) {           /* (the phrase key: dim, lit as it makes one) */
+            fm1_led_key(14u + k, (int32_t)(ui.gen_until - fm1_ms) > 0);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
         if (step_view() && sm_of(k)) {               /* (the step view's black keys: dim, the one chosen lit) */
             fm1_led_key(14u + k, ui.smode == sm_of(k));
             led_dim_key(14u + k, 1);
@@ -688,7 +691,9 @@ static void ui_leds(void)
         led_dim_key(14u + k, 0);
         fm1_led_key(14u + k, key_plays(k) && ((ui.keys >> k) & 1u) && ui.key_track[k] == ui.sel);
     }
-    fm1_led_key(14u + KEY_SHIFT, ui.sv_latch ? (fm1_ms / 300u) & 1u : (ui.keys >> KEY_SHIFT) & 1u);   /* (latched: blinks) */
+    fm1_led_key(14u + KEY_SHIFT, (ui.keys >> KEY_SHIFT) & 1u);
+    fm1_led_key(14u + KEY_STEP, ui.sv);
+    led_dim_key(14u + KEY_STEP, 1);
     fm1_led_key(14u + KEY_EDIT, ui.page == PG_EDIT);
     led_dim_key(14u + KEY_EDIT, 1);
 }
