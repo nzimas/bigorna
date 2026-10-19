@@ -514,6 +514,15 @@ static void btn(uint32_t b, int sh)
     fm1_in.notes &= ~(1u << KEY_SHIFT);
     fm1_ms += 2000;
 }
+static int host_dim_on(uint32_t id)             /* a key's LED lit dimly */
+{
+    uint32_t p, r;
+    for (p = 0; p < FM1_NCOL; p++)
+        for (r = 1; r < 5u; r++)
+            if (FM1_KEYMAP[r][p] == (int8_t)id)
+                return (fm1_led_dim[p] >> r) & 1u;
+    return 0;
+}
 static void tap(uint32_t k)                      /* a key pressed and let go */
 {
     fm1_in.notes |= 1u << k;
@@ -653,8 +662,8 @@ static int cmd_projects(const char *dir)
         turn(EN_K2, -20);
         turn(EN_K3, 2);
         turn(EN_K4, CD_AB - CD_NONE + 2);        /* 1:2, !1:2, 2:2 */
-        EXPECT(seq_vel[5][0] == VEL_DEF - 20 && seq_glen[5][0] == GLEN_DEF + 2 && seq_cond[5][0] == CD_AB + 2,
-               "KNOB 2 .. 4: velocity, length, condition");
+        EXPECT(seq_vel[5][0] == pct_raw(pct_disp(VEL_DEF) - 20) && seq_glen[5][0] == GLEN_DEF + 2 && seq_cond[5][0] == CD_AB + 2,
+               "KNOB 2 .. 4: velocity (20 of 100 down), length, condition");
         fm1_ms += 100;
         ui_draw();
         shot(dir, "step_trig");
@@ -739,7 +748,7 @@ static int cmd_projects(const char *dir)
         turn(EN_PRESET, -11);
         btn(B_ARP, 0);
         EXPECT(pat_cur == 0u && seq_note[5][0] == n1 && seq_note[5][8] == n0, "and pattern 1 back, its steps");
-        EXPECT(seq_cond[5][0] == CD_AB + 2 && seq_vel[5][0] == VEL_DEF - 20 && seq_glen[5][0] == GLEN_DEF + 2,
+        EXPECT(seq_cond[5][0] == CD_AB + 2 && seq_vel[5][0] == pct_raw(pct_disp(VEL_DEF) - 20) && seq_glen[5][0] == GLEN_DEF + 2,
                "with their velocity, length, condition");
         /* the PATTERNS grid: a white key loads its pattern; held, empties it */
         btn(B_ARP, 0);
@@ -808,8 +817,8 @@ static int cmd_projects(const char *dir)
             turn(EN_K1, -5);                     /* knob E: FREQ */
             turn(EN_SELECT, -7);
             turn(EN_ALGO, 9);
-            EXPECT(pl_val(5, st, PG_FLT1 * 8u + 4u) == clampi(f0 - 5, 0, 127) && pl_find(5, st, PG_FLT1 * 8u + 0u) >= 0 &&
-                   pl_find(5, st, PG_AMP * 8u + 7u) >= 0 && pl_val(5, st, PL_PAN) == 73 && cur()->flt[F_FREQ] == fsnd,
+            EXPECT(pl_val(5, st, PG_FLT1 * 8u + 4u) == pct_raw(pct_disp(f0) - 5) && pl_find(5, st, PG_FLT1 * 8u + 0u) >= 0 &&
+                   pl_find(5, st, PG_AMP * 8u + 7u) >= 0 && pl_val(5, st, PL_PAN) == bip_raw(9) && cur()->flt[F_FREQ] == fsnd,
                    "a step held, EDIT up: the knobs lock (the sound kept)");
             ui.dial_until = 0;
             ui_draw();
@@ -817,7 +826,7 @@ static int cmd_projects(const char *dir)
             turn(EN_SELECT, 1);
             ui_draw();
             shot(dir, "lock_dial");
-            EXPECT(ui.shown_page == 4u && ui.dial_lk == PG_AMP * 8u + 7u + 1u, "the level's lock shown as a dial");
+            EXPECT(ui.shown_page == SHOWN_DIAL && ui.dial_lk == PG_AMP * 8u + 7u + 1u, "the level's lock shown as a dial");
             fm1_in.notes &= ~(1u << kk);
             ui_input();
             EXPECT(seq_note[5][st] != 0, "let go after a lock: the step kept");
@@ -943,6 +952,55 @@ static int cmd_projects(const char *dir)
                 mix_block(out);
             EXPECT(trk[0].tid[0] == PL_NONE && trk[0].tid[1] == PL_NONE, "stopped: the track's locks gone");
         }
+    }
+    {   /* the TRACK page (the step view's 2nd black key): LENGTH and CLOCK; the keys past the length dark */
+        int32_t out[2 * CTL];
+        uint32_t kw[16], k, i, n0, n1;
+        static pat_t pp;
+        for (k = 0; k < NKEY; k++)
+            if (white_ix(k) >= 0)
+                kw[white_ix(k)] = k;
+        ui.sel = 2;
+        tap(KEY_STEP);
+        tap(KEY_TRK);
+        EXPECT(ui.page == PG_TRK, "the 2nd black key: the TRACK page");
+        turn(EN_K1, -4);
+        turn(EN_K2, -1);
+        EXPECT(seq_len[2] == 12u && seq_div[2] == SEQ_DIV1 - 1u && pat_dirty, "LENGTH 12, CLOCK 1/2");
+        ui_leds();
+        EXPECT(!host_led[14u + kw[13]] && !host_dim_on(14u + kw[13]) && host_dim_on(14u + kw[11]), "past the length: dark");
+        fm1_ms += 2000;
+        ui_draw();
+        shot(dir, "track_page");
+        memset((void *)seq_note[2], 0, NSTEP);
+        seq_note[2][0] = 60;
+        seq_run = 1;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        for (n0 = 0; seq_pos[2] != 1u && n0 < 5000u; n0++)
+            mix_block(out);
+        for (n1 = 0; seq_pos[2] != 2u && n1 < 5000u; n1++)
+            mix_block(out);
+        EXPECT(n1 > 2u * 140u && n1 < 2u * 160u, "CLOCK 1/2: a step two of the tempo's 16ths");
+        while (seq_pos[2] != 11u)
+            mix_block(out);
+        while (seq_pos[2] == 11u)
+            mix_block(out);
+        EXPECT(seq_pos[2] == 0u, "LENGTH 12: round after step 12");
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        pat_take(&pp);
+        seq_len[2] = 0;
+        seq_div[2] = SEQ_DIV1;
+        pat_store[14] = pp;
+        pat_give(14);
+        EXPECT(seq_len[2] == 12u && seq_div[2] == SEQ_DIV1 - 1u && seq_div[0] == SEQ_DIV1, "a pattern keeps them");
+        tap(KEY_TRK);
+        EXPECT(ui.page == PG_MAIN, "again: down");
+        tap(KEY_STEP);
+        seq_len[2] = 0;
+        seq_div[2] = SEQ_DIV1;
     }
     {   /* REC: armed (the metronome counts), the first note starts it on step 1; each note to the nearest step */
         int32_t out[2 * CTL];
@@ -1366,6 +1424,10 @@ int main(int argc, char **argv)
         return cmd_projects(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "phrases"))
         return cmd_phrases(argv[2], argc >= 4 ? atoi(argv[3]) : 4);
+    if (argc >= 3 && !strcmp(argv[1], "tw")) {
+        printf("M %d S %d XS %d\n", (int)text_w(&FONT_M, argv[2]), (int)text_w(&FONT_S, argv[2]), (int)text_w(&FONT_XS, argv[2]));
+        return 0;
+    }
     if (argc >= 2 && !strcmp(argv[1], "sizes")) {
         printf("sound_t %zu ck_t %zu vck_t %zu ftck %zu fdck %zu wtck %zu swck %zu vmem %zu voice %zu prj_body %zu\n",
                sizeof(sound_t), sizeof(ck_t), sizeof(vck_t), sizeof(ftck_t), sizeof(fdck_t), sizeof(wtck_t),

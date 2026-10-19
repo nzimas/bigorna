@@ -209,14 +209,44 @@ static void ratio_txt(char *b, uint32_t r4)
     }
 }
 /* the value as it reads */
+/* the ranges as they show and turn: a plain 0 .. 127 as 0 .. 100, a bipolar 0 .. 127 (centre 64) as -50 .. +50, a
+ * click a step of what shows (the sound keeps the Digitone II's 0 .. 127: its curves are fitted to them) */
+static int32_t pct_disp(int32_t v) { return (clampi(v, 0, 127) * 100 + 63) / 127; }
+static int32_t pct_raw(int32_t d) { return (clampi(d, 0, 100) * 127 + 50) / 100; }
+static int32_t bip_disp(int32_t v)
+{
+    int32_t d = clampi(v, 1, 127) - 64;
+    return d >= 0 ? (d * 50 + 31) / 63 : -((-d * 50 + 31) / 63);
+}
+static int32_t bip_raw(int32_t d)
+{
+    d = clampi(d, -50, 50);
+    return 64 + (d >= 0 ? (d * 63 + 25) / 50 : -((-d * 63 + 25) / 50));
+}
+static int par_pct(const par_t *p) { return (p->kind == PK_NUM || p->kind == PK_HOLD) && p->lo == 0 && p->hi == 127; }
+static int par_bip(const par_t *p) { return p->kind == PK_BIP && p->lo == 0 && p->hi == 127 && p->mid == 64; }
+/* a parameter at v turned s clicks */
+static int32_t par_step(const par_t *p, int32_t v, int32_t s)
+{
+    if (par_pct(p))
+        return pct_raw(pct_disp(v) + s);
+    if (par_bip(p))
+        return bip_raw(bip_disp(v) + s);
+    return clampi(v + s, p->lo, p->hi);
+}
 static void par_text(const par_t *p, int32_t v, char *b)
 {
     b[0] = 0;
+    if (par_pct(p) && !(p->kind == PK_HOLD && v >= 127)) {
+        fmt_int(b, pct_disp(v));
+        return;
+    }
     switch (p->kind) {
     case PK_BIP:
-        if (v > p->mid)
+        v = par_bip(p) ? bip_disp(v) : v - p->mid;
+        if (v > 0)
             str_cpy(b, "+", 2);
-        fmt_int(b + str_len(b), v - p->mid);
+        fmt_int(b + str_len(b), v);
         break;
     case PK_ALGO:
         fmt_int(b, v + 1);

@@ -1,5 +1,24 @@
 # Changelog
 
+## Build 19
+
+Added
+- The TRACK page: in the step view, the second black key from the left brings it up and down (lit while up). KNOB 1
+  sets the track's LENGTH, 1 to 16 steps; KNOB 2 its CLOCK against the session's tempo, a bipolar row with 1X in the
+  middle: 1/8, 1/4, 1/2 to the left, 2X and 4X to the right. Each track runs on its own clock; a step's length
+  follows its track's clock. The metronome, the looper and MANGLE's slicer keep the tempo's. LENGTH and CLOCK are
+  saved with the pattern (patterns saved before play at 1X). In the step view, the keys past the track's length are
+  dark. Notes recorded with REC go to the nearest step of the track's own clock.
+
+Changed
+- Ranges: the parameters that ran 0 to 127 show 0 to 100, and the bipolar ones -50 to +50 with 0 in the middle; a
+  knob's click is one of those. This covers the EDIT pages, the knobs' dials, locks, the reverb, delay and chorus
+  pages, and a step's velocity. The sound keeps its values as before (sessions, patterns and locks are unchanged);
+  only what shows and how far a click goes changed. Lists, ratios, notes, the delay's time and the parameters with
+  ranges of their own are as they were.
+- Every page of rows (EDIT, effects, the step's, TRACK) shows its names in the same small size and its values in the
+  next size; a value too wide for its row shows in the names' size.
+
 ## Build 18
 
 Added

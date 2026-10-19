@@ -450,6 +450,17 @@ static void met_block(int32_t *l, int32_t *r)
     }
 }
 static volatile uint8_t seq_len[NTRACK];  /* (0: 16) */
+/* each track's clock against the tempo's 16ths (TRACK page): 1/8, 1/4, 1/2, 1 (SEQ_DIV1), 2, 4 times as fast -- in
+ * eighths of the tempo's (DIV_R8). Its own count (seq_tacc: a step is SEQ_STEP8), from PLAY; the metronome, the looper
+ * and MANGLE's clock keep the tempo's */
+#define NDIV 6u
+#define SEQ_DIV1 3u
+#define SEQ_STEP8 (SEQ_16TH * 8u)
+static const uint8_t DIV_R8[NDIV] = {1, 2, 4, 8, 16, 32};
+static const char *const DIV_NAME[NDIV] = {"1/8", "1/4", "1/2", "1X", "2X", "4X"};
+static volatile uint8_t seq_div[NTRACK] = {SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1};
+static uint32_t seq_tacc[NTRACK];
+static volatile uint32_t seq_tacc_now[NTRACK];   /* (as the block ended: where in its step the track is) */
 static volatile uint8_t seq_run;          /* PLAY */
 static volatile uint8_t seq_pos[NTRACK];  /* the step playing (the ISR's; the screen and the LEDs read it) */
 static uint32_t seq_acc, seq_rnd = 0x2545F491u;
@@ -530,7 +541,8 @@ static void seq_trig(uint32_t t, uint32_t p)
     }
     if (!n || !seq_cond_ok(t, seq_cond[t][p]))
         return;
-    seq_sound(t, n, seq_vel[t][p], g >= GLEN_INF ? 0u : GLEN_8TH[g], seq_lid[t][p], seq_lv[t][p]);
+    seq_sound(t, n, seq_vel[t][p], g >= GLEN_INF ? 0u : maxi(1, GLEN_8TH[g] * 8 / DIV_R8[seq_div[t] % NDIV]),
+              seq_lid[t][p], seq_lv[t][p]);   /* (the length in the tempo's 16ths: its own steps' as its clock goes) */
     for (i = 0; i < NPL; i++) {                  /* (the track's: until its next step plays) */
         uint32_t id = seq_lid[t][p][i];
         trk[t].tv[i] = seq_lv[t][p][i];
@@ -623,6 +635,7 @@ static void seq_block(void)
             seq_pos[t] = 0xFF;
             seq_loop[t] = 0;
             seq_pre[t] = 0;
+            seq_tacc[t] = SEQ_STEP8;
         }
         seq_gstep = 15;
         seq_gcount = 0xFFFFFFFFu;
@@ -641,8 +654,12 @@ static void seq_block(void)
         seq_gstep = (uint8_t)((seq_gstep + 1u) & 15u);
         seq_gcount++;
         met_tick(seq_gstep);
-        for (t = 0; t < NTRACK; t++) {
+        loop_step();
+    }
+    for (t = 0; t < NTRACK; t++) {               /* each track on its own clock */
+        if (seq_tacc[t] >= SEQ_STEP8) {
             uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_pos[t] + 1u;
+            seq_tacc[t] -= SEQ_STEP8;
             if (p >= len) {
                 p = 0;
                 if (seq_pos[t] != 0xFFu)
@@ -651,7 +668,8 @@ static void seq_block(void)
             seq_pos[t] = (uint8_t)p;
             seq_trig(t, p);
         }
-        loop_step();
+        seq_tacc[t] += CTL * (uint32_t)fx_bpm10 * DIV_R8[seq_div[t] % NDIV];
+        seq_tacc_now[t] = seq_tacc[t];
     }
     loop_kick();
     seq_acc += CTL * (uint32_t)fx_bpm10;

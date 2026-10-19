@@ -55,7 +55,8 @@ typedef struct {
     uint16_t tempo;              /* 0: GLOBAL (the project's) */
     uint8_t seq[676];            /* the steps (below) */
 } pat_t;
-/* the steps, from build 18: seq[t] track t's length (0: 16); seq[6] SEQ_V3; seq[7] the records; then a record for
+/* the steps, from build 18: seq[t] track t's length (0: 16; low 5 bits) and, from build 19, its clock (top 3 bits:
+ * (division + 3) mod 6, so that 0 -- every pattern before -- is 1X); seq[6] SEQ_V3; seq[7] the records; then a record for
  * each step that holds a note: its place (16 t + i), its note, velocity, length, condition, the number of its locks,
  * then each lock: its parameter (tracks.c's ids) and its value, low byte first.
  * (Builds 11 .. 17, SEQ_V2: the record's length shared a byte with the top of a mask of 12 locks -- the phrase
@@ -232,7 +233,7 @@ static void pat_take(pat_t *p)               /* the pattern playing, into a slot
     p->tempo = pat_tempo;
     p->seq[SEQ_FMT] = SEQ_V3;
     for (t = 0; t < NTRACK; t++) {
-        p->seq[SEQ_LEN + t] = seq_len[t];
+        p->seq[SEQ_LEN + t] = (uint8_t)(seq_len[t] | ((seq_div[t] + SEQ_DIV1) % NDIV) << 5);
         for (i = 0; i < NSTEP; i++) {
             uint32_t j, nl = pl_n(t, i), at;
             if (!seq_note[t][i] || o + 6u > PAT_SEQ_ROOM)
@@ -272,8 +273,11 @@ static void pat_give(uint32_t k)             /* slot k of the store, as the patt
     memset((void *)seq_glen, GLEN_DEF, sizeof seq_glen);
     memset((void *)seq_cond, CD_NONE, sizeof seq_cond);
     memset((void *)seq_lid, PL_NONE, sizeof seq_lid);
-    for (t = 0; t < NTRACK; t++)
-        seq_len[t] = p->used && p->seq[SEQ_LEN + t] <= NSTEP ? p->seq[SEQ_LEN + t] : 0;
+    for (t = 0; t < NTRACK; t++) {
+        uint32_t b = p->used ? p->seq[SEQ_LEN + t] : 0u, c = b >> 5;
+        seq_len[t] = (uint8_t)((b & 31u) <= NSTEP ? b & 31u : 0u);
+        seq_div[t] = (uint8_t)(c < NDIV ? (c + SEQ_DIV1) % NDIV : SEQ_DIV1);
+    }
     if (p->used && p->seq[SEQ_FMT] == SEQ_V3) {
         uint32_t o = SEQ_REC, r;
         for (r = 0; r < p->seq[SEQ_NREC] && o + 6u <= PAT_SEQ_ROOM; r++) {

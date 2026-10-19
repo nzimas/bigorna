@@ -15,6 +15,8 @@
  *                             view the black keys, lit dimly:
  *                               the 1st   a new phrase for the track (phrase.c): its steps, conditions and locks;
  *                                         SHIFT and it: new locks on the steps the track holds, nothing else changed
+ *                               the 2nd   the TRACK page, up or down: KNOB 1 the track's LENGTH (1 .. 16 steps),
+ *                                         KNOB 2 its CLOCK against the tempo's 16ths (1/8, 1/4, 1/2, 1X, 2X, 4X)
  *                             A step held: KNOB 1 its note (in the scale), 2 its velocity, 3 its length, 4 its trig
  *                             condition (a page of four rows); SELECT locks its level, ALGORITHM its pan (a dial). With
  *                             the EDIT pages up, the knobs lock what they turn on the step held instead -- any
@@ -61,11 +63,14 @@ static const uint8_t KNOB[4] = {EN_K1, EN_K2, EN_K3, EN_K4};
 #define KEY_EDIT 22u
 #define KEY_STEP 20u                 /* (the 3rd black key from the right) */
 #define KEY_GEN 1u                   /* (the 1st black key from the left: in the step view, a new phrase) */
+#define KEY_TRK 3u                   /* (the 2nd: in the step view, the TRACK page) */
+#define SHOWN_DIAL 30u               /* (ui.shown_page: the dial up; the step's own page) */
+#define SHOWN_STEP 31u
 #define KEY_NONE 0xFFu
 
 static const uint16_t TRACK_COL[NTRACK] = {RGB(255, 214, 0), RGB(0, 214, 255), RGB(255, 92, 210),
                                            RGB(96, 255, 96), RGB(255, 140, 0), RGB(190, 160, 255)};
-enum { PG_MAIN, PG_EDIT, PG_FXP, PG_PRJ, PG_PRJD, PG_PAT };   /* (the sessions' list and page, the patterns' grid:
+enum { PG_MAIN, PG_EDIT, PG_FXP, PG_TRK, PG_PRJ, PG_PRJD, PG_PAT };   /* (the sessions' list and page, the patterns' grid:
                                                               * projects.c) */
 
 static struct {
@@ -127,7 +132,6 @@ static struct {
     int32_t shown_sel, shown_eng, shown_msg, shown_meter, shown_level, shown_pan;
     char shown_text[16];
     int32_t shown_rows[4];
-    uint8_t rfit, shown_rfit;    /* the rows' sizes (RF_*) the page takes, and as drawn */
     uint8_t shown_step;          /* (the EDIT page: the step held it showed, 0xFF none) */
     int8_t shown_touch;
     uint8_t shown_page, shown_half, shown_sub;
@@ -238,7 +242,7 @@ static int32_t scale_move(int32_t n, int32_t d)
 static int step_view(void) { return ui.sv; }
 static int step_held(void) { return ui.sv && ui.step_key != KEY_NONE; }
 /* the step's own page (NOTE, VEL, LEN, COND), while a step is held and the EDIT pages are not up */
-static int step_page(void) { return step_held() && ui.page != PG_EDIT; }
+static int step_page(void) { return step_held() && ui.page != PG_EDIT && ui.page != PG_TRK; }
 
 /* the steps' locks (the sequencer's, tracks.c): a lock is a parameter (page x 8 + knob; PL_PAN) and its value */
 static int pl_find(uint32_t t, uint32_t i, uint32_t id)
@@ -347,7 +351,7 @@ static void par_turn(uint32_t id, uint32_t j, int32_t s)   /* a parameter of the
     par_get(snd, id, j, &p);
     if (p.kind == PK_NONE)
         return;
-    v = clampi(par_val(snd, id, j) + s, p.lo, p.hi);
+    v = par_step(&p, par_val(snd, id, j), s);
     par_put(snd, id, j, v);
     if (id == PG_FLT2 && j == 6u)                    /* (another FLTR machine: its knob G within its range) */
         snd->flt[F_TYPE] = (uint8_t)(snd->fmach == FLT_LEG ? snd->flt[F_TYPE] != 0 : snd->flt[F_TYPE]);
@@ -355,13 +359,22 @@ static void par_turn(uint32_t id, uint32_t j, int32_t s)   /* a parameter of the
 }
 static uint8_t *fx_vals(void) { return ui.fx_pg == 0 ? fx_rv : ui.fx_pg == 1 ? fx_dl : fx_ch; }
 static uint32_t fx_n(void) { return ui.fx_pg == 0 ? NRV : ui.fx_pg == 1 ? NDL : NCH; }
+/* an effect's parameter: 0 shown as it is (DELAY's TIME, PING PONG), 1 as 0 .. 100, 2 as -50 .. +50 (DELAY's WIDTH) */
+static uint32_t fx_kind(uint32_t j)
+{
+    if (ui.fx_pg == 1 && (j == DL_TIME || j == DL_X))
+        return 0;
+    return ui.fx_pg == 1 && j == DL_WID ? 2u : 1u;
+}
 static void fx_turn(uint32_t j, int32_t s)
 {
     uint8_t *v = fx_vals();
-    int32_t hi = ui.fx_pg == 1 && j == DL_X ? 1 : 127;
+    uint32_t kd;
     if (j >= fx_n())
         return;
-    v[j] = (uint8_t)clampi(v[j] + s, 0, hi);
+    kd = fx_kind(j);
+    v[j] = (uint8_t)(kd == 1u ? pct_raw(pct_disp(v[j]) + s) : kd == 2u ? bip_raw(bip_disp(v[j]) + s)
+                     : clampi(v[j] + s, 0, ui.fx_pg == 1 && j == DL_X ? 1 : 127));
     fx_cook_all();
     prj_dirty = 1;
 }
@@ -507,11 +520,11 @@ static void rec_note(uint32_t note, uint32_t vel, uint32_t k)
     } else if (ui.rec != REC_ON || !seq_run)
         return;
     else {
-        uint32_t pos = seq_pos[t], acc = seq_acc_now, len = seq_len[t] ? seq_len[t] : NSTEP;
+        uint32_t pos = seq_pos[t], acc = seq_tacc_now[t], len = seq_len[t] ? seq_len[t] : NSTEP;
         if (pos >= len) {                        /* (just started: step 1 to come) */
             i = 0;
             seq_skip[t][0] = 1;
-        } else if (acc < SEQ_16TH / 2u)
+        } else if (acc < SEQ_STEP8 / 2u)         /* (the track's own steps, on its own clock) */
             i = pos;
         else {
             i = (pos + 1u) % len;
@@ -615,7 +628,7 @@ static void pl_turn(uint32_t id, int32_t s, int show)
     pl_par(cur(), id, &p);
     if (p.kind == PK_NONE)
         return;
-    if (pl_set(t, i, id, clampi(pl_val(t, i, id) + s, p.lo, p.hi))) {
+    if (pl_set(t, i, id, par_step(&p, pl_val(t, i, id), s))) {
         say("8 LOCKS", 900);                     /* (the step's places all taken) */
         return;
     }
@@ -635,7 +648,7 @@ static void step_knob(uint32_t j, int32_t s)
         seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], s);
         step_hear(seq_note[t][i]);
     } else if (j == 1u)
-        seq_vel[t][i] = (uint8_t)clampi(seq_vel[t][i] + s, 1, 127);
+        seq_vel[t][i] = (uint8_t)clampi(pct_raw(pct_disp(seq_vel[t][i]) + s), 1, 127);   /* (shown 1 .. 100) */
     else if (j == 2u)
         seq_glen[t][i] = (uint8_t)clampi(seq_glen[t][i] + s, 0, NGLEN - 1);
     else
@@ -745,6 +758,18 @@ static void ui_input(void)
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0) {
                 par_turn(id, j + 4u * ui.half, s);
+                ui.touched = (int8_t)j;
+                ui.touch_until = fm1_ms + 1500u;
+            }
+    } else if (ui.page == PG_TRK) {                  /* TRACK: KNOB 1 the length, 2 the clock */
+        for (j = 0; j < 4u; j++)
+            if ((s = enc_take(KNOB[j])) != 0 && j < 2u) {
+                uint32_t t = ui.sel;
+                if (j == 0u)
+                    seq_len[t] = (uint8_t)clampi((seq_len[t] ? seq_len[t] : (int32_t)NSTEP) + s, 1, NSTEP);
+                else
+                    seq_div[t] = (uint8_t)clampi((int32_t)seq_div[t] + s, 0, NDIV - 1);
+                pat_dirty = 1;
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
             }
@@ -1000,9 +1025,16 @@ static void ui_input(void)
         ui.sv = (uint8_t)!ui.sv;
         if (!ui.sv && ui.step_key != KEY_NONE)
             step_up();
+        if (!ui.sv && ui.page == PG_TRK)
+            ui.page = PG_MAIN;
         ui.force = 1;
     }
     for (k = 0; ch && k < NKEY; k++) {
+        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_TRK) {   /* the TRACK page, up or down */
+            ui.page = ui.page == PG_TRK ? PG_MAIN : PG_TRK;
+            ui.force = 1;
+            continue;
+        }
         if (((ch & keys) >> k & 1u) && step_view() && k == KEY_GEN) {   /* a new phrase for the track (SHIFT: new
                                                                          * locks on its steps) */
             if (sh)
@@ -1092,14 +1124,19 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
+        if (step_view() && k == KEY_TRK) {           /* (the TRACK key: dim, lit while its page is up) */
+            fm1_led_key(14u + k, ui.page == PG_TRK);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
         if (step_view() && white_ix(k) >= 0) {       /* (the step view: with a note lit, empty dim, the one playing
-                                                      * the other way round) */
-            uint32_t i = (uint32_t)white_ix(k);
+                                                      * the other way round; past the track's length, dark) */
+            uint32_t i = (uint32_t)white_ix(k), len = seq_len[ui.sel] ? seq_len[ui.sel] : NSTEP;
             int on = seq_note[ui.sel][i] != 0;
             if (seq_run && seq_pos[ui.sel] == i)
                 on = !on;
-            fm1_led_key(14u + k, on || k == ui.step_key);
-            led_dim_key(14u + k, 1);
+            fm1_led_key(14u + k, i < len && (on || k == ui.step_key));
+            led_dim_key(14u + k, i < len);
             continue;
         }
         led_dim_key(14u + k, 0);
@@ -1215,23 +1252,12 @@ static void draw_rows_title(const char *t1, const char *t2, uint16_t col)
     cv_rect(ui.half ? 120 : 4, 46, 116, 4, col);      /* (which half: A .. D left, E .. H right) */
     cv_blit(0, 0);
 }
-/* the rows' sizes: a page's names in one size and its values in one, the largest pair that leaves every row's name
- * and value apart (row_fit: a row's; the page takes the smallest of its rows', both halves) */
-static const font_t *const RF_N[5] = {&FONT_M, &FONT_S, &FONT_S, &FONT_XS, &FONT_XS};
-static const font_t *const RF_V[5] = {&FONT_M, &FONT_M, &FONT_S, &FONT_S, &FONT_XS};
-static uint32_t row_fit(const char *name, const char *val)
-{
-    uint32_t i;
-    for (i = 0; i < 4u; i++)
-        if (text_w(RF_N[i], name) + text_w(RF_V[i], val) + 12 <= 228)
-            break;
-    return i;
-}
-/* a row: the name left, the value right, in the page's sizes (ui.rfit) */
+/* a row: the name left, the value right -- every page's names in one size (XS), the values in the next (S), a value
+ * too wide beside its name in the names' size (the pages' rows the same everywhere) */
 static void draw_row(uint32_t r, const char *name, const char *val, int32_t frac, int bip, int touched, uint16_t col)
 {
     uint16_t bg = touched ? C_WHITE : C_BLACK, fg = touched ? C_BLACK : C_WHITE;
-    const font_t *fn = RF_N[ui.rfit], *fv = RF_V[ui.rfit];
+    const font_t *fn = &FONT_XS, *fv = text_w(&FONT_XS, name) + text_w(&FONT_S, val) + 12 <= 228 ? &FONT_S : &FONT_XS;
     cv_begin(240, 47, bg);
     if (name[0]) {
         cv_text(6, 1 + (FONT_M.h - fn->h) / 2, fn, name, touched ? C_BLACK : RGB(200, 200, 200));
@@ -1250,23 +1276,9 @@ static void draw_edit_page(void)
     const sound_t *s = cur();
     uint32_t id = page_id(s, ui.edit_pg), j, st = step_held() ? (uint32_t)white_ix(ui.step_key) : 0xFFu;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
-    int full;
-    ui.rfit = 1;                                     /* (the names never larger than the S size) */
-    for (j = 0; j < 8u; j++) {                       /* (the sizes: every row of the page's, both halves) */
-        par_t p;
-        char b[16];
-        uint32_t f;
-        par_get(s, id, j, &p);
-        if (p.kind == PK_NONE)
-            continue;
-        par_text(&p, par_val(s, id, j), b);
-        f = row_fit(p.name, b);
-        ui.rfit = (uint8_t)(f > ui.rfit ? f : ui.rfit);
-    }
-    full = ui.force || ui.shown_page != PG_EDIT || ui.shown_half != ui.half || ui.shown_sub != ui.edit_pg ||
-           ui.shown_rfit != ui.rfit || ui.shown_step != st;
+    int full = ui.force || ui.shown_page != PG_EDIT || ui.shown_half != ui.half || ui.shown_sub != ui.edit_pg ||
+               ui.shown_step != st;
     ui.shown_step = (uint8_t)st;
-    ui.shown_rfit = ui.rfit;
     if (full) {
         char t1[16], t2[16];
         page_title(s, id, t1);
@@ -1310,19 +1322,17 @@ static void fx_text(uint32_t k, int32_t x, char *b)   /* an effect's parameter k
         dl_time_text(b, x);
     else if (ui.fx_pg == 1 && k == DL_X)
         str_cpy(b, x ? "ON" : "OFF", 4);
-    else if (ui.fx_pg == 1 && k == DL_FDBK) {
+    else if (ui.fx_pg == 1 && k == DL_FDBK) {    /* (FEEDBACK: as the share it feeds back, 64 the whole) */
         fmt_int(b, x * 100 / 64);
         str_cpy(b + str_len(b), "%", 2);
     } else if ((ui.fx_pg == 0 && k == RV_DEC && x >= 127))
         str_cpy(b, "INF", 4);
     else if (ui.fx_pg == 1 && k == DL_WID) {
-        if (x > 64)
-            str_cpy(b, "+", 2);
-        else
-            b[0] = 0;
-        fmt_int(b + str_len(b), x - 64);
+        int32_t d = bip_disp(x);
+        str_cpy(b, d > 0 ? "+" : "", 2);
+        fmt_int(b + str_len(b), d);
     } else
-        fmt_int(b, x);
+        fmt_int(b, pct_disp(x));
 }
 static const char *fx_name(uint32_t k) { return ui.fx_pg == 0 ? RVN[k] : ui.fx_pg == 1 ? DLN[k] : CHN[k]; }
 static void draw_fx_page(void)
@@ -1330,18 +1340,7 @@ static void draw_fx_page(void)
     const uint8_t *v = fx_vals();
     uint32_t j;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
-    int full;
-    ui.rfit = 1;
-    for (j = 0; j < fx_n(); j++) {
-        char b[16];
-        uint32_t f;
-        fx_text(j, v[j], b);
-        f = row_fit(fx_name(j), b);
-        ui.rfit = (uint8_t)(f > ui.rfit ? f : ui.rfit);
-    }
-    full = ui.force || ui.shown_page != PG_FXP || ui.shown_half != ui.half || ui.shown_sub != ui.fx_pg + 100u ||
-           ui.shown_rfit != ui.rfit;
-    ui.shown_rfit = ui.rfit;
+    int full = ui.force || ui.shown_page != PG_FXP || ui.shown_half != ui.half || ui.shown_sub != ui.fx_pg + 100u;
     if (full)
         draw_rows_title(FXT[ui.fx_pg], ui.half ? "E-H" : "A-D", C_SEND);
     for (j = 0; j < 4u; j++) {
@@ -1384,10 +1383,7 @@ static void draw_step_page(void)
     static const char *const NAME[4] = {"NOTE", "VEL", "LEN", "COND"};
     uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key), j;
     int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
-    int full;
-    ui.rfit = 1;                                     /* (the step's rows: names small, values large) */
-    full = ui.force || ui.shown_page != 20u || ui.shown_sub != i || ui.shown_rfit != ui.rfit;
-    ui.shown_rfit = ui.rfit;
+    int full = ui.force || ui.shown_page != SHOWN_STEP || ui.shown_sub != i;
     if (full) {
         char t1[12] = "STEP ";
         uint8_t h = ui.half;
@@ -1408,7 +1404,7 @@ static void draw_step_page(void)
         if (j == 0u)
             note_text(b, (uint32_t)v);
         else if (j == 1u)
-            fmt_int(b, v);
+            fmt_int(b, pct_disp(v) ? pct_disp(v) : 1);
         else if (j == 2u)
             str_cpy(b, GLEN_NAME[v], sizeof b);
         else
@@ -1418,6 +1414,39 @@ static void draw_step_page(void)
     }
     ui.shown_touch = (int8_t)tc;
     ui.shown_sub = (uint8_t)i;
+}
+
+/* the TRACK page (the step view's 2nd black key): the track's LENGTH and CLOCK, as rows */
+static void draw_trk_page(void)
+{
+    uint32_t t = ui.sel, j;
+    int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
+    int full = ui.force || ui.shown_page != PG_TRK || ui.shown_sub != t;
+    if (full) {
+        char t1[12] = "TRACK ";
+        uint8_t h = ui.half;
+        fmt_int(t1 + 6, (int32_t)t + 1);
+        ui.half = 0;
+        draw_rows_title(t1, "", TRACK_COL[t]);
+        ui.half = h;
+    }
+    for (j = 0; j < 4u; j++) {
+        int32_t v = j == 0u ? (seq_len[t] ? seq_len[t] : (int32_t)NSTEP) : j == 1u ? seq_div[t] : 0;
+        char b[8];
+        if (!full && ui.shown_rows[j] == v && ((int32_t)j == tc) == ((int32_t)j == ui.shown_touch))
+            continue;
+        if (j == 0u) {
+            fmt_int(b, v);
+            draw_row(j, "LENGTH", b, (v - 1) * 1000 / 15, 0, (int32_t)j == tc, TRACK_COL[t]);
+        } else if (j == 1u)                      /* (bipolar: 1X in the middle) */
+            draw_row(j, "CLOCK", DIV_NAME[v % NDIV], v <= (int32_t)SEQ_DIV1 ? v * 500 / (int32_t)SEQ_DIV1
+                     : 500 + (v - (int32_t)SEQ_DIV1) * 500 / (int32_t)(NDIV - 1u - SEQ_DIV1), 1, (int32_t)j == tc, TRACK_COL[t]);
+        else
+            draw_row(j, "", "", 0, 0, 0, TRACK_COL[t]);
+        ui.shown_rows[j] = v;
+    }
+    ui.shown_touch = (int8_t)tc;
+    ui.shown_sub = (uint8_t)t;
 }
 
 /* a knob's parameter as a dial over the whole screen: its name and the track; a dial from 7 o'clock to 5 (bipolar
@@ -1538,14 +1567,14 @@ static void ui_draw(void)
     if ((int32_t)(ui.dial_until - fm1_ms) > 0 && (ui.page == PG_MAIN || ui.dial_lk)) {   /* (a step's lock: on any
                                                                                       * page, the step's own too) */
         int32_t key = dial_key();
-        if (ui.shown_page != 4 || (ui.shown_dial != key && (uint32_t)(fm1_ms - ui.dial_drawn_at) >= 40u))
+        if (ui.shown_page != SHOWN_DIAL || (ui.shown_dial != key && (uint32_t)(fm1_ms - ui.dial_drawn_at) >= 40u))
             draw_dial();
-        ui.shown_page = 4;
+        ui.shown_page = SHOWN_DIAL;
         return;
     }
     if (step_page()) {                               /* a step held, the step view's knobs on it */
         draw_step_page();
-        ui.shown_page = 20;
+        ui.shown_page = SHOWN_STEP;
         ui.force = 0;
         return;
     }
@@ -1558,6 +1587,12 @@ static void ui_draw(void)
     if (ui.page == PG_FXP) {
         draw_fx_page();
         ui.shown_page = PG_FXP;
+        ui.force = 0;
+        return;
+    }
+    if (ui.page == PG_TRK) {
+        draw_trk_page();
+        ui.shown_page = PG_TRK;
         ui.force = 0;
         return;
     }
