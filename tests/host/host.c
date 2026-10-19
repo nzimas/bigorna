@@ -973,6 +973,47 @@ static int cmd_projects(const char *dir)
         btn(B_PLAY, 1);
         EXPECT(!ui.click, "SHIFT + PLAY: the metronome off");
         btn(B_PLAY, 1);
+        /* SHIFT + REC held on 1.5 s: the track's loops emptied */
+        loops[0][1].on = 1;
+        loops[0][1].len = 16;
+        loops[0][1].n = 0;
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        fm1_in.buttons |= 1u << PANEL_BTN[B_REC];
+        host_press = 1u << PANEL_BTN[B_REC];
+        ui_input();
+        fm1_ms += 600;
+        ui_input();
+        EXPECT(loops[0][1].on, "SHIFT + REC held 0.6 s: the loops shown, kept");
+        fm1_ms += 1000;
+        ui_input();
+        EXPECT(!loops[0][1].on && ui.flash_on, "held 1.5 s: the track's loops emptied");
+        fm1_in.buttons = 0;
+        fm1_in.notes = 0;
+        ui_input();
+        EXPECT(!ui.lrec, "let go: not armed");
+        fm1_ms += 2000;
+        /* SHIFT + PRESETS: the families of the machine */
+        {
+            sound_t *sn = cur();
+            uint32_t m = ui.eng[ui.sel], e0 = m;
+            int32_t f0 = sn->family;
+            fm1_in.notes |= 1u << KEY_SHIFT;
+            turn(EN_PRESET, -1);
+            EXPECT(ui.eng[ui.sel] == e0 && cur()->family != f0 && RECIPES[cur()->family].mach == m,
+                   "SHIFT + PRESETS: another family, the same machine");
+            turn(EN_PRESET, 200);
+            {
+                int32_t last = -1, i;
+                for (i = 0; i < (int32_t)NRECIPE; i++)
+                    if (RECIPES[i].mach == m)
+                        last = i;
+                EXPECT(cur()->family == last, "turned on: the machine's last family, there it stays");
+            }
+            fm1_in.notes &= ~(1u << KEY_SHIFT);
+            ui_input();
+            ui_draw();
+            shot(dir, "family_browse");
+        }
         /* PRESETS on a session's page: the page's, never the machine */
         k = ui.eng[ui.sel];
         btn(B_SAVE, 0);

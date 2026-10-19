@@ -28,7 +28,9 @@
  *                             it plays from there, round and round in its own length (up to 16 bars), over the
  *                             track's steps. Three loops a track
  *   SHIFT + REC held          the track's loops on the first three white keys (lit: playing; dim: muted): a key let
- *                             go soon mutes its loop or plays it again; held 0.8 s, empties it
+ *                             go soon mutes its loop or plays it again; held 0.8 s, empties it. Held 1.5 s with no
+ *                             white key touched: every loop of the track emptied
+ *   SHIFT + PRESETS           the track's sound: a new one of the family before / after, on the machine it plays
  *   the black key before it   EDIT: the parameter pages of the track's sound -- SYN 1 .. 4, FLTR 1, FLTR 2, AMP,
  *                             FX -- KNOB 1 .. 4 the page's A .. D, with SHIFT held E .. H
  *   ARP                       the patterns (projects.c)
@@ -86,6 +88,7 @@ static struct {
     uint8_t lt, ll;              /* .. the track and the loop it records */
     uint32_t lstart;             /* .. the step its first note went to (seq_gcount's count) */
     uint8_t lrec_down, lview;    /* SHIFT + REC held: on release, armed -- unless the loops were shown (lview) */
+    uint8_t lv_any;              /* .. a white key touched, or the loops emptied, while it was held */
     uint32_t lrec_t0;
     uint8_t lv_k, lv_long;       /* the loops shown: the white key held, held 0.8 s */
     uint32_t lv_t0;
@@ -697,11 +700,17 @@ static void ui_input(void)
             rec_set(REC_ON);
         say(seq_run ? "PLAY" : "STOP", 700);
     }
-    if (btn_bit(press, B_REC) && ui.lrec)            /* the looper armed or recording: REC ends the loop */
+    if (btn_bit(press, B_REC) && ui.lrec) {          /* the looper armed or recording: REC ends the loop (SHIFT
+                                                      * and held on: emptied, as below) */
         loop_end();
-    else if (btn_bit(press, B_REC) && sh) {          /* SHIFT + REC: the looper (on release; held: its loops) */
+        if (sh) {
+            ui.lrec_down = ui.lview = 1;
+            ui.lv_any = 0;
+            ui.lrec_t0 = fm1_ms;
+        }
+    } else if (btn_bit(press, B_REC) && sh) {        /* SHIFT + REC: the looper (on release; held: its loops) */
         ui.lrec_down = 1;
-        ui.lview = 0;
+        ui.lview = ui.lv_any = 0;
         ui.lrec_t0 = fm1_ms;
     } else if (btn_bit(press, B_REC)) {              /* REC: armed (playing: recording), or off */
         rec_set(ui.rec ? REC_OFF : seq_run ? REC_ON : REC_ARMED);
@@ -715,6 +724,15 @@ static void ui_input(void)
             ui.lview = 0;
             ui.lv_k = KEY_NONE;
             ui.force = 1;
+        } else if (!ui.lv_any && sh && (uint32_t)(fm1_ms - ui.lrec_t0) >= 1500u) {   /* (held on: all emptied) */
+            uint32_t l;
+            for (l = 0; l < NLOOP; l++) {
+                loops[ui.sel][l].on = 0;
+                RING_PUBLISH();
+                loops[ui.sel][l].n = loops[ui.sel][l].len = 0;
+            }
+            ui.lv_any = ui.lview = 1;
+            flash("EMPTY", "LOOPS", C_BAD);
         } else if (!ui.lview && (uint32_t)(fm1_ms - ui.lrec_t0) >= 400u) {
             char m[12] = "LOOPS ";
             ui.lview = 1;
@@ -780,7 +798,25 @@ static void ui_input(void)
             say(m, 1200);
         }
     }
-    if ((s = e_pre) != 0) {                          /* the machine */
+    if ((s = e_pre) != 0 && sh) {                    /* SHIFT + PRESETS: the family before / after, a new sound */
+        sound_t *sn = cur();
+        uint32_t m = ui.eng[ui.sel];
+        int32_t f = sn->family, n = (int32_t)NRECIPE, d = s > 0 ? 1 : -1, i;
+        if (f < 0 || f >= n || RECIPES[f].mach != m)
+            f = d > 0 ? -1 : n;                      /* (not of this machine: from its first, or its last) */
+        for (; s; s -= d) {
+            for (i = f + d; i >= 0 && i < n && RECIPES[i].mach != m; i += d)
+                ;
+            if (i < 0 || i >= n)
+                break;                           /* (the machine's first or last family: it stays) */
+            f = i;
+        }
+        if (f >= 0 && f < n && RECIPES[f].mach == m) {
+            gen_sound(sn, m, f, -1, next_seed());
+            mark(ui.sel);
+            ui.home_until = fm1_ms + 300u;
+        }
+    } else if ((s = e_pre) != 0) {                   /* the machine */
         int32_t e = clampi((int32_t)ui.eng[ui.sel] + (s > 0 ? 1 : -1), 0, NENG - 1);
         if (e != ui.eng[ui.sel]) {
             ui.eng[ui.sel] = (uint8_t)e;
@@ -801,7 +837,7 @@ static void ui_input(void)
     if (ui.lrec_down) {                              /* SHIFT + REC held: the loops on the first three white keys */
         for (k = 0; k < NKEY; k++)
             if (((ch & keys) >> k & 1u) && white_ix(k) >= 0 && white_ix(k) < (int32_t)NLOOP && ui.lv_k == KEY_NONE) {
-                ui.lview = 1;
+                ui.lview = ui.lv_any = 1;
                 ui.lv_k = (uint8_t)k;
                 ui.lv_long = 0;
                 ui.lv_t0 = fm1_ms;

@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 14
+
+Added
+- SHIFT + REC held 1.5 s, with no white key touched, empties every loop of the chosen track (EMPTY / LOOPS). The
+  loops still show on the white keys from 0.4 s, as before. While a loop is recording, SHIFT + REC ends it and,
+  held on, empties the track's loops the same way.
+- SHIFT + PRESETS on the track's view: a new sound of the family before or after, on the machine the track plays
+  (its family's name shows under the machine). At the machine's first or last family it stays there.
+
 ## Build 13
 
 Added
