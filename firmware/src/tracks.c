@@ -328,28 +328,106 @@ static void events_take(void)
 }
 
 /* ------------------------------------------------------------ the sequencer --- */
-/* 16 steps a track, a 16th note each at the tempo; a step holds its note (0: empty), played for half a step. The
+/* 16 steps a track, a 16th note each at the tempo. A step holds its note (0: empty), its velocity, its length and its
+ * trig condition (the Digitone II's: PRE, NEI, 1ST, a probability, A:B, each also negated but the probability). The
  * main loop writes the steps and the lengths (bytes: whole as written), the ISR plays them */
 #define NSTEP 16u
 #define SEQ_16TH (FS * 15u * 10u)         /* a 16th note, in samples x the tempo x 10 */
+#define VEL_DEF 100u
+/* a step's length, in eighths of a step; the last, INF, held until the step plays again or the sequencer stops */
+#define NGLEN 15u
+#define GLEN_DEF 3u                       /* (half a step) */
+#define GLEN_INF (NGLEN - 1u)
+static const uint8_t GLEN_8TH[NGLEN] = {1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 0};
+static const char *const GLEN_NAME[NGLEN] = {"1/8", "1/4", "3/8", "1/2", "3/4", "1", "1.5", "2", "3", "4", "6", "8",
+                                            "12", "16", "INF"};
+/* the conditions: 0 none, then PRE, !PRE, NEI, !NEI, 1ST, !1ST, the probabilities, then A:B and !A:B in turn for
+ * B 2 .. 8, A 1 .. B */
+enum { CD_NONE, CD_PRE, CD_NPRE, CD_NEI, CD_NNEI, CD_1ST, CD_N1ST, CD_PROB };
+#define NPROB 21u
+#define CD_AB (CD_PROB + NPROB)
+#define NCOND (CD_AB + 70u)
+static const uint8_t PROB[NPROB] = {1, 2, 4, 6, 9, 13, 19, 25, 33, 41, 50, 59, 67, 75, 81, 87, 91, 94, 96, 98, 99};
+static void cond_ab(uint32_t c, uint32_t *a, uint32_t *b)   /* (c an A:B condition: its A and B) */
+{
+    uint32_t i = (c - CD_AB) / 2u;
+    for (*b = 2u; i >= *b; *b += 1u)
+        i -= *b;
+    *a = i + 1u;
+}
 static volatile uint8_t seq_note[NTRACK][NSTEP];
+static volatile uint8_t seq_vel[NTRACK][NSTEP], seq_glen[NTRACK][NSTEP], seq_cond[NTRACK][NSTEP];
 static volatile uint8_t seq_len[NTRACK];  /* (0: 16) */
 static volatile uint8_t seq_run;          /* PLAY */
 static volatile uint8_t seq_pos[NTRACK];  /* the step playing (the ISR's; the screen and the LEDs read it) */
-static uint32_t seq_acc;
-static uint8_t seq_was, seq_half, seq_on[NTRACK];   /* (seq_on: the note sounding, 0 none) */
+static uint32_t seq_acc, seq_rnd = 0x2545F491u;
+static uint8_t seq_was;
+static uint16_t seq_loop[NTRACK];         /* the times the track has played through since PLAY */
+static uint8_t seq_pre[NTRACK];           /* the last condition evaluated on the track (but PRE): 0 none yet, 1 false,
+                                           * 2 true */
+#define SEQ_HOLD 4u                       /* notes a track's steps keep sounding at once */
+static uint8_t sq_note[NTRACK][SEQ_HOLD];
+static uint16_t sq_left[NTRACK][SEQ_HOLD];   /* blocks left (0xFFFF: INF) */
 static void seq_release(void)
 {
-    uint32_t t;
+    uint32_t t, i;
     for (t = 0; t < NTRACK; t++)
-        if (seq_on[t]) {
-            note_off(t, seq_on[t], SRC_SEQ);
-            seq_on[t] = 0;
-        }
+        for (i = 0; i < SEQ_HOLD; i++)
+            if (sq_note[t][i]) {
+                note_off(t, sq_note[t][i], SRC_SEQ);
+                sq_note[t][i] = 0;
+            }
+}
+static int seq_cond_ok(uint32_t t, uint32_t c)
+{
+    int r;
+    if (c == CD_NONE)
+        return 1;
+    if (c == CD_PRE || c == CD_NPRE)
+        return (seq_pre[t] == 2u) == (c == CD_PRE);
+    if (c == CD_NEI || c == CD_NNEI)
+        r = (t > 0u && seq_pre[t - 1u] == 2u) == (c == CD_NEI);
+    else if (c == CD_1ST || c == CD_N1ST)
+        r = (seq_loop[t] == 0u) == (c == CD_1ST);
+    else if (c < CD_AB) {
+        seq_rnd = seq_rnd * 1664525u + 1013904223u;
+        r = (seq_rnd >> 16) % 100u < PROB[c - CD_PROB];
+    } else {
+        uint32_t a, b;
+        cond_ab(c, &a, &b);
+        r = (seq_loop[t] % b == a - 1u) == !((c - CD_AB) & 1u);
+    }
+    seq_pre[t] = (uint8_t)(r ? 2u : 1u);
+    return r;
+}
+static void seq_trig(uint32_t t, uint32_t p)
+{
+    uint32_t n = seq_note[t][p], g = seq_glen[t][p], i, k = SEQ_HOLD;
+    if (!n || !seq_cond_ok(t, seq_cond[t][p]))
+        return;
+    for (i = 0; i < SEQ_HOLD; i++)               /* (the same note sounding: let go first, its slot taken) */
+        if (sq_note[t][i] == n || (!sq_note[t][i] && k == SEQ_HOLD))
+            k = i;
+    if (k == SEQ_HOLD)                           /* (all four sounding: the one nearest its end) */
+        for (k = 0, i = 1; i < SEQ_HOLD; i++)
+            if (sq_left[t][i] < sq_left[t][k])
+                k = i;
+    if (sq_note[t][k])
+        note_off(t, sq_note[t][k], SRC_SEQ);
+    note_vel = (uint8_t)(seq_vel[t][p] ? seq_vel[t][p] : VEL_DEF);
+    note_on(t, n, SRC_SEQ);
+    note_vel = 127;
+    sq_note[t][k] = (uint8_t)n;
+    if (g >= GLEN_INF)
+        sq_left[t][k] = 0xFFFFu;
+    else {
+        uint32_t bl = GLEN_8TH[g] * (SEQ_16TH / 8u) / (CTL * (uint32_t)clampi(fx_bpm10, 100, 3000));
+        sq_left[t][k] = (uint16_t)(bl ? (bl < 0xFFFEu ? bl : 0xFFFEu) : 1u);
+    }
 }
 static void seq_block(void)
 {
-    uint32_t t;
+    uint32_t t, i;
     if (!seq_run) {
         if (seq_was)
             seq_release();
@@ -359,29 +437,32 @@ static void seq_block(void)
     if (!seq_was) {                              /* started: step 1 now */
         seq_was = 1;
         seq_acc = SEQ_16TH;
-        for (t = 0; t < NTRACK; t++)
+        for (t = 0; t < NTRACK; t++) {
             seq_pos[t] = 0xFF;
+            seq_loop[t] = 0;
+            seq_pre[t] = 0;
+        }
     }
+    for (t = 0; t < NTRACK; t++)                 /* the lengths run out */
+        for (i = 0; i < SEQ_HOLD; i++)
+            if (sq_note[t][i] && sq_left[t][i] != 0xFFFFu && !--sq_left[t][i]) {
+                note_off(t, sq_note[t][i], SRC_SEQ);
+                sq_note[t][i] = 0;
+            }
     if (seq_acc >= SEQ_16TH) {
         seq_acc -= SEQ_16TH;
-        seq_half = 0;
-        seq_release();
         for (t = 0; t < NTRACK; t++) {
-            uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_pos[t] + 1u, n;
-            if (p >= len)
+            uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_pos[t] + 1u;
+            if (p >= len) {
                 p = 0;
-            seq_pos[t] = (uint8_t)p;
-            if ((n = seq_note[t][p]) != 0) {
-                note_on(t, n, SRC_SEQ);
-                seq_on[t] = (uint8_t)n;
+                if (seq_pos[t] != 0xFFu)
+                    seq_loop[t]++;
             }
+            seq_pos[t] = (uint8_t)p;
+            seq_trig(t, p);
         }
     }
     seq_acc += CTL * (uint32_t)fx_bpm10;
-    if (!seq_half && seq_acc >= SEQ_16TH / 2u) {
-        seq_half = 1;
-        seq_release();
-    }
 }
 
 /* ------------------------------------------------------------- the mix --- */

@@ -7,9 +7,13 @@
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
- *   the rightmost black key   SHIFT: while held, the white keys are the track's 16 steps. A key on an empty step puts
- *                             the track's last note played there; a key on a step that holds a note (let go without
- *                             turning PRESETS) empties it. A step held, PRESETS moves its note up or down the scale
+ *   the rightmost black key   SHIFT: while held, the step view: the white keys are the track's 16 steps. A key on an
+ *                             empty step puts the track's last note played there; a key on a step that holds a note,
+ *                             let go soon (0.4 s) and nothing changed, empties it. Held 3 s, the view latches (SHIFT
+ *                             blinks) until SHIFT is pressed again. In the view the black keys from the fourth on
+ *                             (dim) choose what the knobs do to the step held:
+ *                               the 4th   TRIG: KNOB 1 the note (in the scale), 2 its velocity, 3 its length, 4 its
+ *                                         trig condition
  *   PLAY                      the sequencer: plays, or stops
  *   the black key before it   EDIT: the parameter pages of the track's sound -- SYN 1 .. 4, FLTR 1, FLTR 2, AMP,
  *                             FX -- KNOB 1 .. 4 the page's A .. D, with SHIFT held E .. H
@@ -53,7 +57,12 @@ static struct {
     uint8_t key_track[NKEY], key_note[NKEY];
     uint8_t last_note[NTRACK];   /* the note last played on each track (0: none yet): what a step is given */
     uint8_t step_key;            /* SHIFT: the key of the step held (KEY_NONE none) */
-    uint8_t step_new, step_turned;   /* .. its note put there as it was pressed; PRESETS turned since */
+    uint8_t step_new, step_edit;     /* .. its note put there as it was pressed; changed since */
+    uint32_t step_t0;            /* .. pressed at */
+    uint8_t sv_latch;            /* the step view latched (SHIFT held 3 s; SHIFT again lets it go) */
+    uint8_t sh_nolatch;          /* .. not to latch on this hold of SHIFT */
+    uint32_t sh_t0;              /* SHIFT pressed at */
+    uint8_t smode;               /* the step view's knobs: SM_* (the black key chosen) */
     uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
     uint8_t qk, qk_long;         /* SHIFT + ARP: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
     uint32_t qk_t0;
@@ -183,6 +192,19 @@ static int32_t scale_move(int32_t n, int32_t d)
     }
     return n;
 }
+/* the step view's black keys, from the fourth on: what each makes the knobs do to the step held */
+enum { SM_NONE, SM_TRIG, NSM };
+static const uint8_t SM_KEY[NSM] = {KEY_NONE, 8};   /* (the fourth black key from the left: C#) */
+static uint32_t sm_of(uint32_t k)
+{
+    uint32_t m;
+    for (m = 1; m < NSM; m++)
+        if (SM_KEY[m] == k)
+            return m;
+    return SM_NONE;
+}
+static int step_view(void) { return (int)(((fm1_in.notes >> KEY_SHIFT) & 1u) || ui.sv_latch); }
+static int step_page(void) { return ui.smode && ui.step_key != KEY_NONE; }   /* (the step's knobs on the screen) */
 static void note_text(char *b, uint32_t n)     /* C#3 */
 {
     str_cpy(b, NOTE_NAME[n % 12u], 4);
@@ -303,42 +325,57 @@ static void step_hear(uint32_t n)
         ev_post(EV_OFF, ui.sel, ui.step_heard, 0);
     ui.step_heard = (uint8_t)n;
     if (n)
-        ev_post(EV_ON, ui.sel, n, 127);
+        ev_post(EV_ON, ui.sel, n, seq_vel[ui.sel][white_ix(ui.step_key)]);
 }
 static void step_down(uint32_t k)
 {
     uint32_t i = (uint32_t)white_ix(k), n = seq_note[ui.sel][i];
     ui.step_key = (uint8_t)k;
-    ui.step_turned = 0;
+    ui.step_edit = 0;
     ui.step_new = !n;
+    ui.step_t0 = fm1_ms;
     if (!n) {
         n = ui.last_note[ui.sel] ? ui.last_note[ui.sel] : key_note(0, ui.oct[ui.sel]);
+        seq_vel[ui.sel][i] = VEL_DEF;
+        seq_glen[ui.sel][i] = GLEN_DEF;
+        seq_cond[ui.sel][i] = CD_NONE;
         seq_note[ui.sel][i] = (uint8_t)n;
         pat_dirty = 1;
     }
-    step_say(i, n);
+    if (!ui.smode)
+        step_say(i, n);
+    ui.force = 1;
     step_hear(n);
 }
-static void step_turn(int32_t s)
+/* the step view's knobs on the step held: TRIG: the note, the velocity, the length, the condition */
+static void step_knob(uint32_t j, int32_t s)
 {
-    uint32_t i = (uint32_t)white_ix(ui.step_key), n = seq_note[ui.sel][i];
-    n = (uint32_t)scale_move((int32_t)n, s);
-    seq_note[ui.sel][i] = (uint8_t)n;
-    ui.step_turned = 1;
+    uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key);
+    if (j == 0u) {
+        seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], s);
+        step_hear(seq_note[t][i]);
+    } else if (j == 1u)
+        seq_vel[t][i] = (uint8_t)clampi(seq_vel[t][i] + s, 1, 127);
+    else if (j == 2u)
+        seq_glen[t][i] = (uint8_t)clampi(seq_glen[t][i] + s, 0, NGLEN - 1);
+    else
+        seq_cond[t][i] = (uint8_t)clampi(seq_cond[t][i] + s, 0, NCOND - 1);
+    ui.step_edit = 1;
+    ui.touched = (int8_t)j;
+    ui.touch_until = fm1_ms + 1500u;
     pat_dirty = 1;
-    step_say(i, n);
-    step_hear(n);
 }
 static void step_up(void)
 {
     uint32_t i = (uint32_t)white_ix(ui.step_key);
     step_hear(0);
-    if (!ui.step_new && !ui.step_turned) {
+    if (!ui.step_new && !ui.step_edit && (uint32_t)(fm1_ms - ui.step_t0) < 400u) {
         seq_note[ui.sel][i] = 0;
         pat_dirty = 1;
         step_say(i, 0);
     }
     ui.step_key = KEY_NONE;
+    ui.force = 1;
 }
 
 static void ui_input(void)
@@ -421,11 +458,32 @@ static void ui_input(void)
         }
     }
     ui.half = (uint8_t)sh;
-    if (ui.page == PG_EDIT) {                        /* the page's parameters */
+    if ((fm1_in.notes & ~ui.keys) >> KEY_SHIFT & 1u) {   /* SHIFT pressed: a latched view let go */
+        ui.sh_t0 = fm1_ms;
+        ui.sh_nolatch = ui.sv_latch;
+        if (ui.sv_latch) {
+            ui.sv_latch = 0;
+            say("STEPS OFF", 700);
+        }
+    }
+    if (!sh)
+        ui.sh_nolatch = 0;
+    else if (press || ui.quick)
+        ui.sh_nolatch = 1;                           /* (SHIFT with a button: not to latch) */
+    else if (!ui.sv_latch && !ui.sh_nolatch && (uint32_t)(fm1_ms - ui.sh_t0) >= 3000u) {
+        ui.sv_latch = 1;
+        say("STEPS HELD", 900);
+    }
+    if (step_page()) {                               /* a step held in the step view: the knobs its */
+        for (j = 0; j < 4u; j++)
+            if ((s = enc_take(KNOB[j])) != 0)
+                step_knob(j, s);
+    } else if (ui.page == PG_EDIT) {                        /* the page's parameters */
         uint32_t id = page_id(cur(), ui.edit_pg);
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0) {
                 par_turn(id, j + 4u * ui.half, s);
+                ui.sh_nolatch |= (uint8_t)sh;
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
             }
@@ -433,6 +491,7 @@ static void ui_input(void)
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0) {
                 fx_turn(j + 4u * ui.half, s);
+                ui.sh_nolatch |= (uint8_t)sh;
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
             }
@@ -443,14 +502,14 @@ static void ui_input(void)
             if ((s = enc_take(KNOB[j])) != 0) {
                 par_turn(ID[sh][j], J[sh][j], s);
                 dial(ID[sh][j], J[sh][j]);
+                if (sh)
+                    ui.sh_nolatch = 1;
             }
     }
     if (btn_bit(press, B_PLAY)) {                    /* the sequencer */
         seq_run = (uint8_t)!seq_run;
         say(seq_run ? "PLAY" : "STOP", 700);
     }
-    if (ui.step_key != KEY_NONE && (s = enc_take(EN_PRESET)) != 0)   /* a step held: its note */
-        step_turn(s);
     if (pg_any()) {                                  /* PRESETS is the pages'; SELECT does nothing there */
         if ((s = enc_take(EN_PRESET)) != 0)
             prj_preset(s);
@@ -545,12 +604,19 @@ static void ui_input(void)
     }
     ui.qk = KEY_NONE;
     for (k = 0; ch && k < NKEY; k++) {
+        if (((ch & keys) >> k & 1u) && step_view() && sm_of(k)) {   /* the step view: a black key, its knobs (again:
+                                                                      * none) */
+            ui.smode = (uint8_t)(ui.smode == sm_of(k) ? SM_NONE : sm_of(k));
+            say(ui.smode == SM_TRIG ? "TRIG" : "KNOBS", 700);
+            ui.force = 1;
+            continue;
+        }
         if (!((ch >> k) & 1u) || !key_plays(k))
             continue;
         if ((keys >> k) & 1u) {
             uint32_t note = key_note(k, ui.oct[ui.sel]);
             ui.key_track[k] = KEY_NONE;
-            if (sh) {                                /* SHIFT: the white keys are the steps */
+            if (step_view()) {                       /* the step view: the white keys are the steps */
                 if (white_ix(k) >= 0 && ui.step_key == KEY_NONE)
                     step_down(k);
                 continue;
@@ -604,8 +670,13 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (ui.half && white_ix(k) >= 0) {           /* (SHIFT: the steps; with a note lit, empty dim, the one
-                                                      * playing the other way round) */
+        if (step_view() && sm_of(k)) {               /* (the step view's black keys: dim, the one chosen lit) */
+            fm1_led_key(14u + k, ui.smode == sm_of(k));
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (step_view() && white_ix(k) >= 0) {       /* (the step view: with a note lit, empty dim, the one playing
+                                                      * the other way round) */
             uint32_t i = (uint32_t)white_ix(k);
             int on = seq_note[ui.sel][i] != 0;
             if (seq_run && seq_pos[ui.sel] == i)
@@ -617,7 +688,7 @@ static void ui_leds(void)
         led_dim_key(14u + k, 0);
         fm1_led_key(14u + k, key_plays(k) && ((ui.keys >> k) & 1u) && ui.key_track[k] == ui.sel);
     }
-    fm1_led_key(14u + KEY_SHIFT, (ui.keys >> KEY_SHIFT) & 1u);
+    fm1_led_key(14u + KEY_SHIFT, ui.sv_latch ? (fm1_ms / 300u) & 1u : (ui.keys >> KEY_SHIFT) & 1u);   /* (latched: blinks) */
     fm1_led_key(14u + KEY_EDIT, ui.page == PG_EDIT);
     led_dim_key(14u + KEY_EDIT, 1);
 }
@@ -846,6 +917,60 @@ static void draw_fx_page(void)
     ui.shown_sub = (uint8_t)(ui.fx_pg + 100u);
 }
 
+/* the step held, on the step view's TRIG knobs: NOTE, VEL, LEN, COND as an EDIT page's rows */
+static void cond_text(char *b, uint32_t c)
+{
+    static const char *const CN[CD_PROB] = {"NONE", "PRE", "!PRE", "NEI", "!NEI", "1ST", "!1ST"};
+    uint32_t a, n;
+    if (c < CD_PROB)
+        str_cpy(b, CN[c], 8);
+    else if (c < CD_AB) {
+        fmt_int(b, PROB[c - CD_PROB]);
+        str_cpy(b + str_len(b), "%", 2);
+    } else {
+        cond_ab(c, &a, &n);
+        str_cpy(b, (c - CD_AB) & 1u ? "!" : "", 2);
+        fmt_int(b + str_len(b), (int32_t)a);
+        str_cpy(b + str_len(b), ":", 2);
+        fmt_int(b + str_len(b), (int32_t)n);
+    }
+}
+static void draw_step_page(void)
+{
+    static const char *const NAME[4] = {"NOTE", "VEL", "LEN", "COND"};
+    uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key), j;
+    int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
+    int full = ui.force || ui.shown_page != 20u || ui.shown_sub != i;
+    if (full) {
+        char t1[12] = "STEP ";
+        fmt_int(t1 + 5, (int32_t)i + 1);
+        uint8_t h = ui.half;
+        ui.half = 0;                             /* (no halves here: the line under the title as A .. D's) */
+        draw_rows_title(t1, "TRIG", TRACK_COL[t]);
+        ui.half = h;
+    }
+    for (j = 0; j < 4u; j++) {
+        int32_t v = j == 0u ? seq_note[t][i] : j == 1u ? seq_vel[t][i] : j == 2u ? seq_glen[t][i] : seq_cond[t][i];
+        int32_t fr = j == 0u ? (v - 12) * 1000 / 108 : j == 1u ? v * 1000 / 127 : j == 2u ? v * 1000 / (NGLEN - 1)
+                   : v * 1000 / (NCOND - 1);
+        char b[16];
+        if (!full && ui.shown_rows[j] == v && ((int32_t)j == tc) == ((int32_t)j == ui.shown_touch))
+            continue;
+        if (j == 0u)
+            note_text(b, (uint32_t)v);
+        else if (j == 1u)
+            fmt_int(b, v);
+        else if (j == 2u)
+            str_cpy(b, GLEN_NAME[v], sizeof b);
+        else
+            cond_text(b, (uint32_t)v);
+        draw_row(j, NAME[j], b, fr, 0, (int32_t)j == tc, TRACK_COL[t]);
+        ui.shown_rows[j] = v;
+    }
+    ui.shown_touch = (int8_t)tc;
+    ui.shown_sub = (uint8_t)i;
+}
+
 /* a knob's parameter as a dial over the whole screen: its name and the track; a dial from 7 o'clock to 5 (bipolar
  * ones from 12 o'clock either way); its value under it */
 #define DIAL_CX 120
@@ -946,6 +1071,12 @@ static void ui_draw(void)
     int32_t px;
     if (draw_flash())
         return;
+    if (step_page()) {                               /* a step held, the step view's knobs on it */
+        draw_step_page();
+        ui.shown_page = 20;
+        ui.force = 0;
+        return;
+    }
     if ((int32_t)(ui.dial_until - fm1_ms) > 0 && ui.page == PG_MAIN) {
         int32_t key = par_val(cur(), ui.dial_pg, ui.dial_j) + ui.dial_pg * 1024 + ui.dial_j * 8192;
         if (ui.shown_page != 4 || (ui.shown_dial != key && (uint32_t)(fm1_ms - ui.dial_drawn_at) >= 40u))
@@ -992,7 +1123,7 @@ static void ui_draw(void)
         str_cpy(ui.shown_text, c, sizeof ui.shown_text);
         ui.shown_msg = msg;
     }
-    if (ui.half) {                                   /* SHIFT: the steps where the meter and the pan were */
+    if (step_view()) {                               /* the step view: the steps where the meter and the pan were */
         draw_steps();
         ui.force = 0;
         return;

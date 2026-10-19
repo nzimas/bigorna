@@ -1,5 +1,28 @@
 # Changelog
 
+## Build 10
+
+Added
+- The step view (SHIFT held) latches when SHIFT is held for 3 seconds; SHIFT blinks while it is latched, and pressing
+  SHIFT again lets it go. SHIFT held together with a button or a knob does not latch.
+- In the step view, the black keys from the fourth from the left on choose what the four knobs do to the step held.
+  They are lit dimly in the step view, and the one chosen is lit fully; pressing it again turns it off.
+  - The fourth black key, TRIG: holding a step shows STEP n with four rows, set by KNOB 1 to 4:
+    - NOTE: the note, up or down the scale.
+    - VEL: the velocity, 1 to 127 (100 for a new step).
+    - LEN: the length in steps: 1/8, 1/4, 3/8, 1/2, 3/4, 1, 1.5, 2, 3, 4, 6, 8, 12, 16, INF (1/2 for a new step).
+      INF holds until the step plays again or the sequencer stops.
+    - COND: the trig condition, as on the Digitone II: NONE; PRE, !PRE (the last condition on the track was
+      true, or not); NEI, !NEI (the same on the track before); 1ST, !1ST (the first time through, or not); a
+      probability, 1% to 99%; A:B and !A:B for B 2 to 8 (plays on time A of every B times through the track).
+- A track's steps keep up to four notes sounding at once, so a long step can ring under the next.
+- Velocity, length and condition are saved with the pattern. Patterns saved with build 9 load with the defaults.
+
+Changed
+- PRESETS no longer changes the note of the step held (KNOB 1 on TRIG does).
+- A step that holds a note is emptied only when it is pressed and let go within 0.4 s without a change; holding a
+  step to look at it keeps it.
+
 ## Build 9
 
 Added

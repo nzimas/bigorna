@@ -55,10 +55,13 @@ typedef struct {
     uint8_t used;                /* saved */
     uint8_t pad;
     uint16_t tempo;              /* 0: GLOBAL (the project's) */
-    uint8_t seq[676];            /* the steps: SEQ_LEN, SEQ_NOTE (the rest for later) */
+    uint8_t seq[676];            /* the steps: SEQ_LEN, SEQ_NOTE, SEQ_VEL, SEQ_GLEN, SEQ_COND (the rest for later) */
 } pat_t;
 #define SEQ_LEN 0u               /* seq[t]: track t's length (0: 16) */
 #define SEQ_NOTE 8u              /* seq[8 + 16 t + i]: track t's step i, its note (0: empty) */
+#define SEQ_VEL 104u             /* .. its velocity (0: VEL_DEF, as build 9 left it) */
+#define SEQ_GLEN 200u            /* .. its length + 1 (0: GLEN_DEF) */
+#define SEQ_COND 296u            /* .. its trig condition */
 typedef char prj_fits[sizeof(prj_head_t) + sizeof(prj_body_t) <= PRJ_SECT ? 1 : -1];
 typedef char pat_fits[sizeof(prj_head_t) + PAT_PER * sizeof(pat_t) <= PRJ_SECT ? 1 : -1];
 
@@ -155,8 +158,13 @@ static void pat_take(pat_t *p)               /* the pattern playing, into a slot
     p->tempo = pat_tempo;
     for (t = 0; t < NTRACK; t++) {
         p->seq[SEQ_LEN + t] = seq_len[t];
-        for (i = 0; i < NSTEP; i++)
-            p->seq[SEQ_NOTE + t * NSTEP + i] = seq_note[t][i];
+        for (i = 0; i < NSTEP; i++) {
+            uint32_t o = t * NSTEP + i;
+            p->seq[SEQ_NOTE + o] = seq_note[t][i];
+            p->seq[SEQ_VEL + o] = seq_vel[t][i];
+            p->seq[SEQ_GLEN + o] = (uint8_t)(seq_glen[t][i] + 1u);
+            p->seq[SEQ_COND + o] = seq_cond[t][i];
+        }
     }
 }
 static void pat_give(uint32_t k)             /* slot k of the store, as the pattern playing (empty: no steps) */
@@ -167,8 +175,13 @@ static void pat_give(uint32_t k)             /* slot k of the store, as the patt
     pat_tempo = p->used ? p->tempo : 0;
     for (t = 0; t < NTRACK; t++) {
         seq_len[t] = p->used && p->seq[SEQ_LEN + t] <= NSTEP ? p->seq[SEQ_LEN + t] : 0;
-        for (i = 0; i < NSTEP; i++)
-            seq_note[t][i] = p->used ? p->seq[SEQ_NOTE + t * NSTEP + i] : 0;
+        for (i = 0; i < NSTEP; i++) {
+            uint32_t o = t * NSTEP + i, g = p->used ? p->seq[SEQ_GLEN + o] : 0u;
+            seq_vel[t][i] = (uint8_t)(p->used && p->seq[SEQ_VEL + o] ? p->seq[SEQ_VEL + o] : VEL_DEF);
+            seq_glen[t][i] = (uint8_t)(g && g <= NGLEN ? g - 1u : GLEN_DEF);
+            seq_cond[t][i] = (uint8_t)(p->used && p->seq[SEQ_COND + o] < NCOND ? p->seq[SEQ_COND + o] : CD_NONE);
+            seq_note[t][i] = p->used ? p->seq[SEQ_NOTE + o] : 0;
+        }
     }
     pat_dirty = 0;
     tempo_apply();

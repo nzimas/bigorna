@@ -632,17 +632,43 @@ static int cmd_projects(const char *dir)
         fm1_in.notes |= 1u << kw[0];
         ui_input();
         EXPECT(seq_note[5][0] == n0 && pat_dirty, "SHIFT and an empty step: the last note there");
-        k = ui.eng[5];
-        turn(EN_PRESET, 1);
+        EXPECT(seq_vel[5][0] == VEL_DEF && seq_glen[5][0] == GLEN_DEF && !seq_cond[5][0], "a new step: the defaults");
+        fm1_in.notes |= 1u << 8;                 /* the 4th black key: TRIG */
+        ui_input();
+        fm1_in.notes &= ~(1u << 8);
+        ui_input();
+        EXPECT(ui.smode == SM_TRIG, "the 4th black key: TRIG");
+        turn(EN_K1, 1);
         n1 = seq_note[5][0];
-        EXPECT(n1 > n0 && in_scale((int32_t)n1) && ui.eng[5] == k, "a step held, PRESETS: its note up the scale (not the machine)");
+        EXPECT(n1 > n0 && in_scale((int32_t)n1), "TRIG, KNOB 1: the note up the scale");
+        turn(EN_K2, -20);
+        turn(EN_K3, 2);
+        turn(EN_K4, CD_AB - CD_NONE + 2);        /* 1:2, !1:2, 2:2 */
+        EXPECT(seq_vel[5][0] == VEL_DEF - 20 && seq_glen[5][0] == GLEN_DEF + 2 && seq_cond[5][0] == CD_AB + 2,
+               "KNOB 2 .. 4: velocity, length, condition");
         fm1_ms += 100;
-        ui.force = 1;
         ui_draw();
-        shot(dir, "steps_edit");
+        shot(dir, "step_trig");
+        {
+            char b[8];
+            cond_text(b, seq_cond[5][0]);
+            EXPECT(str_eq(b, "2:2"), "the condition reads 2:2");
+        }
+        fm1_ms += 2000;
         fm1_in.notes &= ~(1u << kw[0]);
         ui_input();
-        EXPECT(seq_note[5][0] == n1, "let go after a turn: the step kept");
+        EXPECT(seq_note[5][0] == n1, "let go after a change: the step kept");
+        fm1_in.notes |= 1u << kw[0];             /* held long, nothing changed: kept */
+        ui_input();
+        fm1_ms += 600;
+        fm1_in.notes &= ~(1u << kw[0]);
+        ui_input();
+        EXPECT(seq_note[5][0] == n1, "held long, let go: the step kept");
+        fm1_in.notes |= 1u << 8;                 /* TRIG off again */
+        ui_input();
+        fm1_in.notes &= ~(1u << 8);
+        ui_input();
+        EXPECT(!ui.smode, "the black key again: TRIG off");
         for (i = 0; i < 3u; i++) {               /* 5 on, 5 off again, 9 on */
             k = kw[i == 2u ? 8 : 4];
             fm1_in.notes |= 1u << k;
@@ -665,6 +691,18 @@ static int cmd_projects(const char *dir)
             mix_block(out);
         EXPECT(seq_pos[5] == 8u && track_sounding(5), "it steps through, step 9 sounding");
         EXPECT(i > 140u * 8u && i < 160u * 8u, "a 16th note at the tempo");
+        {   /* step 1 is 2:2: silent the first time through, sounding the second */
+            uint32_t on[3] = {0, 0, 0}, loop;
+            for (loop = 0; loop < 3u; loop++) {
+                while (seq_pos[5] != 15u)
+                    mix_block(out);
+                while (seq_pos[5] != 0u)
+                    mix_block(out);
+                for (k = 0; k < SEQ_HOLD; k++)
+                    on[loop] |= sq_note[5][k] == n1;
+            }
+            EXPECT(on[0] && !on[1] && on[2] && seq_loop[5] == 3u, "2:2 plays every second time through (the 2nd, the 4th)");
+        }
         btn(B_PLAY, 0);
         for (i = 0; i < 4u; i++)
             mix_block(out);
@@ -695,6 +733,8 @@ static int cmd_projects(const char *dir)
         turn(EN_PRESET, -11);
         btn(B_ARP, 0);
         EXPECT(pat_cur == 0u && seq_note[5][0] == n1 && seq_note[5][8] == n0, "and pattern 1 back, its steps");
+        EXPECT(seq_cond[5][0] == CD_AB + 2 && seq_vel[5][0] == VEL_DEF - 20 && seq_glen[5][0] == GLEN_DEF + 2,
+               "with their velocity, length, condition");
         /* SHIFT + ARP held: a white key loads its pattern; held, empties it */
         fm1_in.notes |= 1u << KEY_SHIFT;
         ui_input();
@@ -732,6 +772,32 @@ static int cmd_projects(const char *dir)
         fm1_in.notes = 0;
         ui_input();
         EXPECT(!ui.quick && ui.page == PG_MAIN, "let go: back to what was shown");
+        /* SHIFT held 3 s: the step view latches; SHIFT again lets it go */
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        ui_input();
+        fm1_ms += 3100;
+        ui_input();
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui_input();
+        EXPECT(ui.sv_latch && step_view(), "SHIFT held 3 s: the view latched");
+        fm1_in.notes |= 1u << kw[3];
+        ui_input();
+        fm1_in.notes &= ~(1u << kw[3]);
+        ui_input();
+        EXPECT(seq_note[5][3] != 0, "latched: the white keys are the steps");
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        ui_input();
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui_input();
+        EXPECT(!ui.sv_latch && !step_view(), "SHIFT again: let go");
+        fm1_in.notes |= 1u << KEY_SHIFT;         /* SHIFT and a knob, held long: no latch */
+        ui_input();
+        turn(EN_K3, 1);
+        fm1_ms += 3100;
+        ui_input();
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui_input();
+        EXPECT(!ui.sv_latch, "SHIFT used with a knob: no latch");
     }
     /* the long presses: ARP held saves the pattern playing, HOME held the project */
     pat_tempo = 77;

@@ -19,7 +19,7 @@ FONTS = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 TTF = FONTS / "AtkinsonHyperlegible-Bold.ttf"
 BDF = FONTS / "ter-u16b.bdf"
 PAD = 2
-CHARS = " !#%+-./0123456789?ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+CHARS = " !#%+-./0123456789:?ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 # name, characters, TTF pixel size, Terminus scale
 SIZES = [("XL", "#0123456789ABCDEFG", 136, 9), ("L", CHARS, 60, 4), ("M", CHARS, 46, 3), ("S", CHARS, 35, 2),
          ("XS", " -/0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", 26, 1)]   # (XS: where a page is: 3/8, A-D)
