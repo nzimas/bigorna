@@ -13,7 +13,9 @@
  *                     SAVE sets it, SHIFT + SAVE leaves it as it was; SHIFT + SAVE goes back a page
  *   ARP               the PATTERNS grid, 1 .. 16 in four rows of four: PRESETS moves through them, ARP loads the one
  *                     chosen. The white keys are the 16 patterns there, lit dimly (the one playing brighter): a white
- *                     key let go soon loads its pattern (the grid stays); held 0.8 s, empties it (the one playing too)
+ *                     key let go soon loads its pattern (the grid stays); held 0.8 s, copies it (COPY P5 above the
+ *                     grid, blinking, and its key) -- then another held 0.8 s pastes it there, saved and loaded (the
+ *                     same again, or off the grid: let go); SHIFT and held 0.8 s, empties it (the one playing too)
  *   HOME held         the session playing saved, into its slot
  *   ARP held          the pattern playing saved, into its slot of the session (and into the flash if the session has
  *                     a slot)
@@ -382,6 +384,43 @@ static void pat_clear(uint32_t k)
     ui.force = 1;
 }
 
+/* the PATTERNS grid, a white key held: pattern k copied (the one playing as it plays, its changes too); a pattern
+ * copied, pasted into k, saved there and loaded; the one copied again: let go */
+static pat_t pat_clip;
+static int8_t pat_clip_from = -1;
+static void pat_copy_hold(uint32_t k)
+{
+    char n[12] = "PATTERN ";
+    int rc;
+    if (k >= PAT_SLOTS)
+        return;
+    fmt_int(n + 8, (int32_t)k + 1);
+    ui.force = 1;
+    if (pat_clip_from == (int8_t)k) {
+        pat_clip_from = -1;
+        say("COPY OFF", 900);
+        return;
+    }
+    if (pat_clip_from >= 0) {                    /* pasted */
+        pat_store[k] = pat_clip;
+        rc = pat_flush(k);
+        pat_switch(k);
+        pat_clip_from = -1;
+        prj_dirty = 1;
+        flash(rc ? "FAILED" : "PASTED", rc ? "" : n, rc ? C_BAD : C_OK);
+        return;
+    }
+    if (k == pat_cur)
+        pat_take(&pat_clip);
+    else if (pat_store[k].used)
+        pat_clip = pat_store[k];
+    else {
+        say("EMPTY", 900);
+        return;
+    }
+    pat_clip_from = (int8_t)k;
+}
+
 /* ---------------------------------------------------------------- projects --- */
 static void prj_take(prj_body_t *b)          /* the state playing, into a body .. */
 {
@@ -746,7 +785,18 @@ static void draw_prj_list(void)
 static void draw_pat_grid(void)
 {
     uint32_t sel = pj.slot[1], page = 0, r, c;
-    prj_title("PATTERNS", 0, C_PAT, C_PAT);
+    if (pat_clip_from >= 0) {                    /* (a pattern copied: COPY P5, blinking, until it is pasted) */
+        char t[12] = "COPY P";
+        int on = (int)((fm1_ms / 400u) & 1u);
+        fmt_int(t + 6, pat_clip_from + 1);
+        prj_title(t, 0, on ? C_BLACK : C_DIRTY, C_DIRTY);
+        if (on) {
+            cv_begin(240, 52, C_DIRTY);
+            cv_text_fit((50 - (int32_t)FONT_M.h) / 2, &FONT_M, t, C_BLACK);
+            cv_blit(0, 0);
+        }
+    } else
+        prj_title("PATTERNS", 0, C_PAT, C_PAT);
     for (r = 0; r < 4u; r++) {
         cv_begin(240, 46, C_BLACK);
         for (c = 0; c < 4u; c++) {
@@ -879,7 +929,8 @@ static void prj_draw(void)
     uint32_t kind = pg_kind();
     int32_t key = ui.page * 1000000 + pj.slot[kind] * 10000 + pj.row * 1000 + pj.ask * 100 + pj.yes * 50 + pj.to +
                   ui.tempo * 7 + ui.root * 131 + ui.scale * 977 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 +
-                  pj.val * 31 + pat_cur * 17 + pat_tempo * 11 + pat_dirty * 5 + pat_store[pj.slot[1]].used * 23;
+                  pj.val * 31 + pat_cur * 17 + pat_tempo * 11 + pat_dirty * 5 + pat_store[pj.slot[1]].used * 23 +
+                  (pat_clip_from + 1) * 41 + (pat_clip_from >= 0 ? (int32_t)((fm1_ms / 400u) & 1u) * 7777 : 0);
     if (!ui.force && ui.shown_page == ui.page && key == pj.shown) {
         uint32_t top = prj_top();
         char v[20];

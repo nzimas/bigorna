@@ -763,12 +763,44 @@ static int cmd_projects(const char *dir)
         EXPECT(pat_cur == 12u && !seq_note[5][0], "a white key loads its pattern");
         EXPECT(host_led[14u + kw[12]], "its key lit");
         shot(dir, "pat_quick");
+        {   /* a white key held: its pattern copied; another held: pasted there, saved, loaded */
+            static pat_t keep;
+            keep = pat_store[0];
+            fm1_in.notes |= 1u << kw[0];
+            ui_input();
+            fm1_ms += 900;
+            ui_input();
+            fm1_in.notes &= ~(1u << kw[0]);
+            ui_input();
+            EXPECT(pat_clip_from == 0 && pat_cur == 12u, "a white key held: its pattern copied (nothing loaded)");
+            ui_leds();
+            ui_draw();
+            shot(dir, "pat_copied");
+            fm1_in.notes |= 1u << kw[5];
+            ui_input();
+            fm1_ms += 900;
+            ui_input();
+            fm1_in.notes &= ~(1u << kw[5]);
+            ui_input();
+            EXPECT(pat_clip_from < 0 && pat_cur == 5u && !memcmp(&pat_store[5], &keep, sizeof keep) &&
+                   str_eq(ui.flash_l1, "PASTED"), "another held: pasted there, and loaded");
+            {
+                int rc = prj_read(2, 1u);
+                const pat_t *pq = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
+                EXPECT(!rc && !memcmp(&pq[5], &keep, sizeof keep), "pasted into the flash too");
+            }
+            fm1_ms += 2000;
+            tap(kw[12]);
+            EXPECT(pat_cur == 12u, "(pattern 13 back)");
+        }
+        fm1_in.notes |= 1u << KEY_SHIFT;         /* SHIFT and held: emptied */
         fm1_in.notes |= 1u << kw[0];
         ui_input();
         fm1_ms += 900;
         ui_input();
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
         EXPECT(!pat_store[0].used && pat_cur == 12u && ui.flash_on && str_eq(ui.flash_l1, "EMPTY"),
-               "a white key held: its pattern emptied, the one playing kept");
+               "SHIFT and a white key held: its pattern emptied, the one playing kept");
         ui_draw();
         shot(dir, "pat_cleared");
         {
@@ -1003,6 +1035,65 @@ static int cmd_projects(const char *dir)
         tap(KEY_STEP);
         seq_len[2] = 0;
         seq_div[2] = SEQ_DIV1;
+    }
+    {   /* SHIFT + a step held: copied; SHIFT + another held: pasted (another track too); PLAY held: the TEMPO page */
+        uint32_t kw[16], k;
+        for (k = 0; k < NKEY; k++)
+            if (white_ix(k) >= 0)
+                kw[white_ix(k)] = k;
+        ui.sel = 4;
+        memset((void *)seq_note[4], 0, NSTEP);
+        memset((void *)seq_note[1], 0, NSTEP);
+        seq_note[4][2] = 66;
+        seq_vel[4][2] = 77;
+        seq_rtg[4][2] = 2;
+        seq_cond[4][2] = CD_AB + 1;
+        pl_clear(4, 2);
+        (void)pl_set(4, 2, PL_PAN, 10);
+        tap(KEY_STEP);
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        fm1_in.notes |= 1u << kw[2];
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        fm1_in.notes &= ~(1u << kw[2]);
+        ui_input();
+        EXPECT(ui.sclip.on && ui.sclip.i == 2u && seq_note[4][2] == 66u, "SHIFT + a step held: copied (the step kept)");
+        ui_draw();
+        shot(dir, "step_copied");
+        btn(B_ENV, 0);                           /* (track 3) */
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        fm1_in.notes |= 1u << kw[9];
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        fm1_in.notes &= ~(1u << kw[9]);
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui_input();
+        EXPECT(!ui.sclip.on && seq_note[2][9] == 66u && seq_vel[2][9] == 77u && seq_rtg[2][9] == 2u &&
+               seq_cond[2][9] == CD_AB + 1 && pl_val(2, 9, PL_PAN) == 10 && str_eq(ui.flash_l1, "PASTED"),
+               "SHIFT + another held: pasted, another track, all of it");
+        fm1_ms += 2000;
+        tap(KEY_STEP);
+        seq_note[2][9] = 0;
+        /* PLAY held: the TEMPO page; PRESETS the tempo; held again: down */
+        k = (uint32_t)ui.tempo;
+        fm1_in.buttons |= 1u << PANEL_BTN[B_PLAY];
+        host_press = 1u << PANEL_BTN[B_PLAY];
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        fm1_in.buttons = 0;
+        ui_input();
+        EXPECT(ui.page == PG_TEMPO && !seq_run, "PLAY held: the TEMPO page (not played)");
+        turn(EN_PRESET, 5);
+        EXPECT(ui.tempo == (int16_t)(k + 5u) && fx_bpm10 == (int32_t)(k + 5u) * 10, "PRESETS: the tempo");
+        ui_draw();
+        shot(dir, "tempo_page");
+        btn(B_FX, 0);
+        EXPECT(ui.page == PG_MAIN, "a track's button: down");
+        ui.tempo = (int16_t)k;
+        tempo_apply();
     }
     {   /* the directions (the step view's 4th .. 6th black keys), ratchets (TRIG's other half), the PHRASE page */
         int32_t out[2 * CTL];

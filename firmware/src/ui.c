@@ -29,7 +29,12 @@
  *                             level, ALGORITHM its pan. With the EDIT pages up, the knobs lock what they turn on the
  *                             step held -- any parameter of the sound, eight locks a step (the page shows the step's
  *                             values: locked in the track's colour, the sound's own grey)
- *   PLAY                      the sequencer: plays, or stops (and recording ends, a loop being recorded is dropped)
+ *                             SHIFT and a step held 0.8 s: the step copied (its note, velocity, length, condition,
+ *                             ratchet, locks; COPY S5 shows, its key blinks); SHIFT and another held 0.8 s: pasted
+ *                             there (this track or another); the same again, or the step view off: let go
+ *   PLAY                      the sequencer, as it is let go: plays, or stops (and recording ends, a loop being
+ *                             recorded is dropped). Held 0.8 s: the TEMPO page, up or down -- the session's tempo,
+ *                             large; PRESETS sets it (a track's button, or another page, takes it down too)
  *   SHIFT + PLAY              the metronome off or on (it clicks while REC or the looper is armed or recording)
  *   REC                       recording into the chosen track's steps. Stopped: armed (REC flashes, the metronome
  *                             counts), the first note played starts the sequencer and is step 1. Playing: recording
@@ -80,7 +85,7 @@ static const char *const DIR_NAME[NDIR] = {"FORWARD", "REVERSE", "PING-PONG", "R
 
 static const uint16_t TRACK_COL[NTRACK] = {RGB(255, 214, 0), RGB(0, 214, 255), RGB(255, 92, 210),
                                            RGB(96, 255, 96), RGB(255, 140, 0), RGB(190, 160, 255)};
-enum { PG_MAIN, PG_EDIT, PG_FXP, PG_TRK, PG_GEN, PG_PRJ, PG_PRJD, PG_PAT };   /* (the sessions' list and page, the patterns' grid:
+enum { PG_MAIN, PG_EDIT, PG_FXP, PG_TRK, PG_GEN, PG_TEMPO, PG_PRJ, PG_PRJD, PG_PAT };   /* (the sessions' list and page, the patterns' grid:
                                                               * projects.c) */
 
 static struct {
@@ -105,6 +110,14 @@ static struct {
     uint32_t gen_t0;
     uint8_t gen_den[NTRACK], gen_cx[NTRACK];   /* the phrase generator's DENSITY and COMPLEXITY, 0 .. 100, a track's */
     uint8_t trig;                /* TRIG on (the 3rd black key): a step held shows its own page */
+    uint8_t play_down, play_long;   /* PLAY held: since play_t0; held 0.8 s (the TEMPO page) */
+    uint32_t play_t0;
+    uint8_t sk, sk_long;         /* SHIFT and a step key held (KEY_NONE none): since sk_t0; held 0.8 s */
+    uint32_t sk_t0;
+    struct {                     /* a step copied (SHIFT + a step held): from where, and all it held */
+        uint8_t on, t, i, note, vel, glen, cond, rtg, lid[NPL];
+        int16_t lv[NPL];
+    } sclip;
     uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
     uint8_t qk, qk_long;         /* the PATTERNS grid: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
     uint8_t rec;                 /* REC_* */
@@ -170,6 +183,9 @@ static void prj_draw(void);
 static void prj_quick_save(void);
 static void pat_quick_save(void);
 static void pat_switch(uint32_t k);
+static void pat_copy_hold(uint32_t k);
+static void tempo_apply(void);
+static int8_t pat_clip_from;                     /* (projects.c: the pattern copied, -1 none) */
 static void pat_clear(uint32_t k);
 static void phrase_new(uint32_t t);              /* (phrase.c) */
 static void phrase_relock(uint32_t t);
@@ -692,6 +708,53 @@ static void step_up(void)
     ui.force = 1;
 }
 
+/* SHIFT and step i held: copied (the same again: let go); a step copied, pasted into i, on the chosen track */
+static void step_copy_hold(uint32_t i)
+{
+    uint32_t t = ui.sel, j;
+    char m[12] = "STEP ";
+    fmt_int(m + 5, (int32_t)i + 1);
+    if (ui.sclip.on && ui.sclip.t == t && ui.sclip.i == i) {
+        ui.sclip.on = 0;
+        say("COPY OFF", 900);
+        ui.force = 1;
+        return;
+    }
+    if (ui.sclip.on) {                           /* pasted */
+        seq_note[t][i] = 0;                      /* (silent while it changes) */
+        seq_vel[t][i] = ui.sclip.vel;
+        seq_glen[t][i] = ui.sclip.glen;
+        seq_cond[t][i] = ui.sclip.cond;
+        seq_rtg[t][i] = ui.sclip.rtg;
+        pl_clear(t, i);
+        for (j = 0; j < NPL; j++)
+            if (ui.sclip.lid[j] != PL_NONE)
+                (void)pl_set(t, i, ui.sclip.lid[j], ui.sclip.lv[j]);
+        seq_note[t][i] = ui.sclip.note;
+        ui.sclip.on = 0;
+        pat_dirty = 1;
+        flash("PASTED", m, C_OK);
+        return;
+    }
+    if (!seq_note[t][i]) {
+        say("EMPTY", 900);
+        return;
+    }
+    ui.sclip.t = (uint8_t)t;                     /* copied */
+    ui.sclip.i = (uint8_t)i;
+    ui.sclip.note = seq_note[t][i];
+    ui.sclip.vel = seq_vel[t][i];
+    ui.sclip.glen = seq_glen[t][i];
+    ui.sclip.cond = seq_cond[t][i];
+    ui.sclip.rtg = seq_rtg[t][i];
+    for (j = 0; j < NPL; j++) {
+        ui.sclip.lid[j] = seq_lid[t][i][j];
+        ui.sclip.lv[j] = seq_lv[t][i][j];
+    }
+    ui.sclip.on = 1;
+    ui.force = 1;
+}
+
 static void ui_input(void)
 {
     uint32_t rel, press = fm1_input_edges(&rel), keys, ch, k, t, j;
@@ -701,7 +764,7 @@ static void ui_input(void)
     for (t = 0; t < NTRACK; t++)
         if (btn_bit(press, TRACK_BTN[t])) {
             ui.sel = (uint8_t)t;
-            if (ui.page == PG_FXP || pg_any())
+            if (ui.page == PG_FXP || ui.page == PG_TEMPO || pg_any())
                 ui.page = PG_MAIN;
             if (ui.page == PG_EDIT && ui.edit_pg >= pages_n(cur()))
                 ui.edit_pg = 0;
@@ -831,16 +894,30 @@ static void ui_input(void)
         ui.click = (uint8_t)!ui.click;
         rec_set(ui.rec);
         say(ui.click ? "CLICK ON" : "CLICK OFF", 900);
-    } else if (btn_bit(press, B_PLAY)) {             /* the sequencer (stopped: recording ends, a loop being
-                                                      * recorded dropped; armed: it plays, recording) */
-        seq_run = (uint8_t)!seq_run;
-        if (!seq_run && ui.lrec)
-            loop_drop();
-        if (!seq_run && ui.rec)
-            rec_set(REC_OFF);
-        else if (seq_run && ui.rec == REC_ARMED)
-            rec_set(REC_ON);
-        say(seq_run ? "PLAY" : "STOP", 700);
+    } else if (btn_bit(press, B_PLAY)) {             /* PLAY: as it is let go (held: the TEMPO page) */
+        ui.play_down = 1;
+        ui.play_long = 0;
+        ui.play_t0 = fm1_ms;
+    }
+    if (ui.play_down) {
+        if (!btn_bit(fm1_in.buttons, B_PLAY)) {
+            ui.play_down = 0;
+            if (!ui.play_long) {                     /* the sequencer (stopped: recording ends, a loop being recorded
+                                                      * dropped; armed: it plays, recording) */
+                seq_run = (uint8_t)!seq_run;
+                if (!seq_run && ui.lrec)
+                    loop_drop();
+                if (!seq_run && ui.rec)
+                    rec_set(REC_OFF);
+                else if (seq_run && ui.rec == REC_ARMED)
+                    rec_set(REC_ON);
+                say(seq_run ? "PLAY" : "STOP", 700);
+            }
+        } else if (!ui.play_long && (uint32_t)(fm1_ms - ui.play_t0) >= 800u) {
+            ui.play_long = 1;
+            ui.page = ui.page == PG_TEMPO ? PG_MAIN : PG_TEMPO;
+            ui.force = 1;
+        }
     }
     if (btn_bit(press, B_REC) && ui.lrec) {          /* the looper armed or recording: REC ends the loop (SHIFT
                                                       * and held on: emptied, as below) */
@@ -952,7 +1029,12 @@ static void ui_input(void)
             say(m, 1200);
         }
     }
-    if ((s = e_pre) != 0 && (ui.page == PG_EDIT || ui.page == PG_FXP || step_page())) {   /* EDIT, the effects: PRESETS the page's
+    if ((s = e_pre) != 0 && ui.page == PG_TEMPO) {   /* TEMPO: PRESETS the session's tempo */
+        ui.tempo = (int16_t)clampi(ui.tempo + s, 10, 300);
+        tempo_apply();
+        prj_dirty = 1;
+        ui.force = 1;
+    } else if ((s = e_pre) != 0 && (ui.page == PG_EDIT || ui.page == PG_FXP || step_page())) {   /* EDIT, the effects: PRESETS the page's
                                                                           * half, right E .. H, left A .. D (never the
                                                                           * machine) */
         ui.ehalf = (uint8_t)(s > 0);
@@ -1031,7 +1113,8 @@ static void ui_input(void)
     }
     ui.lv_k = KEY_NONE;
     if (ui.page == PG_PAT) {                         /* the PATTERNS grid: a white key let go soon, its pattern
-                                                      * loaded; held 0.8 s, emptied */
+                                                      * loaded; held 0.8 s, copied -- or, a pattern copied, pasted there
+                                                      * (projects.c); SHIFT and held, emptied */
         for (k = 0; k < NKEY; k++) {
             if (((ch & ~keys) >> k & 1u) && ui.key_track[k] != KEY_NONE) {   /* (a note held from before: let go) */
                 ev_post(EV_OFF, ui.key_track[k], ui.key_note[k], 0);
@@ -1051,7 +1134,10 @@ static void ui_input(void)
                 ui.qk = KEY_NONE;
             } else if (!ui.qk_long && (uint32_t)(fm1_ms - ui.qk_t0) >= 800u) {
                 ui.qk_long = 1;
-                pat_clear((uint32_t)white_ix(ui.qk));
+                if (sh)
+                    pat_clear((uint32_t)white_ix(ui.qk));
+                else
+                    pat_copy_hold((uint32_t)white_ix(ui.qk));
             }
         }
         ui.keys = keys;
@@ -1059,6 +1145,15 @@ static void ui_input(void)
         return;
     }
     ui.qk = KEY_NONE;
+    pat_clip_from = -1;                              /* (off the grid: a pattern copied let go) */
+    if (ui.sk != KEY_NONE) {                         /* SHIFT and a step held 0.8 s: copied, or pasted */
+        if (!((keys >> ui.sk) & 1u))
+            ui.sk = KEY_NONE;
+        else if (!ui.sk_long && (uint32_t)(fm1_ms - ui.sk_t0) >= 800u) {
+            ui.sk_long = 1;
+            step_copy_hold((uint32_t)white_ix(ui.sk));
+        }
+    }
     if (ui.gen_down) {                               /* the phrase key: let go soon, a new phrase (SHIFT: new locks);
                                                       * held 0.8 s, the PHRASE page up or down */
         if (!((keys >> KEY_GEN) & 1u)) {
@@ -1081,6 +1176,8 @@ static void ui_input(void)
         ui.sv = (uint8_t)!ui.sv;
         if (!ui.sv && ui.step_key != KEY_NONE)
             step_up();
+        if (!ui.sv)
+            ui.sclip.on = 0;
         if (!ui.sv && (ui.page == PG_TRK || ui.page == PG_GEN))
             ui.page = PG_MAIN;
         ui.force = 1;
@@ -1118,8 +1215,12 @@ static void ui_input(void)
         if ((keys >> k) & 1u) {
             uint32_t note = key_note(k, ui.oct[ui.sel]);
             ui.key_track[k] = KEY_NONE;
-            if (step_view()) {                       /* the step view: the white keys are the steps */
-                if (white_ix(k) >= 0 && ui.step_key == KEY_NONE)
+            if (step_view()) {                       /* the step view: the white keys are the steps (SHIFT: copy, paste) */
+                if (white_ix(k) >= 0 && sh && ui.sk == KEY_NONE) {
+                    ui.sk = (uint8_t)k;
+                    ui.sk_long = 0;
+                    ui.sk_t0 = fm1_ms;
+                } else if (white_ix(k) >= 0 && !sh && ui.step_key == KEY_NONE)
                     step_down(k);
                 continue;
             }
@@ -1183,7 +1284,8 @@ static void ui_leds(void)
         }
         if (ui.page == PG_PAT && white_ix(k) >= 0) {   /* (the PATTERNS grid: every white key a pattern, dim; the playing
                                                         * one lit) */
-            fm1_led_key(14u + k, white_ix(k) == (int32_t)pat_cur);
+            fm1_led_key(14u + k, white_ix(k) == pat_clip_from ? (fm1_ms / 250u) & 1u    /* (the one copied: blinks) */
+                                                              : white_ix(k) == (int32_t)pat_cur);
             led_dim_key(14u + k, 1);
             continue;
         }
@@ -1215,6 +1317,8 @@ static void ui_leds(void)
             int on = seq_note[ui.sel][i] != 0;
             if (seq_run && seq_pos[ui.sel] == i)
                 on = !on;
+            if (ui.sclip.on && ui.sclip.t == ui.sel && ui.sclip.i == i)
+                on = (fm1_ms / 250u) & 1u;           /* (the step copied: blinks) */
             fm1_led_key(14u + k, i < len && (on || k == ui.step_key));
             led_dim_key(14u + k, i < len);
             continue;
@@ -1508,6 +1612,22 @@ static void draw_step_page(void)
     ui.shown_sub = (uint8_t)i;
 }
 
+/* the TEMPO page (PLAY held): the session's tempo, as large as the screen takes it */
+static void draw_tempo_page(void)
+{
+    char n[8];
+    if (!ui.force && ui.shown_page == PG_TEMPO && ui.shown_rows[0] == ui.tempo)
+        return;
+    fmt_int(n, ui.tempo);
+    CV_AREA(0, 0, 240, 60, C_BLACK)
+        cv_text_c(14, &FONT_M, "TEMPO", C_WHITE);
+    CV_AREA(0, 60, 240, 150, C_BLACK)
+        cv_text_c(0, &FONT_XL, n, RGB(255, 210, 120));
+    CV_AREA(0, 210, 240, 30, C_BLACK)
+        cv_text_c(2, &FONT_S, "BPM", C_GREY);
+    ui.shown_rows[0] = ui.tempo;
+}
+
 /* the PHRASE page (the phrase key held): the track's DENSITY and COMPLEXITY, as rows */
 static void draw_gen_page(void)
 {
@@ -1683,6 +1803,12 @@ static void ui_draw(void)
 {
     int msg = (int32_t)(ui.msg_until - fm1_ms) > 0;
     const char *c = msg ? ui.msg : family_name(cur());
+    char cp[12] = "COPY S";
+    if (ui.sclip.on && step_view() && !msg) {        /* (a step copied: shown, blinking, until it is pasted) */
+        fmt_int(cp + 6, ui.sclip.i + 1);
+        c = cp;
+        msg = (int)((fm1_ms / 400u) & 1u);
+    }
     int32_t px;
     if (draw_flash())
         return;
@@ -1709,6 +1835,12 @@ static void ui_draw(void)
     if (ui.page == PG_FXP) {
         draw_fx_page();
         ui.shown_page = PG_FXP;
+        ui.force = 0;
+        return;
+    }
+    if (ui.page == PG_TEMPO) {
+        draw_tempo_page();
+        ui.shown_page = PG_TEMPO;
         ui.force = 0;
         return;
     }
@@ -1771,7 +1903,7 @@ static void ui_init(void)
     memset(&ui, 0, sizeof ui);
     memset(ui.midi_track, 0xFF, sizeof ui.midi_track);
     memset(ui.key_track, 0xFF, sizeof ui.key_track);
-    ui.step_key = ui.qk = KEY_NONE;
+    ui.step_key = ui.qk = ui.sk = KEY_NONE;
     memset(ui.rec_step, 0xFF, sizeof ui.rec_step);
     memset(ui.lk_ev, 0xFF, sizeof ui.lk_ev);
     ui.lv_k = KEY_NONE;

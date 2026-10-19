@@ -1,5 +1,23 @@
 # Changelog
 
+## Build 21
+
+Added
+- Copying a pattern: on the PATTERNS grid (ARP), a white key held 0.8 s copies its pattern (the one playing as it
+  plays, its changes too). COPY P5 shows above the grid, blinking, and the key blinks. Another white key held 0.8 s
+  pastes it there: saved into the session (if it has a slot), loaded, PASTED shows. The same key held again, or
+  leaving the grid, lets the copy go.
+- Copying a step: in the step view, SHIFT and a step held 0.8 s copies it (note, velocity, length, condition, ratchet,
+  locks). COPY S5 shows, blinking, and the key blinks. SHIFT and another step held 0.8 s pastes it there, on the track
+  chosen then (another track too); PASTED shows. The same step again, or the step view off, lets the copy go.
+- The TEMPO page: PLAY held 0.8 s shows the session's tempo, large; PRESETS sets it. PLAY held again, a track's
+  button, or another page takes it down.
+
+Changed
+- PLAY starts and stops the sequencer as it is let go (so that it can be held).
+- On the PATTERNS grid, emptying a pattern is SHIFT and its white key held 0.8 s (held alone now copies).
+- In the step view, SHIFT and a step key no longer places or empties the step (SHIFT is for copying).
+
 ## Build 20
 
 Added
