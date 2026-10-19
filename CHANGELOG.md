@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 17
+
+Added
+- GRAIN, a granulator after TONITOR's, on the FX page in SRR ROUTE's place (knob D): -63 to +63, the middle off.
+  Left goes towards dark ambient (long overlapping grains, drifting, pitched down now and then, reversed, darkened,
+  fed back, freezing now and then); right goes towards scattering (short, fast, jittered grains, reversed,
+  stuttered, dropped out, decimated at the far end). It works on the track's voices together, set by the sound the
+  track plays, and rings on about 2 s after the last voice. Each track's granulator has its own character. Its
+  buffer is 0.19 s a track (TONITOR's 0.56 s), so the dark side's longest grains are about 160 ms.
+
+Changed
+- SRR is always before the filter; SRR ROUTE is gone. Sounds saved with SRR ROUTE on POST load with GRAIN at +1.
+- The EDIT pages: OCT- / OCT+ move between the pages, PRESETS between a page's two halves (turned right E-H, left
+  A-D); SHIFT no longer shows E-H there. The effects' pages work the same (OCT moves between REVERB, DELAY and
+  CHORUS, as SEQ does).
+- Every EDIT and effects page shows its names in the smaller size (SYN 2 and AMP showed them larger).
+
 ## Build 16
 
 Changed

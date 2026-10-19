@@ -39,10 +39,11 @@
  *                             white key touched: every loop of the track emptied
  *   SHIFT + PRESETS           the track's sound: a new one of the family before / after, on the machine it plays
  *   the black key before it   EDIT: the parameter pages of the track's sound -- SYN 1 .. 4, FLTR 1, FLTR 2, AMP,
- *                             FX -- KNOB 1 .. 4 the page's A .. D, with SHIFT held E .. H
+ *                             FX -- eight parameters a page: KNOB 1 .. 4 its A .. D, or (PRESETS turned right; left
+ *                             back) its E .. H; OCT- / OCT+ the page before / after
  *   ARP                       the patterns (projects.c)
- *   SEQ                       the send effects' pages: REVERB, DELAY, CHORUS in turn, then back; KNOB 1 .. 4 the
- *                             first four of the page, with SHIFT held the next four
+ *   SEQ                       the send effects' pages: REVERB, DELAY, CHORUS in turn, then back (OCT- / OCT+ too);
+ *                             KNOB 1 .. 4 the first four of the page, or (PRESETS turned right; left back) the next
  *   SELECT (knob)             the track's level; ALGORITHM (knob) its pan
  *   KNOB 1 .. 4               the track's filter FREQ and RESO, its delay and reverb sends; with SHIFT, KNOB 3 the
  *                             chorus send and KNOB 4 the overdrive. While one turns (and a second after) the whole
@@ -74,7 +75,8 @@ static struct {
     uint8_t page;
     uint8_t edit_pg;             /* the EDIT page shown (0 .. pages_n - 1) */
     uint8_t fx_pg;               /* the effect shown: 0 REVERB, 1 DELAY, 2 CHORUS */
-    uint8_t half;                /* the half of the page shown: 0 A .. D, 1 E .. H (SHIFT held) */
+    uint8_t half;                /* the half of the page shown: 0 A .. D, 1 E .. H (the pages': ehalf; else SHIFT held) */
+    uint8_t ehalf;               /* the EDIT and effects pages' half, set by PRESETS */
     int8_t oct[NTRACK];
     uint8_t eng[NTRACK];
     sound_t snd[NTRACK][NENG];
@@ -662,6 +664,7 @@ static void ui_input(void)
             ui.fx_pg = 0;
         } else if (++ui.fx_pg >= 3u)
             ui.page = PG_MAIN;
+        ui.ehalf = 0;
         ui.force = 1;
     }
     if (btn_bit(press, B_SAVE)) {                    /* the projects (projects.c) */
@@ -709,7 +712,7 @@ static void ui_input(void)
             pat_quick_save();
         }
     }
-    ui.half = (uint8_t)sh;
+    ui.half = ui.page == PG_EDIT || ui.page == PG_FXP ? ui.ehalf : (uint8_t)sh;   /* (the pages' half: PRESETS's) */
     if (step_page()) {                               /* a step held in the step view: the knobs its */
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0)
@@ -848,9 +851,14 @@ static void ui_input(void)
     }
     if (btn_bit(press, B_OCTDN) || btn_bit(press, B_OCTUP)) {
         int d = btn_bit(press, B_OCTUP) ? 1 : -1;
-        if (ui.page == PG_EDIT) {                    /* the page before / after */
+        if (ui.page == PG_EDIT) {                    /* the page before / after (its A .. D) */
             uint32_t n = pages_n(cur());
             ui.edit_pg = (uint8_t)((ui.edit_pg + n + (uint32_t)(d + (int)n)) % n);
+            ui.ehalf = 0;
+            ui.force = 1;
+        } else if (ui.page == PG_FXP) {              /* REVERB, DELAY, CHORUS */
+            ui.fx_pg = (uint8_t)((ui.fx_pg + 3u + (uint32_t)(d + 3)) % 3u);
+            ui.ehalf = 0;
             ui.force = 1;
         } else {
             char m[8] = "OCT  ";
@@ -863,12 +871,10 @@ static void ui_input(void)
             say(m, 1200);
         }
     }
-    if ((s = e_pre) != 0 && ui.page == PG_EDIT) {    /* EDIT: PRESETS the page before / after (never the machine) */
-        uint32_t n = pages_n(cur());
-        ui.edit_pg = (uint8_t)clampi((int32_t)ui.edit_pg + s, 0, (int32_t)n - 1);
-        ui.force = 1;
-    } else if (s && ui.page == PG_FXP) {             /* the effects: REVERB, DELAY, CHORUS */
-        ui.fx_pg = (uint8_t)clampi((int32_t)ui.fx_pg + s, 0, 2);
+    if ((s = e_pre) != 0 && (ui.page == PG_EDIT || ui.page == PG_FXP)) {   /* EDIT, the effects: PRESETS the page's
+                                                                          * half, right E .. H, left A .. D (never the
+                                                                          * machine) */
+        ui.ehalf = (uint8_t)(s > 0);
         ui.force = 1;
     } else if (s && ui.page != PG_MAIN) {
         ;                                            /* (elsewhere PRESETS does nothing: only the track's view picks the
@@ -905,6 +911,7 @@ static void ui_input(void)
     ch = keys ^ ui.keys;
     if ((ch & keys) >> KEY_EDIT & 1u) {              /* EDIT: the parameter pages, up or down */
         ui.page = ui.page == PG_EDIT ? PG_MAIN : PG_EDIT;
+        ui.ehalf = 0;
         if (ui.edit_pg >= pages_n(cur()))
             ui.edit_pg = 0;
         ui.force = 1;
@@ -1235,7 +1242,7 @@ static void draw_edit_page(void)
     uint32_t id = page_id(s, ui.edit_pg), j;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
     int full;
-    ui.rfit = 0;
+    ui.rfit = 1;                                     /* (the names never larger than the S size) */
     for (j = 0; j < 8u; j++) {                       /* (the sizes: every row of the page's, both halves) */
         par_t p;
         char b[16];
@@ -1306,7 +1313,7 @@ static void draw_fx_page(void)
     uint32_t j;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
     int full;
-    ui.rfit = 0;
+    ui.rfit = 1;
     for (j = 0; j < fx_n(); j++) {
         char b[16];
         uint32_t f;

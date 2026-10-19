@@ -50,7 +50,8 @@ static void sends(sound_t *s, int32_t d, int32_t r, int32_t c) { s->fx[X_DEL] = 
 static void dirt(sound_t *s, int32_t drive, int32_t bits, int32_t rate, int dpost, int rpost)
 {
     s->fx[X_OD] = (uint8_t)drive; s->fx[X_ODRT] = (uint8_t)dpost; s->fx[X_BR] = (uint8_t)bits;
-    s->fx[X_SRR] = (uint8_t)rate; s->fx[X_SRRT] = (uint8_t)rpost;
+    s->fx[X_SRR] = (uint8_t)rate; s->fx[X_GRAIN] = 0;   /* (rpost: SRR is before the filter now) */
+    (void)rpost;
 }
 static void level(sound_t *s, int32_t lv)   /* the recipe's volume, less for drive and high resonance */
 {
@@ -862,12 +863,12 @@ static void r_hornet(sound_t *s, gctx_t *g)
 static void grit(sound_t *s, gctx_t *g)
 {
     if (CH(g, 55))
-        dirt(s, maxi(s->fx[X_OD], RI(g, 40, 110)), s->fx[X_BR], s->fx[X_SRR], 1, s->fx[X_SRRT]);
+        dirt(s, maxi(s->fx[X_OD], RI(g, 40, 110)), s->fx[X_BR], s->fx[X_SRR], 1, 0);
     if (CH(g, 35))
         s->fx[X_BR] = (uint8_t)maxi(s->fx[X_BR], RI(g, 25, 80));
     if (CH(g, 28)) {
         s->fx[X_SRR] = (uint8_t)maxi(s->fx[X_SRR], RI(g, 8, 60));
-        s->fx[X_SRRT] = (uint8_t)CH(g, 50);
+        (void)CH(g, 50);                         /* (was SRR's route: drawn still, the draws after it as they were) */
     }
     if (s->mach == ENG_FMD && CH(g, 40))
         SY(s, FD_FOLD, maxi(s->syn[FD_FOLD], RI(g, 25, 80)));

@@ -14,7 +14,8 @@ enum { F_ATK, F_DEC, F_SUS, F_REL, F_FREQ, F_RESO, F_TYPE, F_ENV, F_DEL, F_KEYT,
 /* AMP page */
 enum { A_ATK, A_HOLD, A_DEC, A_SUS, A_REL, A_RSET, A_MODE, A_PAN, A_VOL, NA };
 /* FX page (the routing values: 0 PRE, 1 POST) */
-enum { X_BR, X_OD, X_SRR, X_SRRT, X_ODRT, X_DEL, X_REV, X_CHR, NX };
+enum { X_BR, X_OD, X_SRR, X_GRAIN, X_ODRT, X_DEL, X_REV, X_CHR, NX };   /* (X_GRAIN: signed, -63 .. 63; it was SRR's
+                                                                      * route, 0 PRE / 1 POST, until build 17) */
 
 /* SYN parameters, by machine (page-major: page 1 knob A = 0 .. page 4 knob H = 31) */
 enum {   /* FM TONE */

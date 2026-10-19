@@ -65,10 +65,10 @@ static const par_t PAR_FLT2[8] = {PN("FLT DELAY"), P_("KEYTRACK", 0, 127, 0, PK_
                                   PL("BW ROUTE", 1, L_RT), PO("ENV RESET"), PL("FILTER", 5, L_FLT), PX};
 static const par_t PAR_AMP[8] = {PN("ATTACK"), P_("HOLD", 0, 127, 0, PK_HOLD), PN("DECAY"), PN("SUSTAIN"),
                                  PN("RELEASE"), PO("RESET"), PL("MODE", 1, L_MODE), PN("VOLUME")};
-static const par_t PAR_FX[8] = {PN("BIT REDUCE"), P_("OVERDRIVE", 0, 100, 0, PK_NUM), PN("SRR"), PL("SRR ROUTE", 1, L_RT),
+static const par_t PAR_FX[8] = {PN("BIT REDUCE"), P_("OVERDRIVE", 0, 100, 0, PK_NUM), PN("SRR"), P_("GRAIN", -63, 63, 0, PK_BIP),
                                 PN("DELAY SEND"), PN("REVERB SEND"), PN("CHORUS SEND"), PL("OD ROUTE", 1, L_RT)};
 /* (the FX page's order is the Digitone II's: BR OVER SRR SR.RT DEL REV CHR OD.RT) */
-static const uint8_t FX_SLOT[8] = {X_BR, X_OD, X_SRR, X_SRRT, X_DEL, X_REV, X_CHR, X_ODRT};
+static const uint8_t FX_SLOT[8] = {X_BR, X_OD, X_SRR, X_GRAIN, X_DEL, X_REV, X_CHR, X_ODRT};
 static const uint8_t AMP_SLOT[8] = {A_ATK, A_HOLD, A_DEC, A_SUS, A_REL, A_RSET, A_MODE, A_VOL};
 static const uint8_t FLT2_SLOT[8] = {F_DEL, F_KEYT, F_BASE, F_WDTH, F_BWRT, F_RSET, 0xFF, 0xFE};
 
@@ -165,7 +165,7 @@ static int32_t par_val(const sound_t *s, uint32_t id, uint32_t j)
         return FLT2_SLOT[j] == 0xFF ? s->fmach : FLT2_SLOT[j] == 0xFE ? 0 : s->flt[FLT2_SLOT[j]];
     if (id == PG_AMP)
         return s->amp[AMP_SLOT[j]];
-    return s->fx[FX_SLOT[j]];
+    return FX_SLOT[j] == X_GRAIN ? (int8_t)s->fx[X_GRAIN] : s->fx[FX_SLOT[j]];   /* (GRAIN: signed) */
 }
 static void par_put(sound_t *s, uint32_t id, uint32_t j, int32_t v)
 {
@@ -182,7 +182,7 @@ static void par_put(sound_t *s, uint32_t id, uint32_t j, int32_t v)
     } else if (id == PG_AMP)
         s->amp[AMP_SLOT[j]] = (uint8_t)v;
     else
-        s->fx[FX_SLOT[j]] = (uint8_t)v;
+        s->fx[FX_SLOT[j]] = (uint8_t)(int8_t)v;
 }
 /* a ratio (x 4) as text: 0.25, 0.5, 0.75, 1, 1.25 .. 16 */
 static void ratio_txt(char *b, uint32_t r4)

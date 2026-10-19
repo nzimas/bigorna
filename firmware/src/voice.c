@@ -155,7 +155,7 @@ AINL int32_t od_asym(int32_t u)  /* OVERDRIVE's second stage: tanh, clipping at 
 }
 #define COMB_N 1024u             /* a voice's comb line: down to ~43 Hz */
 typedef struct {
-    uint8_t fmach, bw_on, bw_pre, srr_post, od_post, frst, arst, leg_hp;
+    uint8_t fmach, bw_on, bw_pre, od_post, frst, arst, leg_hp;
     int32_t f_oct;               /* the cutoff (or the bell's frequency), log2 Hz Q16 */
     int32_t f_v;                 /* FREQ as set (the combs': a note number) */
     int32_t f_q;                 /* the resonance, Q12 */
@@ -242,7 +242,6 @@ static void vck_cook(vck_t *c, const sound_t *s)
     od_cook(c, clampi(x[X_OD], 0, 100));
     v = clampi(x[X_SRR], 0, 127);                     /* each sample held 1 + 100 (v / 127)^2 samples */
     c->srr_inc = v ? (0xFFFFFFFFu / (uint32_t)(256 + v * v * 25600 / 16129)) << 8 : 0;
-    c->srr_post = (uint8_t)(x[X_SRRT] != 0);
     c->od_post = (uint8_t)(x[X_ODRT] != 0);
 }
 
@@ -457,7 +456,7 @@ static int vc_block(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, int
     uint32_t i;
     fl = env_step(&v->fe, &c->fe, v->gate);
     a1 = env_step(&v->ae, &c->ae, v->gate);
-    if (c->srr_inc && !c->srr_post)
+    if (c->srr_inc)                              /* (SRR: always before the filter) */
         vc_srr(v, c, x);
     if (c->od_g && !c->od_post)
         vc_od(v, c, x);
@@ -466,8 +465,6 @@ static int vc_block(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, int
     vc_filter(v, c, x, note16, fl);
     if (c->bw_on && !c->bw_pre)
         vc_bw(v, c, x);
-    if (c->srr_inc && c->srr_post)
-        vc_srr(v, c, x);
     if (c->od_g && c->od_post)
         vc_od(v, c, x);
     if (c->br_bits)

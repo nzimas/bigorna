@@ -84,6 +84,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 #include "fmd.c"
 #include "wav.c"
 #include "fx.c"
+#include "grain.c"
 #define MQ 64u
 static uint32_t midi_in_q[MQ];
 static volatile uint32_t mi_w, mi_r;
@@ -1090,17 +1091,78 @@ static int cmd_projects(const char *dir)
         EXPECT(ui.eng[ui.sel] == k, "PRESETS on the sessions' pages leaves the machine");
         btn(B_SAVE, 1);
         btn(B_GLO, 0);
-        tap(KEY_EDIT);                           /* the EDIT pages: PRESETS through them, never the machine */
+        tap(KEY_EDIT);                           /* the EDIT pages: OCT the pages, PRESETS the half, never the machine */
         ui.edit_pg = 0;
-        turn(EN_PRESET, 2);
-        EXPECT(ui.page == PG_EDIT && ui.edit_pg == 2u && ui.eng[ui.sel] == k, "EDIT: PRESETS the pages, not the machine");
-        turn(EN_PRESET, 50);
-        EXPECT(ui.edit_pg == pages_n(cur()) - 1u && ui.eng[ui.sel] == k, "to the last page, there it stays");
+        btn(B_OCTUP, 0);
+        btn(B_OCTUP, 0);
+        EXPECT(ui.page == PG_EDIT && ui.edit_pg == 2u && ui.half == 0u, "EDIT: OCT+ the next page, its A .. D");
+        turn(EN_PRESET, 1);
+        ui_input();
+        EXPECT(ui.half == 1u && ui.eng[ui.sel] == k, "PRESETS right: E .. H, the machine kept");
+        fm1_ms += 2000;
+        ui_draw();
+        shot(dir, "edit_half");
+        turn(EN_PRESET, -1);
+        ui_input();
+        EXPECT(ui.half == 0u && ui.eng[ui.sel] == k, "PRESETS left: A .. D");
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        ui_input();
+        EXPECT(ui.half == 0u, "SHIFT no longer turns the half");
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui_input();
         tap(KEY_EDIT);
         btn(B_SEQ, 0);
+        btn(B_OCTUP, 0);
         turn(EN_PRESET, 1);
-        EXPECT(ui.page == PG_FXP && ui.fx_pg == 1u && ui.eng[ui.sel] == k, "the effects: PRESETS REVERB, DELAY, CHORUS");
+        ui_input();
+        EXPECT(ui.page == PG_FXP && ui.fx_pg == 1u && ui.half == 1u && ui.eng[ui.sel] == k,
+               "the effects: OCT the next, PRESETS the half");
         btn(B_GLO, 0);
+        {   /* GRAIN: the track's voices granulated, dark (left) and scattered (right); ringing on after them */
+            int32_t out[2 * CTL];
+            uint32_t i, side;
+            for (side = 0; side < 2u; side++) {
+                double e_on = 0, e_tail = 0;
+                ui.snd[0][ui.eng[0]].fx[X_GRAIN] = (uint8_t)(int8_t)(side ? 50 : -50);
+                ui.dirty[0] = 1;
+                for (i = 0; i < 8u && ui.dirty[0]; i++) {   /* (published as a knob's turn is) */
+                    ui_publish();
+                    mix_block(out);
+                }
+                ev_post(EV_ON, 0, 48, 127);
+                for (i = 0; i < 1500u; i++) {
+                    uint32_t j;
+                    mix_block(out);
+                    for (j = 0; j < 2u * CTL; j++)
+                        e_on += (double)out[j] * out[j];
+                }
+                ev_post(EV_STOP, 0, 0, 0);
+                for (i = 0; i < 400u; i++)
+                    mix_block(out);
+                EXPECT(gran[0].amt > 0 && gran[0].tail > 0u, side ? "GRAIN right: on, ringing on" : "GRAIN left: on, ringing on");
+                for (i = 0; i < 4000u; i++) {
+                    uint32_t j;
+                    mix_block(out);
+                    for (j = 0; j < 2u * CTL; j++)
+                        e_tail += (double)out[j] * out[j];
+                }
+                EXPECT(e_on > 0 && e_on == e_on && gran[0].tail == 0u, "GRAIN: sound, and an end to its tail");
+                (void)e_tail;
+            }
+            ui.snd[0][ui.eng[0]].fx[X_GRAIN] = 0;
+            ui.dirty[0] = 1;
+            for (i = 0; i < 8u && ui.dirty[0]; i++) {
+                ui_publish();
+                mix_block(out);
+            }
+        }
+        {
+            par_t pp;
+            sound_t sn = *cur();
+            par_put(&sn, PG_FX, 3, -20);
+            par_get(&sn, PG_FX, 3, &pp);
+            EXPECT(str_eq(pp.name, "GRAIN") && par_val(&sn, PG_FX, 3) == -20, "GRAIN on FX knob D, signed");
+        }
         {
             vck_t c;
             sound_t sn = *cur();

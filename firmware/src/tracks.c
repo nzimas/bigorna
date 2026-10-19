@@ -16,6 +16,7 @@
  * chain, voice.c) summed, its level and pan, its sends; the chorus, the delay, the reverb; the master. */
 
 #define NTRACK 6
+typedef char gr_fits[GR_TRACKS == NTRACK ? 1 : -1];
 #define NVOICE 12
 static const char *const ENG_NAME[NENG] = {"FM TONE", "FM DRUM", "WAVETONE", "SWARMER"};
 static const char *const FLT_NAME[NFLT] = {"MULTI-MODE", "LOWPASS 4", "LEGACY", "COMB-", "COMB+", "EQUALIZER"};
@@ -26,6 +27,7 @@ typedef struct {
     union { ftck_t ft; fdck_t fd; wtck_t wt; swck_t sw; } m;
     int32_t sd_del, sd_rev, sd_chr;      /* the sends, Q15 */
     uint8_t fmach, flt[NF], amp[NA], fx[NX];   /* (the sound's own: a voice's locks cooked from them) */
+    int8_t grain;                        /* GRAIN (grain.c), -63 .. 63 */
 } ck_t;
 static ck_t ck_buf[NTRACK][2];
 static volatile uint8_t ck_pub[NTRACK], ck_use[NTRACK];
@@ -53,6 +55,7 @@ static void ck_cook(ck_t *c, const sound_t *s)
     c->sd_rev = s->fx[X_REV] * s->fx[X_REV] * Q15 / 16129;
     c->sd_chr = s->fx[X_CHR] * s->fx[X_CHR] * Q15 / 16129;
     c->fmach = s->fmach;
+    c->grain = (int8_t)clampi((int8_t)s->fx[X_GRAIN], -GR_MAX, GR_MAX);
     memcpy(c->flt, s->flt, NF);
     memcpy(c->amp, s->amp, NA);
     memcpy(c->fx, s->fx, NX);
@@ -758,7 +761,7 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
             pr1 = trk_pr[t];
         }
     }
-    if (!any) {
+    if (!any && !(gran[t].tail && (c->grain || gran[t].amt))) {   /* (grains ring on a while after the voices) */
         y->meter -= y->meter >> 4;
         y->g = trk_gain[t];
         y->pl = pl1;
@@ -768,6 +771,7 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         y->sc = sc1;
         return;
     }
+    gran_block(t, buf, c->grain, (int)any);      /* GRAIN */
     for (i = 0; i < CTL; i++) {                  /* (a DC blocker, ~10 Hz: FM with feedback can sit off centre) */
         int32_t xg = mulq12(buf[i], TRACK_GAIN);
         buf[i] = xg - lp8(&y->dc, xg, 47);
@@ -900,6 +904,7 @@ static void tracks_init(void)
     memset((void *)seq_lock, LK_NONE, sizeof seq_lock);
     wt_init();
     fx_init();
+    gran_init();
 }
 /* the sound s cooked for track t and published; 0 if the ISR has not yet taken the last one (try again) */
 static int track_publish(uint32_t t, const sound_t *s)
