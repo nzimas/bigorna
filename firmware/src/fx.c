@@ -16,8 +16,10 @@
  *           original's (a pad's reverb and delay tails duck with it). THRESHOLD (-60 .. 0 dB), ATTACK (0.03 .. 30 ms), RELEASE (10 ms ..
  *           2 s), RATIO (1.5, 2, 3, 4, 6, 8, 16, 20), MAKEUP (0 .. +24 dB), SC FILTER (what it listens to through
  *           a low-pass, below the middle -- the bass: it pumps --, or a high-pass, above), SC SOURCE (the mix, or a
- *           track: the rest of the mix ducked under it -- the track itself let be, and listened to 12 dB louder, as
- *           one track is quieter than the mix), MIX (dry .. wet). Stereo, linked: the level's peaks caught at once
+ *           track: the rest of the mix ducked under it, a pump -- the track itself only made up; listened to 12 dB
+ *           louder, as one track is quieter than the mix, and for its hits: each strikes the level, which then falls
+ *           at RELEASE whatever the track still sounds -- the next hit counting once the track has fallen 15.5 dB
+ *           from the last), MIX (dry .. wet). Stereo, linked: the level's peaks caught at once
  *           and let fall at RELEASE; the gain coming down at ATTACK, once a block, gliding. Set at the start for
  *           pounding drums: -9 dB, 10 ms (the kick's attack through), 100 ms, 4:1, +3 dB, listening below ~200 Hz --
  *           on host phrases' renders 1 .. 3 dB taken off on the whole, 5 .. 6 dB on the hits; a kick as the source
@@ -383,6 +385,11 @@ static struct {
     int32_t f;                   /* the sidechain filter's state */
     int32_t g;                   /* the gain as the last block ended, Q16 */
     int32_t gr;                  /* the gain taken off, dB Q16 */
+    int32_t mk;                  /* the makeup as a gain, Q16 */
+    int32_t hit;                 /* a track the source: its last hit's level (x 256) .. */
+    uint8_t armed;               /* .. and fallen 15.5 dB from it since: the next may strike */
+    uint16_t since;              /* .. blocks since it struck */
+    int32_t lv;                  /* .. its level, held over ~20 ms (x 256) */
 } cp;
 static int32_t cp_sc[CTL];       /* a track's signal, for the sidechain (tracks.c fills it) .. */
 static int32_t cp_scl[CTL], cp_scr[CTL];   /* .. and its share of the mix, each side (let be) */
@@ -412,7 +419,7 @@ static void cp_cook(const uint8_t *p)
 static void cp_block(int32_t *l, int32_t *r)
 {
     uint32_t i;
-    int32_t g0 = cp.g ? cp.g : Q16, g1, dg, db, gain, gr;
+    int32_t g0 = cp.g ? cp.g : Q16, g1, dg, db, gain, gr, bpk = 0;
     for (i = 0; i < CTL; i++) {                  /* the level: its peaks at once, falling at RELEASE */
         int32_t x = cpc.sct ? cp_sc[i] * 4 : (l[i] + r[i]) >> 1, a;   /* (a track: 12 dB louder) */
         if (cpc.sclp) {
@@ -423,22 +430,52 @@ static void cp_block(int32_t *l, int32_t *r)
             x -= cp.f;
         }
         a = absi(x) << 8;
-        if (a > cp.env)
+        if (cpc.sct) {                           /* a track: its hits, not its body -- a peak 3 dB over the level as
+                                                  * it has fallen strikes it again; else it falls at RELEASE, whatever
+                                                  * the track still sounds (so the rest ducks on the hit and swells
+                                                  * back, a pump) */
+            if (a > cp.env && (cp.armed || cp.since < 40u || a > 2 * cp.hit)) {   /* a hit (its first ~30 ms
+                                                                                  * followed up to its peak; one twice
+                                                                                  * the last always): it strikes */
+                if (cp.armed || a > 2 * cp.hit) {
+                    cp.since = 0;
+                    cp.hit = 0;
+                }
+                cp.env = a;
+                cp.hit = a > cp.hit ? a : cp.hit;
+                cp.armed = 0;
+            } else
+                cp.env -= (int32_t)(((int64_t)cp.env * (int32_t)cpc.rel) >> 24);
+            cp.lv = a > cp.lv ? a : cp.lv - (cp.lv >> 10);   /* (the track's level over ~20 ms: past a low cycle) */
+            bpk = cp.lv;
+        } else if (a > cp.env)
             cp.env = a;
         else
             cp.env += (int32_t)(((int64_t)(a - cp.env) * (int32_t)cpc.rel) >> 24);
     }
+    if (cp.since < 0xFFFFu)
+        cp.since++;
+    if (cpc.sct && !cp.armed && bpk < cp.hit / 6)   /* (the track 15.5 dB down from its hit: the next counts -- a
+                                                     * kick's body, swelling as FM beats, does not) */
+        cp.armed = 1;
     /* the gain: over the threshold, the ratio's share taken off; the makeup on */
     db = cp.env > 256 ? (log2_q16((uint32_t)cp.env) - (23 << 16)) * 602 / 100 : -(96 << 16);   /* (dBFS, Q16) */
     gr = db > cpc.thr ? (int32_t)(((int64_t)(db - cpc.thr) * cpc.slope) >> 16) : 0;
     cp.gr = gr > cp.gr ? cp.gr + (int32_t)(((int64_t)(gr - cp.gr) * cpc.ka) >> 16) : gr;   /* (down at ATTACK) */
     gain = cpc.mup - cp.gr;
+    cp.mk = (int32_t)exp2_q16(cpc.mup * 100 / 602);   /* (the makeup alone: the source track's) */
     g1 = (int32_t)exp2_q16(gain * 100 / 602);
     dg = (g1 - g0) / (int32_t)CTL;
-    for (i = 0; i < CTL; i++) {                  /* (a track the source: the rest compressed, it let be) */
+    for (i = 0; i < CTL; i++) {                  /* (a track the source: the rest compressed; it only made up) */
         int32_t g = g0 + dg * (int32_t)(i + 1u), xl = cpc.sct ? l[i] - cp_scl[i] : l[i],
                 xr = cpc.sct ? r[i] - cp_scr[i] : r[i];
         int32_t wl = (int32_t)(((int64_t)xl * g) >> 16), wr = (int32_t)(((int64_t)xr * g) >> 16);
+        if (cpc.sct) {
+            wl += (int32_t)(((int64_t)cp_scl[i] * cp.mk) >> 16);
+            wr += (int32_t)(((int64_t)cp_scr[i] * cp.mk) >> 16);
+            xl = l[i];
+            xr = r[i];
+        }
         l[i] += mulq15(wl - xl, cpc.mix);
         r[i] += mulq15(wr - xr, cpc.mix);
     }
@@ -465,6 +502,7 @@ static void fx_init(void)
     memcpy(fx_ch, CH0, NCH);
     memcpy(fx_cp, CP0, NCP);
     memset(&cp, 0, sizeof cp);
+    cp.armed = 1;
     rv_init();
     dl_init();
     memset(ch_line, 0, sizeof ch_line);

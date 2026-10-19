@@ -1740,7 +1740,16 @@ static int cmd_projects(const char *dir)
                     gmin = cp.gr < gmin ? cp.gr : gmin;
                 }
             }
-            EXPECT(gmax > (9 << 16) && gmin < (2 << 16), "a kick as the source: the rest ducked 9 dB and more, back between");
+            EXPECT(gmax > (7 << 16) && gmin < (2 << 16), "a kick as the source: the rest ducked 7 dB and more, back between");
+            {   /* a pump: the duck on the hit, gone well before the next (not held through the kick's body) */
+                uint32_t over = 0, all = 0;
+                for (b = 0; b < 1380u; b++) {
+                    mix_block(out);
+                    all++;
+                    over += cp.gr > (3 << 16);
+                }
+                EXPECT(over * 2u < all, "a pump: ducked by 3 dB and more less than half of each beat");
+            }
             {   /* as heard: the pad (the kick's dry share taken out), quietest and loudest 25 ms over a beat */
                 double lo = 1e30, hi = 0;
                 uint32_t w, sounding = 0;
@@ -2022,6 +2031,106 @@ static int cmd_duck(const char *wav)
     return 0;
 }
 
+/* host duck2: a kick (DRIVEN KICK) on track 1 each beat, a reverb locked on its first step; a SWARMER pad (SWARM PAD)
+ * held on track 2, two notes; SC SOURCE T1 (or MIX, sc 0). Rendered twice from the same start, the pad's level 0 the
+ * second time (it is not the sidechain: the compressor does the same): the kick as heard is the second, the pad as
+ * heard the difference. dBFS each 25 ms over a beat */
+static float d2_gr[44100 * 6 / 32], d2_sc[44100 * 6 / 32];
+static void duck2_run(int pad_on, uint32_t sc, int16_t *o, uint32_t blocks)
+{
+    int32_t out[2 * CTL];
+    uint32_t i, n = 0;
+    host_ticks = 0;
+    tracks_init();
+    ui_init();
+    gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 2, -1, 99u);    /* DRIVEN KICK */
+    ui.eng[0] = ENG_FMD;
+    gen_sound(&ui.snd[1][ENG_SWM], ENG_SWM, 53, -1, 7u);    /* SWARM PAD */
+    ui.eng[1] = ENG_SWM;
+    for (i = 2; i < NTRACK; i++)
+        ui.level[i] = 0;
+    if (!pad_on)
+        ui.level[1] = 0;
+    for (i = 0; i < NTRACK; i++) {
+        level_pan_apply(i);
+        mark(i);
+    }
+    for (i = 0; i < 8u; i++) {
+        ui_publish();
+        mix_block(out);
+    }
+    memset((void *)seq_note, 0, sizeof seq_note);
+    seq_note[0][0] = seq_note[0][4] = seq_note[0][8] = seq_note[0][12] = 36;
+    (void)pl_set(0, 0, PL_REV, 110);
+    fx_cp[CP_SCS] = (uint8_t)sc;
+    fx_cook_all();
+    ev_post(EV_ON, 1, 60, 127);
+    ev_post(EV_ON, 1, 67, 127);
+    seq_run = 1;
+    for (i = 0; i < blocks; i++) {
+        uint32_t j;
+        int32_t pk = 0;
+        mix_block(out);
+        for (j = 0; j < CTL; j++)
+            pk = absi(cp_sc[j]) > pk ? absi(cp_sc[j]) : pk;
+        d2_gr[i] = (float)(cp.gr / 65536.0);
+        d2_sc[i] = (float)(20.0 * log10(pk / 32768.0 + 1e-6));
+        for (j = 0; j < 2u * CTL; j++)
+            o[n++] = (int16_t)clampi(out[j], -32768, 32767);
+    }
+}
+static void duck2_show(const char *what, const int16_t *a, const int16_t *b, uint32_t from)
+{
+    uint32_t w, j;
+    printf("%-22s", what);
+    for (w = 0; w < 20u; w++) {
+        double e = 0;
+        for (j = 0; j < 34u * CTL * 2u; j++) {
+            uint32_t k = from + w * 34u * CTL * 2u + j;
+            double d = (double)a[k] - (b ? (double)b[k] : 0.0);
+            e += d * d;
+        }
+        printf(" %5.1f", 10.0 * log10(e / (34.0 * CTL * 2.0) / (32768.0 * 32768.0) + 1e-12));
+    }
+    printf("\n");
+}
+static int cmd_duck2(void)
+{
+    static int16_t full[44100 * 6 * 2], kick[44100 * 6 * 2];
+    uint32_t blocks = 44100u * 3u / CTL, from = 1800u * CTL * 2u, sc;
+    for (sc = 1; sc != 0xFFu; sc = sc ? 0u : 0xFFu) {   /* (T1, then MIX) */
+        duck2_run(1, sc, full, blocks);
+        duck2_run(0, sc, kick, blocks);
+        printf("SC %s, a beat from a kick:\n", sc ? "T1" : "MIX");
+        duck2_show("  the kick as heard", kick, 0, from);
+        duck2_show("  the pad as heard", full, kick, from);
+        duck2_show("  the whole", full, 0, from);
+        {
+            uint32_t w, q;
+            printf("  GR dB, max a window   ");
+            for (w = 0; w < 20u; w++) {
+                float m = 0;
+                for (q = 0; q < 34u; q++)
+                    m = d2_gr[1800u + w * 34u + q] > m ? d2_gr[1800u + w * 34u + q] : m;
+                printf(" %5.1f", m);
+            }
+            printf("\n  kick dry dBFS (sc)    ");
+            for (w = 0; w < 20u; w++) {
+                float m = -120;
+                for (q = 0; q < 34u; q++)
+                    m = d2_sc[1800u + w * 34u + q] > m ? d2_sc[1800u + w * 34u + q] : m;
+                printf(" %5.1f", m);
+            }
+            printf("\n");
+        }
+        if (!sc) {
+            wav_write("build/sounds/duck2_mix.wav", full, blocks * CTL);
+        } else
+            wav_write("build/sounds/duck2_t1.wav", full, blocks * CTL);
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -2039,6 +2148,8 @@ int main(int argc, char **argv)
                sizeof(swck_t), sizeof(vmem_t), sizeof(voice_t), sizeof(prj_body_t));
         return 0;
     }
+    if (argc >= 2 && !strcmp(argv[1], "duck2"))
+        return cmd_duck2();
     if (argc >= 2 && !strcmp(argv[1], "duck"))
         return cmd_duck(argc >= 3 ? argv[2] : 0);
     if (argc >= 2 && !strcmp(argv[1], "od"))

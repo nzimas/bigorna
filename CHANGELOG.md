@@ -1,5 +1,21 @@
 # Changelog
 
+## Build 27
+
+Fixed
+- The sidechain still did not pump: with a heavy kick as SC SOURCE the rest of the mix was held down ~12 dB nearly the
+  whole beat -- the compressor followed the kick's long body (whose swells, as FM beats, kept striking it again) --
+  so a pad sounded steady, only quieter; and the source track, left out of the compression, also missed the MAKEUP,
+  so choosing it made the kick ~3 dB quieter. Now a track as the source is followed for its hits: a hit strikes the
+  level (its first ~30 ms followed up to its peak), which then falls at RELEASE whatever the track still sounds; the
+  next hit counts once the track has fallen 15.5 dB (a kick's swelling body does not), or at once if twice as loud.
+  The source track gets the makeup. A heavy kick each beat now ducks the rest by ~9 dB on the hit, back to nothing
+  ~200 ms later (at 120 BPM the pad is back for the last ~300 ms of each beat): a pump. The whole mix as the source
+  works as before.
+
+Note
+- The source track's own reverb and delay returns are part of the mix the compressor works on, so they duck too.
+
 ## Build 26
 
 Fixed
