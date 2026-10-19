@@ -233,8 +233,15 @@ static uint32_t pat_bytes(void)
                 n += 6u + 3u * pl_n(t, i);
     return n;
 }
-static void pat_take(pat_t *p)               /* the pattern playing, into a slot of the store (what will not fit:
-                                              * the last steps' locks, then the steps, left out) */
+static uint32_t pl_nb(const seqbuf_t *b, uint32_t t, uint32_t i)
+{
+    uint32_t n = 0, j;
+    for (j = 0; j < NPL; j++)
+        n += b->lid[t][i][j] != PL_NONE;
+    return n;
+}
+/* steps b as a pattern (what will not fit: the last steps' locks, then the steps, left out) */
+static void pat_encode(pat_t *p, const seqbuf_t *b)
 {
     uint32_t t, i, o = SEQ_REC4, n = 0;
     memset(p, 0, sizeof *p);
@@ -242,26 +249,26 @@ static void pat_take(pat_t *p)               /* the pattern playing, into a slot
     p->tempo = pat_tempo;
     p->seq[SEQ_FMT] = SEQ_V4;
     for (t = 0; t < NTRACK; t++) {
-        p->seq[SEQ_LEN + t] = (uint8_t)(seq_len[t] | ((seq_div[t] + SEQ_DIV1) % NDIV) << 5);
-        p->seq[SEQ_DIR + t] = seq_dir[t];
-        p->seq[SEQ_DEN + t] = ui.gen_den[t];
-        p->seq[SEQ_CX + t] = ui.gen_cx[t];
+        p->seq[SEQ_LEN + t] = (uint8_t)(b->len[t] | ((b->div[t] + SEQ_DIV1) % NDIV) << 5);
+        p->seq[SEQ_DIR + t] = b->dir[t];
+        p->seq[SEQ_DEN + t] = b->den[t];
+        p->seq[SEQ_CX + t] = b->cx[t];
         for (i = 0; i < NSTEP; i++) {
-            uint32_t j, nl = pl_n(t, i), at;
-            if (!seq_note[t][i] || o + 6u > PAT_SEQ_ROOM)
+            uint32_t j, nl = pl_nb(b, t, i), at;
+            if (!b->note[t][i] || o + 6u > PAT_SEQ_ROOM)
                 continue;
             while (nl && o + 6u + 3u * nl > PAT_SEQ_ROOM)
                 nl--;
             p->seq[o++] = (uint8_t)(t * NSTEP + i);
-            p->seq[o++] = seq_note[t][i];
-            p->seq[o++] = seq_vel[t][i];
-            p->seq[o++] = (uint8_t)(seq_glen[t][i] | seq_rtg[t][i] << 4);
-            p->seq[o++] = seq_cond[t][i];
+            p->seq[o++] = b->note[t][i];
+            p->seq[o++] = b->vel[t][i];
+            p->seq[o++] = (uint8_t)(b->glen[t][i] | b->rtg[t][i] << 4);
+            p->seq[o++] = b->cond[t][i];
             at = o++;
             p->seq[at] = 0;
             for (j = 0; j < NPL && p->seq[at] < nl; j++) {
-                uint32_t id = seq_lid[t][i][j];
-                int32_t v = seq_lv[t][i][j];
+                uint32_t id = b->lid[t][i][j];
+                int32_t v = b->lv[t][i][j];
                 if (id == PL_NONE)
                     continue;
                 p->seq[o++] = (uint8_t)id;
@@ -274,25 +281,33 @@ static void pat_take(pat_t *p)               /* the pattern playing, into a slot
     }
     p->seq[SEQ_NREC] = (uint8_t)n;
 }
-static void pat_give(uint32_t k)             /* slot k of the store, as the pattern playing (empty: no steps) */
+static seqbuf_t sb_tmp;                           /* (the main loop's) */
+static uint8_t pat_dirtyv[PAT_SLOTS];             /* a pattern changed since saved (kept in the store, not the flash) */
+static uint8_t seq_pend_k;                        /* (the pattern waiting) */
+static void pat_take(pat_t *p)                   /* the pattern playing, as a pattern */
 {
-    const pat_t *p = &pat_store[k];
+    seq_copy_out(&sb_tmp);
+    memcpy(sb_tmp.den, ui.gen_den, NTRACK);
+    memcpy(sb_tmp.cx, ui.gen_cx, NTRACK);
+    pat_encode(p, &sb_tmp);
+}
+/* a pattern as steps, into b (empty: none) */
+static void pat_decode(const pat_t *p, seqbuf_t *b)
+{
     uint32_t t, i;
-    pat_cur = (uint8_t)k;
-    pat_tempo = p->used ? p->tempo : 0;
-    memset((void *)seq_note, 0, sizeof seq_note);
-    memset((void *)seq_vel, VEL_DEF, sizeof seq_vel);
-    memset((void *)seq_glen, GLEN_DEF, sizeof seq_glen);
-    memset((void *)seq_cond, CD_NONE, sizeof seq_cond);
-    memset((void *)seq_lid, PL_NONE, sizeof seq_lid);
-    memset((void *)seq_rtg, 0, sizeof seq_rtg);
+    memset(b->note, 0, sizeof b->note);
+    memset(b->vel, VEL_DEF, sizeof b->vel);
+    memset(b->glen, GLEN_DEF, sizeof b->glen);
+    memset(b->cond, CD_NONE, sizeof b->cond);
+    memset(b->lid, PL_NONE, sizeof b->lid);
+    memset(b->rtg, 0, sizeof b->rtg);
     for (t = 0; t < NTRACK; t++) {
-        uint32_t b = p->used ? p->seq[SEQ_LEN + t] : 0u, c = b >> 5, v4 = p->used && p->seq[SEQ_FMT] == SEQ_V4;
-        seq_len[t] = (uint8_t)((b & 31u) <= NSTEP ? b & 31u : 0u);
-        seq_div[t] = (uint8_t)(c < NDIV ? (c + SEQ_DIV1) % NDIV : SEQ_DIV1);
-        seq_dir[t] = (uint8_t)(v4 && p->seq[SEQ_DIR + t] < NDIR ? p->seq[SEQ_DIR + t] : DIR_FWD);
-        ui.gen_den[t] = (uint8_t)(v4 && p->seq[SEQ_DEN + t] <= 100u ? p->seq[SEQ_DEN + t] : 50u);
-        ui.gen_cx[t] = (uint8_t)(v4 && p->seq[SEQ_CX + t] <= 100u ? p->seq[SEQ_CX + t] : 50u);
+        uint32_t bb = p->used ? p->seq[SEQ_LEN + t] : 0u, c = bb >> 5, v4 = p->used && p->seq[SEQ_FMT] == SEQ_V4;
+        b->len[t] = (uint8_t)((bb & 31u) <= NSTEP ? bb & 31u : 0u);
+        b->div[t] = (uint8_t)(c < NDIV ? (c + SEQ_DIV1) % NDIV : SEQ_DIV1);
+        b->dir[t] = (uint8_t)(v4 && p->seq[SEQ_DIR + t] < NDIR ? p->seq[SEQ_DIR + t] : DIR_FWD);
+        b->den[t] = (uint8_t)(v4 && p->seq[SEQ_DEN + t] <= 100u ? p->seq[SEQ_DEN + t] : 50u);
+        b->cx[t] = (uint8_t)(v4 && p->seq[SEQ_CX + t] <= 100u ? p->seq[SEQ_CX + t] : 50u);
     }
     if (p->used && (p->seq[SEQ_FMT] == SEQ_V3 || p->seq[SEQ_FMT] == SEQ_V4)) {
         uint32_t v4 = p->seq[SEQ_FMT] == SEQ_V4, o = v4 ? SEQ_REC4 : SEQ_REC, r;
@@ -302,19 +317,19 @@ static void pat_give(uint32_t k)             /* slot k of the store, as the patt
                 break;
             t = id / NSTEP;
             i = id % NSTEP;
-            seq_vel[t][i] = (uint8_t)clampi(p->seq[o + 2u], 1, 127);
+            b->vel[t][i] = (uint8_t)clampi(p->seq[o + 2u], 1, 127);
             {
                 uint32_t g = v4 ? p->seq[o + 3u] & 15u : p->seq[o + 3u], rt = v4 ? p->seq[o + 3u] >> 4 : 0u;
-                seq_glen[t][i] = (uint8_t)(g < NGLEN ? g : GLEN_DEF);
-                seq_rtg[t][i] = (uint8_t)(rt < NRTG ? rt : 0u);
+                b->glen[t][i] = (uint8_t)(g < NGLEN ? g : GLEN_DEF);
+                b->rtg[t][i] = (uint8_t)(rt < NRTG ? rt : 0u);
             }
-            seq_cond[t][i] = (uint8_t)(p->seq[o + 4u] < NCOND ? p->seq[o + 4u] : CD_NONE);
-            seq_note[t][i] = p->seq[o + 1u];
+            b->cond[t][i] = (uint8_t)(p->seq[o + 4u] < NCOND ? p->seq[o + 4u] : CD_NONE);
+            b->note[t][i] = p->seq[o + 1u];
             o += 6u;
             for (l = 0; l < nl && o + 3u <= PAT_SEQ_ROOM; l++, o += 3u)
                 if (p->seq[o] <= PL_PAN && l < NPL) {
-                    seq_lv[t][i][l] = (int16_t)(uint16_t)(p->seq[o + 1u] | p->seq[o + 2u] << 8);
-                    seq_lid[t][i][l] = p->seq[o];
+                    b->lv[t][i][l] = (int16_t)(uint16_t)(p->seq[o + 1u] | p->seq[o + 2u] << 8);
+                    b->lid[t][i][l] = p->seq[o];
                 }
         }
     } else if (p->used && p->seq[SEQ_FMT] == SEQ_V2) {   /* (builds 11 .. 17) */
@@ -325,17 +340,17 @@ static void pat_give(uint32_t k)             /* slot k of the store, as the patt
                 break;
             t = id / NSTEP;
             i = id % NSTEP;
-            seq_vel[t][i] = (uint8_t)clampi(p->seq[o + 2u], 1, 127);
-            seq_glen[t][i] = (uint8_t)((p->seq[o + 3u] & 15u) < NGLEN ? p->seq[o + 3u] & 15u : GLEN_DEF);
-            seq_cond[t][i] = (uint8_t)(p->seq[o + 4u] < NCOND ? p->seq[o + 4u] : CD_NONE);
-            seq_note[t][i] = p->seq[o + 1u];
+            b->vel[t][i] = (uint8_t)clampi(p->seq[o + 2u], 1, 127);
+            b->glen[t][i] = (uint8_t)((p->seq[o + 3u] & 15u) < NGLEN ? p->seq[o + 3u] & 15u : GLEN_DEF);
+            b->cond[t][i] = (uint8_t)(p->seq[o + 4u] < NCOND ? p->seq[o + 4u] : CD_NONE);
+            b->note[t][i] = p->seq[o + 1u];
             o += 6u;
             for (l = 0; l < 12u && o < PAT_SEQ_ROOM; l++)
                 if (m >> l & 1u) {
                     int32_t v = p->seq[o++] & 127u;
                     if (j < NPL) {               /* (the 12 then: LK_FREQ .. LK_PAN, in the order they still have) */
-                        seq_lv[t][i][j] = (int16_t)v;
-                        seq_lid[t][i][j++] = LK_PID[l];
+                        b->lv[t][i][j] = (int16_t)v;
+                        b->lid[t][i][j++] = LK_PID[l];
                     }
                 }
         }
@@ -343,13 +358,33 @@ static void pat_give(uint32_t k)             /* slot k of the store, as the patt
         for (t = 0; t < NTRACK; t++)
             for (i = 0; i < NSTEP; i++) {
                 uint32_t o = t * NSTEP + i, g = p->seq[SEQ_OLD_GLEN + o];
-                seq_vel[t][i] = (uint8_t)(p->seq[SEQ_OLD_VEL + o] ? p->seq[SEQ_OLD_VEL + o] : VEL_DEF);
-                seq_glen[t][i] = (uint8_t)(g && g <= NGLEN ? g - 1u : GLEN_DEF);
-                seq_cond[t][i] = (uint8_t)(p->seq[SEQ_OLD_COND + o] < NCOND ? p->seq[SEQ_OLD_COND + o] : CD_NONE);
-                seq_note[t][i] = p->seq[SEQ_OLD_NOTE + o];
+                b->vel[t][i] = (uint8_t)(p->seq[SEQ_OLD_VEL + o] ? p->seq[SEQ_OLD_VEL + o] : VEL_DEF);
+                b->glen[t][i] = (uint8_t)(g && g <= NGLEN ? g - 1u : GLEN_DEF);
+                b->cond[t][i] = (uint8_t)(p->seq[SEQ_OLD_COND + o] < NCOND ? p->seq[SEQ_OLD_COND + o] : CD_NONE);
+                b->note[t][i] = p->seq[SEQ_OLD_NOTE + o];
             }
-    pat_dirty = 0;
+}
+/* slot k of the store, as the pattern playing, at once */
+static void pat_give(uint32_t k)
+{
+    const pat_t *p = &pat_store[k];
+    seq_pend = 0;                                /* (a pattern waiting: not now) */
+    pat_decode(p, &sb_tmp);
+    seq_copy_in(&sb_tmp);
+    memcpy(ui.gen_den, sb_tmp.den, NTRACK);
+    memcpy(ui.gen_cx, sb_tmp.cx, NTRACK);
+    pat_cur = (uint8_t)k;
+    pat_tempo = p->used ? p->tempo : 0;
+    pat_dirty = pat_dirtyv[k];
     tempo_apply();
+}
+/* the pattern playing, changed: kept in its slot of the store as it is (the flash, when it is saved) */
+static void pat_stash(void)
+{
+    if (!pat_dirty)
+        return;
+    pat_take(&pat_store[pat_cur]);
+    pat_dirtyv[pat_cur] = 1;
 }
 /* the store's patterns k (and the three beside it in its sector) into the flash, if the project has a slot */
 static int pat_flush(uint32_t k)
@@ -365,6 +400,7 @@ static int pat_save(uint32_t k)
     pat_take(&pat_store[k]);
     pat_cur = (uint8_t)k;
     pat_dirty = 0;
+    pat_dirtyv[k] = 0;
     prj_dirty = 1;                               /* (the project's pattern changed: saved with it) */
     return pat_flush(k);
 }
@@ -376,6 +412,9 @@ static void pat_clear(uint32_t k)
     if (k >= PAT_SLOTS)
         return;
     memset(&pat_store[k], 0, sizeof pat_store[k]);
+    pat_dirtyv[k] = 0;
+    if (seq_pend == 1u && seq_pend_k == k)
+        seq_pend = 0;                            /* (it was waiting to play: not now) */
     if (k == pat_cur)
         pat_give(k);
     rc = pat_flush(k);
@@ -403,6 +442,7 @@ static void pat_copy_hold(uint32_t k)
     }
     if (pat_clip_from >= 0) {                    /* pasted */
         pat_store[k] = pat_clip;
+        pat_dirtyv[k] = 0;
         rc = pat_flush(k);
         pat_switch(k);
         pat_clip_from = -1;
@@ -479,6 +519,7 @@ static int prj_save(uint32_t k)              /* the pattern playing into its slo
     prj_has[k] = 1;
     prj_cur = (int8_t)k;
     prj_dirty = 0;
+    memset(pat_dirtyv, 0, sizeof pat_dirtyv);    /* (every pattern in the flash now) */
     return 0;
 }
 static int prj_load(uint32_t k)
@@ -497,6 +538,7 @@ static int prj_load(uint32_t k)
     }
     prj_give(&b);
     prj_cur = (int8_t)k;
+    memset(pat_dirtyv, 0, sizeof pat_dirtyv);
     pat_give(0);                                 /* (a session starts at its pattern 1) */
     prj_dirty = 0;
     return 0;
@@ -726,8 +768,48 @@ static void pat_switch(uint32_t k)
 {
     if (k >= PAT_SLOTS)
         return;
-    pat_give(k);
     pj.slot[1] = (uint8_t)k;
+    if (!seq_run) {                              /* stopped: at once (the one left kept as it was) */
+        pat_stash();
+        pat_give(k);
+        return;
+    }
+    seq_pend = 0;
+    RING_PUBLISH();
+    if (k == pat_cur)
+        return;                                  /* (the one playing: the one waiting, not now) */
+    pat_decode(&pat_store[k], &sb_next);         /* playing: at the end of the chosen track's time through */
+    seq_pend_k = (uint8_t)k;
+    seq_pend_t = ui.sel;
+    RING_PUBLISH();
+    seq_pend = 1;
+}
+/* each pass of the main loop: a pattern taken in by the sequencer, its switch finished (the one it left kept in the
+ * store as it was, changes and all); stopped with one waiting, at once */
+static void pat_poll(void)
+{
+    if (seq_pend == 1u && !seq_run) {
+        pat_stash();
+        pat_give(seq_pend_k);
+        ui.force = 1;
+        return;
+    }
+    if (seq_pend != 2u)
+        return;
+    if (pat_dirty) {
+        memcpy(sb_old.den, ui.gen_den, NTRACK);
+        memcpy(sb_old.cx, ui.gen_cx, NTRACK);
+        pat_encode(&pat_store[pat_cur], &sb_old);
+        pat_dirtyv[pat_cur] = 1;
+    }
+    memcpy(ui.gen_den, sb_next.den, NTRACK);
+    memcpy(ui.gen_cx, sb_next.cx, NTRACK);
+    pat_cur = seq_pend_k;
+    pat_tempo = pat_store[pat_cur].used ? pat_store[pat_cur].tempo : 0;
+    pat_dirty = pat_dirtyv[pat_cur];
+    seq_pend = 0;
+    tempo_apply();
+    ui.force = 1;
 }
 /* HOME held: the session playing saved into its slot; ARP held: the pattern playing into its slot */
 static void prj_quick_save(void)

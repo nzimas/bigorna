@@ -1,5 +1,19 @@
 # Changelog
 
+## Build 22
+
+Fixed
+- Leaving a pattern lost what had been done in it since it was last saved: copying pattern 1 (never saved) and
+  pasting it into pattern 2 left pattern 1 empty. Every pattern now keeps its changes when another is loaded (in the
+  session's memory; P1 shows orange while they are not saved). ARP held saves the pattern playing into the flash;
+  a session's SAVE saves every pattern.
+
+Changed
+- Switching patterns while the sequencer plays waits for the chosen track to come round to its first step; then every
+  track starts the new pattern from its first step together. Meanwhile the pattern waiting blinks on its white key
+  (PATTERNS grid) and in turn with the one playing at the top left. Choosing the pattern playing again, or another,
+  replaces the one waiting. Stopped, a switch is at once.
+
 ## Build 21
 
 Added

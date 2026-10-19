@@ -184,6 +184,8 @@ static void prj_quick_save(void);
 static void pat_quick_save(void);
 static void pat_switch(uint32_t k);
 static void pat_copy_hold(uint32_t k);
+static void pat_poll(void);
+static uint8_t seq_pend_k;                       /* (projects.c: the pattern waiting to play) */
 static void tempo_apply(void);
 static int8_t pat_clip_from;                     /* (projects.c: the pattern copied, -1 none) */
 static void pat_clear(uint32_t k);
@@ -761,6 +763,7 @@ static void ui_input(void)
     int32_t s, e_pre, e_sel, e_alg;
     int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u);
     (void)rel;
+    pat_poll();                                      /* (a pattern switched as the sequencer took it in) */
     for (t = 0; t < NTRACK; t++)
         if (btn_bit(press, TRACK_BTN[t])) {
             ui.sel = (uint8_t)t;
@@ -1284,8 +1287,9 @@ static void ui_leds(void)
         }
         if (ui.page == PG_PAT && white_ix(k) >= 0) {   /* (the PATTERNS grid: every white key a pattern, dim; the playing
                                                         * one lit) */
-            fm1_led_key(14u + k, white_ix(k) == pat_clip_from ? (fm1_ms / 250u) & 1u    /* (the one copied: blinks) */
-                                                              : white_ix(k) == (int32_t)pat_cur);
+            fm1_led_key(14u + k, white_ix(k) == pat_clip_from || (seq_pend == 1u && white_ix(k) == seq_pend_k)
+                                     ? (fm1_ms / 250u) & 1u   /* (the one copied, the one waiting to play: blink) */
+                                     : white_ix(k) == (int32_t)pat_cur && seq_pend != 1u);
             led_dim_key(14u + k, 1);
             continue;
         }
@@ -1345,9 +1349,10 @@ static void draw_number(void)
     char d[2] = {(char)('1' + ui.sel), 0};
     CV_AREA(0, BAND_A, 240, BAND_B - BAND_A, C_BLACK) {
         cv_text_c(3, &FONT_XL, d, TRACK_COL[ui.sel]);
-        {   /* top left: the pattern playing (P3; orange with changes not saved) */
+        {   /* top left: the pattern playing (P3; orange with changes not saved); one waiting to play: it and the one
+             * playing in turn */
             char pn[8] = "P";
-            fmt_int(pn + 1, pat_cur + 1);
+            fmt_int(pn + 1, (seq_pend == 1u && (fm1_ms / 300u) & 1u ? seq_pend_k : pat_cur) + 1);
             cv_text(4, 2, &FONT_S, pn, pat_dirty ? RGB(255, 140, 0) : C_WHITE);
             if (ui.rec || ui.lrec) {                 /* (recording, right, under the octave: REC or LOOP in red;
                                                       * armed: ARM) */
@@ -1867,11 +1872,15 @@ static void ui_draw(void)
         ui.force = 1;
         lcd_fill(0, 0, 240, 240, C_BLACK);           /* (the gaps between the bands, from the page before) */
     }
-    if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec) {
-        ui.shown_prj = (int16_t)(pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec);
-        draw_number();
-        ui.shown_sel = ui.sel;
-        ui.shown_eng = ui.shown_msg = ui.shown_pan = ui.shown_level = -100;
+    {
+        int32_t pk = pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec +
+                     (seq_pend == 1u ? 1024 + (int32_t)((fm1_ms / 300u) & 1u) * 2048 : 0);
+        if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pk) {
+            ui.shown_prj = (int16_t)pk;
+            draw_number();
+            ui.shown_sel = ui.sel;
+            ui.shown_eng = ui.shown_msg = ui.shown_pan = ui.shown_level = -100;
+        }
     }
     if (ui.shown_eng != ui.eng[ui.sel]) {
         draw_engine();

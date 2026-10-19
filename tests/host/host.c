@@ -1036,6 +1036,80 @@ static int cmd_projects(const char *dir)
         seq_len[2] = 0;
         seq_div[2] = SEQ_DIV1;
     }
+    {   /* patterns keep their changes when left; copied, the original stays; switched while playing: at the end of
+         * the chosen track's time through */
+        int32_t out[2 * CTL];
+        uint32_t kw[16], k, i, n;
+        for (k = 0; k < NKEY; k++)
+            if (white_ix(k) >= 0)
+                kw[white_ix(k)] = k;
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        pat_switch(7);                           /* (pattern 8, empty, never saved) */
+        memset(&pat_store[7], 0, sizeof pat_store[7]);
+        memset(&pat_store[8], 0, sizeof pat_store[8]);
+        pat_give(7);
+        ui.sel = 1;
+        memset((void *)seq_note, 0, sizeof seq_note);
+        seq_note[1][0] = seq_note[1][4] = 50;
+        pat_dirty = 1;                           /* (steps placed, not saved) */
+        btn(B_ARP, 0);
+        fm1_in.notes |= 1u << kw[7];             /* copy 8 .. */
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        fm1_in.notes &= ~(1u << kw[7]);
+        ui_input();
+        fm1_in.notes |= 1u << kw[8];             /* .. paste into 9 */
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        fm1_in.notes &= ~(1u << kw[8]);
+        ui_input();
+        EXPECT(pat_cur == 8u && seq_note[1][0] == 50u && seq_note[1][4] == 50u, "pasted into 9: its steps");
+        fm1_ms += 2000;
+        tap(kw[7]);                              /* back to 8 */
+        EXPECT(pat_cur == 7u && seq_note[1][0] == 50u && seq_note[1][4] == 50u && pat_dirty,
+               "8 again: its steps still there (kept when left), not saved yet");
+        seq_note[1][8] = 52;                     /* 8 changed; to 9 and back: 9 as pasted, 8 as changed */
+        tap(kw[8]);
+        EXPECT(pat_cur == 8u && seq_note[1][8] == 0u, "9: as pasted");
+        tap(kw[7]);
+        EXPECT(pat_cur == 7u && seq_note[1][8] == 52u, "8: as changed");
+        btn(B_GLO, 0);
+        /* playing: the switch waits for the chosen track (2, 16 steps at 1X) to come round */
+        ui.sel = 1;
+        seq_len[1] = 0;
+        seq_div[1] = SEQ_DIV1;
+        seq_run = 1;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        while (seq_pos[1] != 5u)
+            mix_block(out);
+        pat_switch(8);
+        EXPECT(seq_pend == 1u && pat_cur == 7u, "playing: 9 waits");
+        ui_leds();
+        ui_draw();
+        for (n = 0; seq_pend == 1u && n < 20000u; n++) {
+            mix_block(out);
+            if (seq_pend == 1u && seq_pos[1] == 0u)
+                break;                           /* (should not: it comes in at step 1) */
+        }
+        EXPECT(seq_pend == 2u && seq_pos[1] == 0u, "it comes in as track 2 comes round to its step 1");
+        EXPECT(n > 140u * 9u && n < 160u * 11u, "after the rest of the bar");
+        ui_input();
+        EXPECT(pat_cur == 8u && seq_note[1][8] == 0u && seq_pend == 0u, "9 playing");
+        pat_switch(7);
+        for (i = 0; i < 10u; i++)
+            mix_block(out);
+        EXPECT(seq_pend == 1u, "and 8 waits in turn");
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        ui_input();
+        EXPECT(pat_cur == 7u && seq_note[1][8] == 52u && seq_pend == 0u, "stopped: in at once, 8 as changed");
+    }
     {   /* SHIFT + a step held: copied; SHIFT + another held: pasted (another track too); PLAY held: the TEMPO page */
         uint32_t kw[16], k;
         for (k = 0; k < NKEY; k++)

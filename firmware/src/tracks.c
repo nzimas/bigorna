@@ -472,6 +472,7 @@ static const char *const RTG_NAME[NRTG] = {"OFF", "2", "3", "4", "6", "8"};
 static volatile uint8_t seq_rtg[NTRACK][NSTEP];
 static uint8_t rt_left[NTRACK], rt_note[NTRACK], rt_vel[NTRACK], rt_step[NTRACK];
 static uint32_t rt_next[NTRACK], rt_int[NTRACK];
+
 static volatile uint32_t seq_tacc_now[NTRACK];   /* (as the block ended: where in its step the track is) */
 static volatile uint8_t seq_run;          /* PLAY */
 static volatile uint8_t seq_pos[NTRACK];  /* the step playing (the ISR's; the screen and the LEDs read it) */
@@ -676,6 +677,57 @@ static void loop_step(void)
                     seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
         }
 }
+/* a pattern's steps whole, as the sequencer plays them (projects.c fills one, the ISR takes it in) */
+typedef struct {
+    uint8_t note[NTRACK][NSTEP], vel[NTRACK][NSTEP], glen[NTRACK][NSTEP], cond[NTRACK][NSTEP], rtg[NTRACK][NSTEP];
+    uint8_t lid[NTRACK][NSTEP][NPL];
+    int16_t lv[NTRACK][NSTEP][NPL];
+    uint8_t len[NTRACK], div[NTRACK], dir[NTRACK];
+    uint8_t den[NTRACK], cx[NTRACK];             /* (the phrase generator's, the main loop's: not the ISR's) */
+} seqbuf_t;
+static void seq_copy_out(seqbuf_t *b)            /* the steps playing, into b */
+{
+    memcpy(b->note, (const void *)seq_note, sizeof b->note);
+    memcpy(b->vel, (const void *)seq_vel, sizeof b->vel);
+    memcpy(b->glen, (const void *)seq_glen, sizeof b->glen);
+    memcpy(b->cond, (const void *)seq_cond, sizeof b->cond);
+    memcpy(b->rtg, (const void *)seq_rtg, sizeof b->rtg);
+    memcpy(b->lid, (const void *)seq_lid, sizeof b->lid);
+    memcpy(b->lv, (const void *)seq_lv, sizeof b->lv);
+    memcpy(b->len, (const void *)seq_len, sizeof b->len);
+    memcpy(b->div, (const void *)seq_div, sizeof b->div);
+    memcpy(b->dir, (const void *)seq_dir, sizeof b->dir);
+}
+static void seq_copy_in(const seqbuf_t *b)       /* b, as the steps playing */
+{
+    memcpy((void *)seq_note, b->note, sizeof b->note);
+    memcpy((void *)seq_vel, b->vel, sizeof b->vel);
+    memcpy((void *)seq_glen, b->glen, sizeof b->glen);
+    memcpy((void *)seq_cond, b->cond, sizeof b->cond);
+    memcpy((void *)seq_rtg, b->rtg, sizeof b->rtg);
+    memcpy((void *)seq_lid, b->lid, sizeof b->lid);
+    memcpy((void *)seq_lv, b->lv, sizeof b->lv);
+    memcpy((void *)seq_len, b->len, sizeof b->len);
+    memcpy((void *)seq_div, b->div, sizeof b->div);
+    memcpy((void *)seq_dir, b->dir, sizeof b->dir);
+}
+/* a pattern waiting (projects.c's pat_switch, the sequencer playing): sb_next taken in as track seq_pend_t ends its
+ * time through -- the steps it leaves into sb_old, every track from its start -- then seq_pend 2 (the main loop
+ * finishes it: pat_poll) */
+static seqbuf_t sb_next, sb_old;
+static volatile uint8_t seq_pend, seq_pend_t;
+static int seq_wraps(uint32_t t)                 /* track t's next step begins its time through again */
+{
+    uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, pos = seq_pos[t];
+    if (pos == 0xFFu || pos >= len)
+        return 1;
+    switch (seq_dir[t]) {
+    case DIR_REV: return pos == 0u;
+    case DIR_PING: return len < 2u || (seq_ppd[t] < 0 && pos == 1u);
+    case DIR_RND: return seq_rnd_n[t] + 1u >= len;
+    default: return pos + 1u >= len;
+    }
+}
 static void seq_block(void)
 {
     uint32_t t, i;
@@ -731,6 +783,19 @@ static void seq_block(void)
         seq_gcount++;
         met_tick(seq_gstep);
         loop_step();
+    }
+    if (seq_pend == 1u && seq_tacc[seq_pend_t] >= SEQ_STEP8 && seq_wraps(seq_pend_t)) {   /* the pattern waiting, in */
+        seq_copy_out(&sb_old);
+        seq_copy_in(&sb_next);
+        for (t = 0; t < NTRACK; t++) {
+            seq_pos[t] = 0xFF;
+            seq_loop[t] = 0;
+            seq_pre[t] = 0;
+            seq_rnd_n[t] = 0;
+            rt_left[t] = 0;
+            seq_tacc[t] = SEQ_STEP8;
+        }
+        seq_pend = 2;
     }
     for (t = 0; t < NTRACK; t++) {               /* each track on its own clock */
         if (seq_tacc[t] >= SEQ_STEP8) {
