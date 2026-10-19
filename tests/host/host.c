@@ -793,6 +793,73 @@ static int cmd_projects(const char *dir)
         ui_draw();
         shot(dir, "phrase_new");
         fm1_ms += 2000;
+        {   /* no black key chosen, a step held: the knobs lock FREQ, RESO, the sends; SELECT the level, ALGORITHM
+             * the pan; FX: SRR, BITS, DRIVE, DECAY; SHIFT + the phrase key: new locks, the steps kept */
+            uint32_t st = 0, kk;
+            uint8_t nn[NSTEP], vv[NSTEP], cc[NSTEP], gg[NSTEP];
+            int32_t f0;
+            while (!seq_note[5][st])
+                st++;
+            for (kk = 0; white_ix(kk) != (int32_t)st; kk++)
+                ;
+            memset((void *)seq_lock[5][st], LK_NONE, NLK);
+            f0 = lk_val(5, st, LK_FREQ);
+            fm1_in.notes |= 1u << kk;
+            ui_input();
+            turn(EN_K1, -5);
+            turn(EN_K4, 10);
+            turn(EN_SELECT, -7);
+            turn(EN_ALGO, 9);
+            EXPECT(seq_lock[5][st][LK_FREQ] == (uint8_t)clampi(f0 - 5, 0, 127) && seq_lock[5][st][LK_REV] != LK_NONE &&
+                   seq_lock[5][st][LK_VOL] != LK_NONE && seq_lock[5][st][LK_PAN] == 73u, "a step held: the knobs lock");
+            turn(EN_K1, 1);
+            ui_draw();
+            shot(dir, "lock_dial");
+            EXPECT(ui.shown_page == 4u && ui.dial_lk == LK_FREQ + 1u, "the lock shown as a dial");
+            fm1_in.notes &= ~(1u << kk);
+            ui_input();
+            EXPECT(seq_note[5][st] != 0, "let go after a lock: the step kept");
+            fm1_ms += 2000;
+            tap(10);                             /* the 5th black key: FX */
+            EXPECT(ui.smode == SM_FX, "the 5th black key: FX");
+            fm1_in.notes |= 1u << kk;
+            ui_input();
+            turn(EN_K1, 30);
+            turn(EN_K2, 40);
+            EXPECT(seq_lock[5][st][LK_SRR] != LK_NONE && seq_lock[5][st][LK_BR] != LK_NONE, "FX: SRR, BITS locked");
+            ui_draw();
+            shot(dir, "step_fx");
+            fm1_in.notes &= ~(1u << kk);
+            ui_input();
+            tap(10);
+            fm1_ms += 2000;
+            memcpy(nn, (const void *)seq_note[5], NSTEP);
+            memcpy(vv, (const void *)seq_vel[5], NSTEP);
+            memcpy(cc, (const void *)seq_cond[5], NSTEP);
+            memcpy(gg, (const void *)seq_glen[5], NSTEP);
+            fm1_in.notes |= 1u << KEY_SHIFT;
+            tap(KEY_GEN);
+            fm1_in.notes &= ~(1u << KEY_SHIFT);
+            ui_input();
+            EXPECT(!memcmp(nn, (const void *)seq_note[5], NSTEP) && !memcmp(vv, (const void *)seq_vel[5], NSTEP) &&
+                   !memcmp(cc, (const void *)seq_cond[5], NSTEP) && !memcmp(gg, (const void *)seq_glen[5], NSTEP),
+                   "SHIFT + the phrase key: the steps as they were");
+            {
+                uint32_t on = 0, off = 0, i2, l2;
+                for (i2 = 0; i2 < NSTEP; i2++)
+                    for (l2 = 0; l2 < NLK; l2++) {
+                        if (seq_lock[5][i2][l2] == LK_NONE)
+                            continue;
+                        if (seq_note[5][i2])
+                            on++;
+                        else
+                            off++;
+                    }
+                EXPECT(!off && ui.flash_on && str_eq(ui.flash_l2, "LOCKS"), "new locks, on the steps that hold notes only");
+                (void)on;
+            }
+            fm1_ms += 2000;
+        }
         tap(KEY_STEP);
     }
     {   /* every recipe's phrase: notes in the scale, room in the pattern, back the same from a pattern */

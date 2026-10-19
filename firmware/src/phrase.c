@@ -68,23 +68,7 @@ static void ph_lock(uint32_t i, uint32_t lk, int32_t v) { seq_lock[ph_t][i & (NS
 static int ph_on(uint32_t i) { return seq_note[ph_t][i & (NSTEP - 1u)] != 0; }
 
 /* the sound's own value of a lock (a move from it is what is locked) */
-static int32_t ph_base(uint32_t lk)
-{
-    switch (lk) {
-    case LK_FREQ: return ph_s->flt[F_FREQ];
-    case LK_RESO: return ph_s->flt[F_RESO];
-    case LK_FENV: return ph_s->flt[F_ENV];
-    case LK_ADEC: return ph_s->amp[A_DEC];
-    case LK_VOL: return ph_s->amp[A_VOL];
-    case LK_OD: return ph_s->fx[X_OD];
-    case LK_BR: return ph_s->fx[X_BR];
-    case LK_SRR: return ph_s->fx[X_SRR];
-    case LK_DEL: return ph_s->fx[X_DEL];
-    case LK_REV: return ph_s->fx[X_REV];
-    case LK_CHR: return ph_s->fx[X_CHR];
-    default: return 64;                          /* (the pan: the centre) */
-    }
-}
+static int32_t ph_base(uint32_t lk) { return lk_base(ph_s, lk); }   /* (the sound's own value: ui.c) */
 static void ph_move(uint32_t i, uint32_t lk, int32_t lo, int32_t hi) { ph_lock(i, lk, ph_base(lk) + ph_ri(lo, hi)); }
 
 /* a Euclidean rhythm: k hits as evenly as 16 steps allow, turned by rot */
@@ -331,6 +315,62 @@ static void ph_drone(void)
         ph_step(i, -n, ph_ri(70, 110), (uint32_t)ph_ri(6, 10), ph_prob(30, 60));
         ph_move(i, LK_FREQ, -40, -10);
     }
+}
+
+/* SHIFT and the phrase key: new locks on the steps the track holds, as its role locks (each lock's chance a step,
+ * in LK_* order: FREQ RESO ENV DECAY VOL DRIVE BITS SRR DELAY REVERB CHORUS PAN); the notes, velocities, lengths
+ * and conditions as they were */
+static const uint8_t RL_P[NRO][NLK] = {
+    {25, 0, 10, 30, 0, 35, 20, 10, 0, 10, 0, 0},        /* KICK */
+    {25, 10, 10, 25, 10, 20, 25, 30, 20, 25, 0, 30},    /* SNARE */
+    {35, 10, 0, 35, 15, 0, 12, 10, 10, 5, 0, 60},       /* HAT */
+    {50, 20, 10, 20, 15, 15, 25, 30, 30, 15, 10, 90},   /* PERC */
+    {70, 40, 20, 20, 20, 40, 45, 50, 25, 15, 10, 90},   /* NOISE */
+    {90, 40, 25, 15, 0, 35, 10, 5, 5, 5, 0, 0},         /* BASS */
+    {40, 15, 15, 10, 0, 10, 10, 5, 35, 20, 15, 30},     /* LEAD */
+    {40, 10, 10, 15, 0, 15, 20, 10, 35, 20, 10, 25},    /* STAB */
+    {30, 10, 10, 0, 0, 5, 5, 5, 10, 50, 40, 20},        /* DRONE */
+};
+static void phrase_relock(uint32_t t)
+{
+    uint32_t i, l, role;
+    int32_t pan = 64;
+    ph_seed = next_seed();
+    ph_t = t;
+    ph_s = &ui.snd[t][ui.eng[t]];
+    role = phrase_role(ph_s);
+    for (i = 0; i < NSTEP; i++) {
+        int acc = (i & 3u) == 0u;
+        memset((void *)seq_lock[t][i], LK_NONE, NLK);
+        if (!seq_note[t][i])
+            continue;
+        for (l = 0; l < NLK; l++) {
+            if (!ph_ch(RL_P[role][l]))
+                continue;
+            switch (l) {
+            case LK_FREQ: ph_move(i, l, acc ? -10 : -35, acc ? 35 : 20); break;
+            case LK_RESO: ph_move(i, l, -20, 40); break;
+            case LK_FENV: ph_move(i, l, -25, 30); break;
+            case LK_ADEC: ph_move(i, l, acc ? 0 : -45, acc ? 35 : 15); break;
+            case LK_VOL: ph_lock(i, l, ph_ri(acc ? 90 : 50, 127)); break;
+            case LK_OD: ph_move(i, l, acc ? 20 : 5, acc ? 70 : 40); break;
+            case LK_BR: ph_lock(i, l, ph_ri(20, 115)); break;
+            case LK_SRR: ph_lock(i, l, ph_ri(10, 120)); break;
+            case LK_DEL: ph_lock(i, l, ph_ri(45, 127)); break;
+            case LK_REV: ph_lock(i, l, ph_ri(40, 127)); break;
+            case LK_CHR: ph_lock(i, l, ph_ri(40, 120)); break;
+            default:                             /* (the pan: hard sides now and then, else a walk) */
+                pan = ph_ch(25) ? (ph_ch(50) ? 0 : 127) : clampi(pan + ph_ri(-30, 30), 0, 127);
+                ph_lock(i, l, pan);
+                break;
+            }
+        }
+    }
+    while (pat_bytes() > PAT_SEQ_ROOM) {
+        uint32_t j = ph_rnd(NSTEP), k = ph_rnd(NLK);
+        seq_lock[t][j][k] = LK_NONE;
+    }
+    pat_dirty = 1;
 }
 
 /* the chosen track's phrase, new; the pattern changed */

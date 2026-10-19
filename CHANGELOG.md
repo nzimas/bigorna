@@ -1,5 +1,23 @@
 # Changelog
 
+## Build 15
+
+Added
+- Parameter locks by hand, in the step view, on the step held:
+  - With no black key chosen, the four knobs lock what they set on the track's view: KNOB 1 FREQ, 2 RESO, 3 the
+    delay send, 4 the reverb send (with SHIFT: 3 the chorus send, 4 overdrive). The lock shows as a dial (FREQ S5).
+  - SELECT locks the step's level and ALGORITHM its pan, whatever black key is chosen.
+  - The fifth black key from the left, FX: KNOB 1 sample rate reduction, 2 bit reduction, 3 overdrive, 4 the amp's
+    decay (per-step gating), on a page of four rows. A row's bar is grey while the step plays the sound's own value,
+    in the track's colour once it is locked.
+  - A lock starts from the sound's own value.
+- SHIFT + the phrase key (the first black key, in the step view): new locks on the steps the track holds, in the
+  manner of its sound's role; notes, velocities, lengths and conditions are kept. The screen flashes NEW / LOCKS.
+
+Changed
+- The step view no longer shows the strip of steps at the bottom: the track's screen stays as it is, level and pan
+  included; the white keys show the steps.
+
 ## Build 14
 
 Added
