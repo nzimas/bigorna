@@ -55,10 +55,12 @@ typedef struct {
     uint16_t tempo;              /* 0: GLOBAL (the project's) */
     uint8_t seq[676];            /* the steps (below) */
 } pat_t;
-/* the steps, from build 18: seq[t] track t's length (0: 16; low 5 bits) and, from build 19, its clock (top 3 bits:
- * (division + 3) mod 6, so that 0 -- every pattern before -- is 1X); seq[6] SEQ_V3; seq[7] the records; then a record for
- * each step that holds a note: its place (16 t + i), its note, velocity, length, condition, the number of its locks,
- * then each lock: its parameter (tracks.c's ids) and its value, low byte first.
+/* the steps, from build 20: seq[t] track t's length (0: 16; low 5 bits) and its clock (top 3 bits: (division + 3)
+ * mod 6, so that 0 -- every pattern before build 19 -- is 1X); seq[6] SEQ_V4; seq[7] the records; seq[8 + t] track
+ * t's direction, seq[14 + t] its phrase DENSITY, seq[20 + t] its COMPLEXITY; from seq[32], a record for each step that
+ * holds a note: its place (16 t + i), its note, velocity, its length (low 4 bits) and ratchet (top 4), its condition,
+ * the number of its locks, then each lock: its parameter (tracks.c's ids) and its value, low byte first.
+ * (Build 18 and 19, SEQ_V3: the records from seq[8], the length a byte of its own, no direction, settings, ratchet.)
  * (Builds 11 .. 17, SEQ_V2: the record's length shared a byte with the top of a mask of 12 locks -- the phrase
  * generator's, LK_* -- its low byte where the count is now, then a byte for each lock. Builds 9 and 10 kept every
  * step at a fixed place: SEQ_OLD_*) */
@@ -66,6 +68,11 @@ typedef struct {
 #define SEQ_FMT 6u
 #define SEQ_V2 2u
 #define SEQ_V3 3u
+#define SEQ_V4 4u
+#define SEQ_DIR 8u
+#define SEQ_DEN 14u
+#define SEQ_CX 20u
+#define SEQ_REC4 32u
 #define SEQ_NREC 7u
 #define SEQ_REC 8u
 #define PAT_SEQ_ROOM 676u
@@ -217,7 +224,7 @@ static uint32_t pl_n(uint32_t t, uint32_t i)    /* step i of track t: its locks 
 /* the bytes the steps playing take in a pattern */
 static uint32_t pat_bytes(void)
 {
-    uint32_t t, i, n = SEQ_REC;
+    uint32_t t, i, n = SEQ_REC4;
     for (t = 0; t < NTRACK; t++)
         for (i = 0; i < NSTEP; i++)
             if (seq_note[t][i])
@@ -227,13 +234,16 @@ static uint32_t pat_bytes(void)
 static void pat_take(pat_t *p)               /* the pattern playing, into a slot of the store (what will not fit:
                                               * the last steps' locks, then the steps, left out) */
 {
-    uint32_t t, i, o = SEQ_REC, n = 0;
+    uint32_t t, i, o = SEQ_REC4, n = 0;
     memset(p, 0, sizeof *p);
     p->used = 1;
     p->tempo = pat_tempo;
-    p->seq[SEQ_FMT] = SEQ_V3;
+    p->seq[SEQ_FMT] = SEQ_V4;
     for (t = 0; t < NTRACK; t++) {
         p->seq[SEQ_LEN + t] = (uint8_t)(seq_len[t] | ((seq_div[t] + SEQ_DIV1) % NDIV) << 5);
+        p->seq[SEQ_DIR + t] = seq_dir[t];
+        p->seq[SEQ_DEN + t] = ui.gen_den[t];
+        p->seq[SEQ_CX + t] = ui.gen_cx[t];
         for (i = 0; i < NSTEP; i++) {
             uint32_t j, nl = pl_n(t, i), at;
             if (!seq_note[t][i] || o + 6u > PAT_SEQ_ROOM)
@@ -243,7 +253,7 @@ static void pat_take(pat_t *p)               /* the pattern playing, into a slot
             p->seq[o++] = (uint8_t)(t * NSTEP + i);
             p->seq[o++] = seq_note[t][i];
             p->seq[o++] = seq_vel[t][i];
-            p->seq[o++] = seq_glen[t][i];
+            p->seq[o++] = (uint8_t)(seq_glen[t][i] | seq_rtg[t][i] << 4);
             p->seq[o++] = seq_cond[t][i];
             at = o++;
             p->seq[at] = 0;
@@ -273,13 +283,17 @@ static void pat_give(uint32_t k)             /* slot k of the store, as the patt
     memset((void *)seq_glen, GLEN_DEF, sizeof seq_glen);
     memset((void *)seq_cond, CD_NONE, sizeof seq_cond);
     memset((void *)seq_lid, PL_NONE, sizeof seq_lid);
+    memset((void *)seq_rtg, 0, sizeof seq_rtg);
     for (t = 0; t < NTRACK; t++) {
-        uint32_t b = p->used ? p->seq[SEQ_LEN + t] : 0u, c = b >> 5;
+        uint32_t b = p->used ? p->seq[SEQ_LEN + t] : 0u, c = b >> 5, v4 = p->used && p->seq[SEQ_FMT] == SEQ_V4;
         seq_len[t] = (uint8_t)((b & 31u) <= NSTEP ? b & 31u : 0u);
         seq_div[t] = (uint8_t)(c < NDIV ? (c + SEQ_DIV1) % NDIV : SEQ_DIV1);
+        seq_dir[t] = (uint8_t)(v4 && p->seq[SEQ_DIR + t] < NDIR ? p->seq[SEQ_DIR + t] : DIR_FWD);
+        ui.gen_den[t] = (uint8_t)(v4 && p->seq[SEQ_DEN + t] <= 100u ? p->seq[SEQ_DEN + t] : 50u);
+        ui.gen_cx[t] = (uint8_t)(v4 && p->seq[SEQ_CX + t] <= 100u ? p->seq[SEQ_CX + t] : 50u);
     }
-    if (p->used && p->seq[SEQ_FMT] == SEQ_V3) {
-        uint32_t o = SEQ_REC, r;
+    if (p->used && (p->seq[SEQ_FMT] == SEQ_V3 || p->seq[SEQ_FMT] == SEQ_V4)) {
+        uint32_t v4 = p->seq[SEQ_FMT] == SEQ_V4, o = v4 ? SEQ_REC4 : SEQ_REC, r;
         for (r = 0; r < p->seq[SEQ_NREC] && o + 6u <= PAT_SEQ_ROOM; r++) {
             uint32_t id = p->seq[o], nl = p->seq[o + 5u], l;
             if (id >= NTRACK * NSTEP)
@@ -287,7 +301,11 @@ static void pat_give(uint32_t k)             /* slot k of the store, as the patt
             t = id / NSTEP;
             i = id % NSTEP;
             seq_vel[t][i] = (uint8_t)clampi(p->seq[o + 2u], 1, 127);
-            seq_glen[t][i] = (uint8_t)(p->seq[o + 3u] < NGLEN ? p->seq[o + 3u] : GLEN_DEF);
+            {
+                uint32_t g = v4 ? p->seq[o + 3u] & 15u : p->seq[o + 3u], rt = v4 ? p->seq[o + 3u] >> 4 : 0u;
+                seq_glen[t][i] = (uint8_t)(g < NGLEN ? g : GLEN_DEF);
+                seq_rtg[t][i] = (uint8_t)(rt < NRTG ? rt : 0u);
+            }
             seq_cond[t][i] = (uint8_t)(p->seq[o + 4u] < NCOND ? p->seq[o + 4u] : CD_NONE);
             seq_note[t][i] = p->seq[o + 1u];
             o += 6u;

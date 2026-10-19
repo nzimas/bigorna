@@ -11,6 +11,8 @@
  * the overdrive, the bit and sample rate reduction, the sends and the pan; drums lock sparingly where it accents,
  * noise and percussion lock almost every step. The notes come from the track's last note played (else its root) and
  * move in the scale chosen.
+ * The track's DENSITY and COMPLEXITY (the PHRASE page, 0 .. 100, 50 as drawn) thin the phrase out or fill it with
+ * ghosts, and take locks away or add more (and ratchets).
  * The pattern has room for so many locks (projects.c): a phrase that would not fit loses locks at random until it
  * does. */
 
@@ -337,48 +339,129 @@ static const uint8_t RL_P[NRO][NLK] = {
     {40, 10, 10, 15, 0, 15, 20, 10, 35, 20, 10, 25, 15, 20},    /* STAB */
     {30, 10, 10, 0, 0, 5, 5, 5, 10, 50, 40, 20, 5, 40},        /* DRONE */
 };
+/* a lock of target l on step i, as its role's would be (acc: on the beat; pan: the walk the pans take) */
+static void ph_lockval(uint32_t i, uint32_t l, int acc, int32_t *pan)
+{
+    switch (l) {
+    case LK_FREQ: ph_move(i, l, acc ? -10 : -35, acc ? 35 : 20); break;
+    case LK_RESO: ph_move(i, l, -20, 40); break;
+    case LK_FENV: ph_move(i, l, -25, 30); break;
+    case LK_ADEC: ph_move(i, l, acc ? 0 : -45, acc ? 35 : 15); break;
+    case LK_VOL: ph_lock(i, l, ph_ri(acc ? 90 : 50, 127)); break;
+    case LK_OD: ph_move(i, l, acc ? 20 : 5, acc ? 70 : 40); break;
+    case LK_BR: ph_lock(i, l, ph_ri(20, 115)); break;
+    case LK_SRR: ph_lock(i, l, ph_ri(10, 120)); break;
+    case LK_DEL: ph_lock(i, l, ph_ri(45, 127)); break;
+    case LK_REV: ph_lock(i, l, ph_ri(40, 127)); break;
+    case LK_CHR: ph_lock(i, l, ph_ri(40, 120)); break;
+    case LK_DST: ph_lock(i, l, ph_ri(20, 110)); break;
+    case LK_SLICE: ph_lock(i, l, ph_ri(1, 16)); break;
+    default:                                     /* (the pan: hard sides now and then, else a walk) */
+        *pan = ph_ch(25) ? (ph_ch(50) ? 0 : 127) : clampi(*pan + ph_ri(-30, 30), 0, 127);
+        ph_lock(i, l, *pan);
+        break;
+    }
+}
+/* over the pattern's room: track t's locks go, at random; then the other tracks'; then t's softest notes */
+static void ph_trim(uint32_t t)
+{
+    while (pat_bytes() > PAT_SEQ_ROOM) {
+        uint32_t u, i, j, k = ph_rnd(NSTEP * NPL), found = 0;
+        for (u = 0; u < NTRACK && !found; u++) {
+            uint32_t tt = (t + u) % NTRACK;
+            for (j = 0; j < NSTEP * NPL && !found; j++) {
+                uint32_t q = (k + j) % (NSTEP * NPL);
+                if (seq_lid[tt][q / NPL][q % NPL] != PL_NONE) {
+                    seq_lid[tt][q / NPL][q % NPL] = PL_NONE;
+                    found = 1;
+                }
+            }
+        }
+        if (found)
+            continue;
+        for (i = 0, k = NSTEP; i < NSTEP; i++)
+            if (seq_note[t][i] && (k == NSTEP || seq_vel[t][i] < seq_vel[t][k]))
+                k = i;
+        if (k == NSTEP)
+            break;
+        seq_note[t][k] = 0;
+    }
+}
+/* COMPLEXITY's share of a chance: x 0 at 0, as drawn at 50, x 2 at 100 */
+static uint32_t ph_cxp(uint32_t p, uint32_t cx) { return p * cx / 50u; }
 static void phrase_relock(uint32_t t)
 {
-    uint32_t i, l, role;
+    uint32_t i, l, role, cx = ui.gen_cx[t];
     int32_t pan = 64;
     ph_seed = next_seed();
     ph_t = t;
     ph_s = &ui.snd[t][ui.eng[t]];
     role = phrase_role(ph_s);
     for (i = 0; i < NSTEP; i++) {
-        int acc = (i & 3u) == 0u;
         pl_clear(t, i);
         if (!seq_note[t][i])
             continue;
-        for (l = 0; l < NLK; l++) {
-            if (!ph_ch(RL_P[role][l]))
-                continue;
-            switch (l) {
-            case LK_FREQ: ph_move(i, l, acc ? -10 : -35, acc ? 35 : 20); break;
-            case LK_RESO: ph_move(i, l, -20, 40); break;
-            case LK_FENV: ph_move(i, l, -25, 30); break;
-            case LK_ADEC: ph_move(i, l, acc ? 0 : -45, acc ? 35 : 15); break;
-            case LK_VOL: ph_lock(i, l, ph_ri(acc ? 90 : 50, 127)); break;
-            case LK_OD: ph_move(i, l, acc ? 20 : 5, acc ? 70 : 40); break;
-            case LK_BR: ph_lock(i, l, ph_ri(20, 115)); break;
-            case LK_SRR: ph_lock(i, l, ph_ri(10, 120)); break;
-            case LK_DEL: ph_lock(i, l, ph_ri(45, 127)); break;
-            case LK_REV: ph_lock(i, l, ph_ri(40, 127)); break;
-            case LK_CHR: ph_lock(i, l, ph_ri(40, 120)); break;
-            case LK_DST: ph_lock(i, l, ph_ri(20, 110)); break;
-            case LK_SLICE: ph_lock(i, l, ph_ri(1, 16)); break;
-            default:                             /* (the pan: hard sides now and then, else a walk) */
-                pan = ph_ch(25) ? (ph_ch(50) ? 0 : 127) : clampi(pan + ph_ri(-30, 30), 0, 127);
-                ph_lock(i, l, pan);
-                break;
+        for (l = 0; l < NLK; l++)
+            if (ph_ch(ph_cxp(RL_P[role][l], cx)))
+                ph_lockval(i, l, (i & 3u) == 0u, &pan);
+    }
+    ph_trim(t);
+    pat_dirty = 1;
+}
+
+/* DENSITY, after the role's phrase (50: as it drew it): below, steps thinned out (the strong ones -- on the beat,
+ * loud -- last); above, ghosts added between them: soft, short, often on a condition, near the notes around them */
+static void ph_density(uint32_t role, uint32_t den)
+{
+    uint32_t i;
+    int32_t last = ph_ref;                       /* (the note before: a ghost lands near it) */
+    if (den < 50u) {
+        uint32_t p = (50u - den) * 9u / 5u;      /* (0: 90 % of them gone) */
+        for (i = 0; i < NSTEP; i++) {
+            int strong = (i & 3u) == 0u && seq_vel[ph_t][i] >= 100u;
+            if (seq_note[ph_t][i] && ph_ch(strong ? p / 3u : p)) {
+                seq_note[ph_t][i] = 0;
+                pl_clear(ph_t, i);
             }
         }
+    } else if (den > 50u && role != RO_DRONE) {
+        uint32_t p = (den - 50u) * 7u / 5u;      /* (100: 70 % of the empty steps) */
+        for (i = 0; i < NSTEP; i++) {
+            if (seq_note[ph_t][i]) {
+                last = seq_note[ph_t][i];
+                continue;
+            }
+            if (!ph_ch(p))
+                continue;
+            ph_step(i, 0, ph_ri(35, 75), (uint32_t)ph_ri(0, 2), ph_ch(40) ? ph_cond_thin() : CD_NONE);
+            if (role > RO_PERC || ph_ch(20))     /* (drums mostly on their own note; the rest near the note before) */
+                seq_note[ph_t][i] = (uint8_t)scale_move(role > RO_PERC ? last : ph_ref, ph_ri(-1, 1));
+        }
     }
-    while (pat_bytes() > PAT_SEQ_ROOM) {
-        uint32_t j = ph_rnd(NSTEP), k = ph_rnd(NLK);
-        seq_lid[t][j][k % NPL] = PL_NONE;
+}
+/* COMPLEXITY, after it (50: as the role drew it): below, locks taken away; above, more of them, as its role locks;
+ * and from 40 up, ratchets now and then -- rolls on hats, snares, percussion and noise most */
+static void ph_complexity(uint32_t role, uint32_t cx)
+{
+    static const uint8_t RT[NRO] = {15, 40, 50, 40, 60, 20, 10, 20, 0};   /* (a role's ratchets, at 100, percent) */
+    uint32_t i, l, j;
+    int32_t pan = 64;
+    for (i = 0; i < NSTEP; i++) {
+        if (!seq_note[ph_t][i])
+            continue;
+        if (cx < 50u) {
+            for (j = 0; j < NPL; j++)
+                if (seq_lid[ph_t][i][j] != PL_NONE && ph_ch((50u - cx) * 2u))
+                    seq_lid[ph_t][i][j] = PL_NONE;
+        } else if (cx > 50u)
+            for (l = 0; l < NLK; l++)
+                if (ph_ch(RL_P[role][l] * (cx - 50u) / 50u))
+                    ph_lockval(i, l, (i & 3u) == 0u, &pan);
+        if (cx > 40u && ph_ch(RT[role] * (cx - 40u) / 60u)) {
+            static const uint8_t PICK[8] = {1, 1, 2, 2, 3, 3, 4, 5};   /* (2 and 3 most, 6 and 8 rarely) */
+            seq_rtg[ph_t][i] = PICK[ph_rnd(role == RO_NOISE || role == RO_HAT ? 8 : 6)];
+        }
     }
-    pat_dirty = 1;
 }
 
 /* the chosen track's phrase, new; the pattern changed */
@@ -396,6 +479,7 @@ static void phrase_new(uint32_t t)
         seq_vel[t][i] = VEL_DEF;
         seq_glen[t][i] = GLEN_DEF;
         seq_cond[t][i] = CD_NONE;
+        seq_rtg[t][i] = 0;
         pl_clear(t, i);
     }
     switch (role) {
@@ -409,12 +493,11 @@ static void phrase_new(uint32_t t)
     case RO_STAB: ph_lead(1); break;
     default: ph_drone(); break;
     }
+    ph_density(role, ui.gen_den[t]);
+    ph_complexity(role, ui.gen_cx[t]);
     for (i = 0; i < NSTEP; i++)                  /* (no locks left on a step that holds no note) */
         if (!seq_note[t][i])
             pl_clear(t, i);
-    while (pat_bytes() > PAT_SEQ_ROOM) {         /* (over the pattern's room: locks go, at random) */
-        uint32_t j = ph_rnd(NSTEP), l = ph_rnd(NPL);
-        seq_lid[t][j][l] = PL_NONE;
-    }
+    ph_trim(t);
     pat_dirty = 1;
 }

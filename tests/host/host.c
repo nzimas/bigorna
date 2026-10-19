@@ -650,6 +650,8 @@ static int cmd_projects(const char *dir)
         EXPECT(n0 == key_note(kw[2], ui.oct[5]) && !pat_dirty, "the note played kept as the track's last");
         tap(KEY_STEP);
         EXPECT(step_view(), "STEP: the step view");
+        tap(KEY_TRIG);
+        EXPECT(ui.trig, "the 3rd black key: TRIG on");
         ui_leds();
         EXPECT(host_led[14u + KEY_STEP], "STEP lit");
         fm1_in.notes |= 1u << kw[0];
@@ -729,13 +731,13 @@ static int cmd_projects(const char *dir)
         fm1_in.buttons = 0;
         ui_input();
         fm1_ms += 2000;
-        EXPECT(pat_cur == 0u && pat_store[0].used && !pat_dirty && pat_store[0].seq[SEQ_FMT] == SEQ_V3 &&
-               pat_store[0].seq[SEQ_NREC] == 2u && pat_store[0].seq[SEQ_REC + 6u + 1u] == n0,
+        EXPECT(pat_cur == 0u && pat_store[0].used && !pat_dirty && pat_store[0].seq[SEQ_FMT] == SEQ_V4 &&
+               pat_store[0].seq[SEQ_NREC] == 2u && pat_store[0].seq[SEQ_REC4 + 6u + 1u] == n0,
                "ARP held saves the pattern playing, its steps");
         {   /* (written into session 3's flash) */
             int rc = prj_read(2, 1u);
             const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
-            EXPECT(!rc && pp[0].used && pp[0].seq[SEQ_REC] == 5u * NSTEP && pp[0].seq[SEQ_REC + 1u] == n1,
+            EXPECT(!rc && pp[0].used && pp[0].seq[SEQ_REC4] == 5u * NSTEP && pp[0].seq[SEQ_REC4 + 1u] == n1,
                    "the steps are in the session's flash");
         }
         btn(B_ARP, 0);
@@ -1001,6 +1003,128 @@ static int cmd_projects(const char *dir)
         tap(KEY_STEP);
         seq_len[2] = 0;
         seq_div[2] = SEQ_DIV1;
+    }
+    {   /* the directions (the step view's 4th .. 6th black keys), ratchets (TRIG's other half), the PHRASE page */
+        int32_t out[2 * CTL];
+        uint32_t kw[16], k, i, seen[NSTEP], hits;
+        static pat_t pp;
+        for (k = 0; k < NKEY; k++)
+            if (white_ix(k) >= 0)
+                kw[white_ix(k)] = k;
+        ui.sel = 3;
+        memset((void *)seq_note[3], 0, NSTEP);
+        for (i = 0; i < 4u; i++)
+            seq_note[3][i] = 60;
+        seq_len[3] = 4;
+        tap(KEY_STEP);
+        tap(KEY_DIR[0]);
+        EXPECT(seq_dir[3] == DIR_REV, "the 4th black key: REVERSE");
+        ui_leds();
+        EXPECT(host_led[14u + KEY_DIR[0]] && !host_led[14u + KEY_DIR[1]], "its key lit");
+        seq_run = 1;
+        memset(seen, 0, sizeof seen);
+        for (i = 0, k = 0xFF; i < 3000u; i++) {   /* (the order it plays its four steps) */
+            mix_block(out);
+            if (seq_pos[3] != k && seen[0] < 6u) {
+                k = seq_pos[3];
+                seen[++seen[0]] = k;
+            }
+        }
+        EXPECT(seen[1] == 3u && seen[2] == 2u && seen[3] == 1u && seen[4] == 0u && seen[5] == 3u, "REVERSE: 4 3 2 1 4");
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        tap(KEY_DIR[1]);
+        EXPECT(seq_dir[3] == DIR_PING, "the 5th: PING-PONG");
+        seq_run = 1;
+        memset(seen, 0, sizeof seen);
+        for (i = 0, k = 0xFF; i < 4000u; i++) {
+            mix_block(out);
+            if (seq_pos[3] != k && seen[0] < 8u) {
+                k = seq_pos[3];
+                seen[++seen[0]] = k;
+            }
+        }
+        EXPECT(seen[1] == 0u && seen[4] == 3u && seen[5] == 2u && seen[7] == 0u && seen[8] == 1u, "PING-PONG: 1 2 3 4 3 2 1 2");
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        tap(KEY_DIR[1]);
+        EXPECT(seq_dir[3] == DIR_FWD, "again: forward");
+        /* TRIG's other half: RATCHET 4 on step 1 -- four hits in the step */
+        fm1_in.notes |= 1u << kw[0];
+        ui_input();
+        turn(EN_PRESET, 1);
+        ui_input();
+        turn(EN_K1, 3);
+        EXPECT(seq_rtg[3][0] == 3u && RTG_N[3] == 4u, "PRESETS right, KNOB 1: RATCHET 4");
+        ui_draw();
+        shot(dir, "step_ratchet");
+        fm1_in.notes &= ~(1u << kw[0]);
+        ui_input();
+        for (i = 1; i < 4u; i++)
+            seq_note[3][i] = 0;
+        seq_run = 1;
+        for (i = 0, hits = 0; i < 151u * 4u; i++) {   /* (the first step: the notes played in it) */
+            uint32_t a0 = seq_sounded[3];
+            mix_block(out);
+            hits += i < 140u ? seq_sounded[3] - a0 : 0u;
+        }
+        EXPECT(hits == 4u, "four hits in the step");
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        /* the phrase key held: the PHRASE page; DENSITY and COMPLEXITY */
+        fm1_in.notes |= 1u << KEY_GEN;
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        fm1_in.notes &= ~(1u << KEY_GEN);
+        ui_input();
+        EXPECT(ui.page == PG_GEN, "the phrase key held: the PHRASE page");
+        turn(EN_K1, -50);
+        turn(EN_K2, 50);
+        EXPECT(ui.gen_den[3] == 0u && ui.gen_cx[3] == 100u, "DENSITY 0, COMPLEXITY 100");
+        fm1_ms += 2000;
+        ui_draw();
+        shot(dir, "phrase_page");
+        gen_sound(&ui.snd[3][ENG_FMD], ENG_FMD, 8, -1, 4242u);   /* (METAL HAT: a role that ratchets) */
+        ui.eng[3] = ENG_FMD;
+        {
+            uint32_t thin = 0, full = 0, rt = 0, r;
+            for (r = 0; r < 20u; r++) {
+                ui.gen_den[3] = 0;
+                phrase_new(3);
+                for (i = 0; i < NSTEP; i++)
+                    thin += seq_note[3][i] != 0;
+                ui.gen_den[3] = 100;
+                phrase_new(3);
+                for (i = 0; i < NSTEP; i++) {
+                    full += seq_note[3][i] != 0;
+                    rt += seq_rtg[3][i] != 0;
+                }
+            }
+            EXPECT(full > thin * 2u, "DENSITY: fuller as it goes up");
+            EXPECT(rt > 0u, "COMPLEXITY 100: ratchets now and then");
+            pat_take(&pp);
+            pat_store[13] = pp;
+            seq_dir[3] = DIR_RND;
+            pat_give(13);
+            EXPECT(seq_dir[3] == DIR_FWD && ui.gen_den[3] == 100u && ui.gen_cx[3] == 100u, "a pattern keeps direction, settings");
+        }
+        tap(KEY_GEN);                            /* (a short press on the page: a new phrase, the page kept) */
+        EXPECT(ui.page == PG_GEN && ui.flash_on, "a short press: a new phrase");
+        fm1_ms += 2000;
+        fm1_in.notes |= 1u << KEY_GEN;
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        fm1_in.notes &= ~(1u << KEY_GEN);
+        ui_input();
+        EXPECT(ui.page == PG_MAIN, "held again: the page down");
+        tap(KEY_STEP);
+        seq_len[3] = 0;
+        ui.gen_den[3] = ui.gen_cx[3] = 50;
     }
     {   /* REC: armed (the metronome counts), the first note starts it on step 1; each note to the nearest step */
         int32_t out[2 * CTL];

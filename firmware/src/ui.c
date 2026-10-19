@@ -15,13 +15,20 @@
  *                             view the black keys, lit dimly:
  *                               the 1st   a new phrase for the track (phrase.c): its steps, conditions and locks;
  *                                         SHIFT and it: new locks on the steps the track holds, nothing else changed
+ *                                         Held 0.8 s: the PHRASE page, up or down: KNOB 1 the track's DENSITY, 2 its
+ *                                         COMPLEXITY (0 .. 100: how full its phrases; how many locks, conditions,
+ *                                         ratchets)
  *                               the 2nd   the TRACK page, up or down: KNOB 1 the track's LENGTH (1 .. 16 steps),
  *                                         KNOB 2 its CLOCK against the tempo's 16ths (1/8, 1/4, 1/2, 1X, 2X, 4X)
- *                             A step held: KNOB 1 its note (in the scale), 2 its velocity, 3 its length, 4 its trig
- *                             condition (a page of four rows); SELECT locks its level, ALGORITHM its pan (a dial). With
- *                             the EDIT pages up, the knobs lock what they turn on the step held instead -- any
- *                             parameter of the sound, eight locks a step (the page shows the step's values: locked
- *                             in the track's colour, the sound's own grey)
+ *                               the 3rd   TRIG on or off: on, a step held shows its own page -- KNOB 1 its note (in
+ *                                         the scale), 2 its velocity, 3 its length, 4 its trig condition; PRESETS
+ *                                         right, its other half: KNOB 1 its RATCHET (the step played 2 .. 8 times)
+ *                               the 4th .. 6th   the track's direction: REVERSE, PING-PONG, RANDOM (again: forward)
+ *                             A step held, TRIG off: the knobs lock what they set on the track's view on it (FREQ,
+ *                             RESO, the delay and reverb sends; SHIFT: chorus, overdrive), as a dial; SELECT locks its
+ *                             level, ALGORITHM its pan. With the EDIT pages up, the knobs lock what they turn on the
+ *                             step held -- any parameter of the sound, eight locks a step (the page shows the step's
+ *                             values: locked in the track's colour, the sound's own grey)
  *   PLAY                      the sequencer: plays, or stops (and recording ends, a loop being recorded is dropped)
  *   SHIFT + PLAY              the metronome off or on (it clicks while REC or the looper is armed or recording)
  *   REC                       recording into the chosen track's steps. Stopped: armed (REC flashes, the metronome
@@ -64,13 +71,16 @@ static const uint8_t KNOB[4] = {EN_K1, EN_K2, EN_K3, EN_K4};
 #define KEY_STEP 20u                 /* (the 3rd black key from the right) */
 #define KEY_GEN 1u                   /* (the 1st black key from the left: in the step view, a new phrase) */
 #define KEY_TRK 3u                   /* (the 2nd: in the step view, the TRACK page) */
+#define KEY_TRIG 5u                  /* (the 3rd: TRIG, the step held's own page) */
+static const uint8_t KEY_DIR[3] = {8, 10, 13};   /* (the 4th .. 6th: REVERSE, PING-PONG, RANDOM; the 7th, 8th free) */
+static const char *const DIR_NAME[NDIR] = {"FORWARD", "REVERSE", "PING-PONG", "RANDOM"};
 #define SHOWN_DIAL 30u               /* (ui.shown_page: the dial up; the step's own page) */
 #define SHOWN_STEP 31u
 #define KEY_NONE 0xFFu
 
 static const uint16_t TRACK_COL[NTRACK] = {RGB(255, 214, 0), RGB(0, 214, 255), RGB(255, 92, 210),
                                            RGB(96, 255, 96), RGB(255, 140, 0), RGB(190, 160, 255)};
-enum { PG_MAIN, PG_EDIT, PG_FXP, PG_TRK, PG_PRJ, PG_PRJD, PG_PAT };   /* (the sessions' list and page, the patterns' grid:
+enum { PG_MAIN, PG_EDIT, PG_FXP, PG_TRK, PG_GEN, PG_PRJ, PG_PRJD, PG_PAT };   /* (the sessions' list and page, the patterns' grid:
                                                               * projects.c) */
 
 static struct {
@@ -91,6 +101,10 @@ static struct {
     uint32_t step_t0;            /* .. pressed at */
     uint8_t sv;                  /* the step view on (STEP) */
     uint32_t gen_until;          /* the phrase key lit fully until */
+    uint8_t gen_down, gen_long, gen_sh;   /* the phrase key held: since gen_t0; held 0.8 s (its page); SHIFT with it */
+    uint32_t gen_t0;
+    uint8_t gen_den[NTRACK], gen_cx[NTRACK];   /* the phrase generator's DENSITY and COMPLEXITY, 0 .. 100, a track's */
+    uint8_t trig;                /* TRIG on (the 3rd black key): a step held shows its own page */
     uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
     uint8_t qk, qk_long;         /* the PATTERNS grid: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
     uint8_t rec;                 /* REC_* */
@@ -242,7 +256,7 @@ static int32_t scale_move(int32_t n, int32_t d)
 static int step_view(void) { return ui.sv; }
 static int step_held(void) { return ui.sv && ui.step_key != KEY_NONE; }
 /* the step's own page (NOTE, VEL, LEN, COND), while a step is held and the EDIT pages are not up */
-static int step_page(void) { return step_held() && ui.page != PG_EDIT && ui.page != PG_TRK; }
+static int step_page(void) { return step_held() && ui.trig && ui.page != PG_EDIT && ui.page != PG_TRK && ui.page != PG_GEN; }
 
 /* the steps' locks (the sequencer's, tracks.c): a lock is a parameter (page x 8 + knob; PL_PAN) and its value */
 static int pl_find(uint32_t t, uint32_t i, uint32_t id)
@@ -534,6 +548,7 @@ static void rec_note(uint32_t note, uint32_t vel, uint32_t k)
     seq_vel[t][i] = (uint8_t)clampi((int32_t)vel, 1, 127);
     seq_glen[t][i] = GLEN_DEF;
     seq_cond[t][i] = CD_NONE;
+    seq_rtg[t][i] = 0;
     pl_clear(t, i);
     seq_note[t][i] = (uint8_t)note;
     pat_dirty = 1;
@@ -613,6 +628,7 @@ static void step_down(uint32_t k)
         seq_vel[ui.sel][i] = VEL_DEF;
         seq_glen[ui.sel][i] = GLEN_DEF;
         seq_cond[ui.sel][i] = CD_NONE;
+        seq_rtg[ui.sel][i] = 0;
         seq_note[ui.sel][i] = (uint8_t)n;
         pat_dirty = 1;
     }
@@ -644,7 +660,12 @@ static void pl_turn(uint32_t id, int32_t s, int show)
 static void step_knob(uint32_t j, int32_t s)
 {
     uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key);
-    if (j == 0u) {
+    if (j >= 4u) {                               /* (the other half: E the ratchet) */
+        if (j == 4u)
+            seq_rtg[t][i] = (uint8_t)clampi((int32_t)seq_rtg[t][i] + s, 0, NRTG - 1);
+        else
+            return;
+    } else if (j == 0u) {
         seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], s);
         step_hear(seq_note[t][i]);
     } else if (j == 1u)
@@ -654,7 +675,7 @@ static void step_knob(uint32_t j, int32_t s)
     else
         seq_cond[t][i] = (uint8_t)clampi(seq_cond[t][i] + s, 0, NCOND - 1);
     ui.step_edit = 1;
-    ui.touched = (int8_t)j;
+    ui.touched = (int8_t)(j & 3u);
     ui.touch_until = fm1_ms + 1500u;
     pat_dirty = 1;
 }
@@ -740,11 +761,19 @@ static void ui_input(void)
             pat_quick_save();
         }
     }
-    ui.half = ui.page == PG_EDIT || ui.page == PG_FXP ? ui.ehalf : (uint8_t)sh;   /* (the pages' half: PRESETS's) */
-    if (step_page()) {                               /* a step held in the step view: the knobs its */
+    ui.half = ui.page == PG_EDIT || ui.page == PG_FXP || step_page() ? ui.ehalf : (uint8_t)sh;   /* (the pages' half:
+                                                                                              * PRESETS's) */
+    if (step_page()) {                               /* a step held in the step view, TRIG on: the knobs its */
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0)
-                step_knob(j, s);
+                step_knob(j + 4u * ui.half, s);
+    } else if (step_held() && ui.page != PG_EDIT && ui.page != PG_TRK && ui.page != PG_GEN) {   /* .. TRIG off: the
+                                                                                   * knobs' own, locked on it */
+        static const uint8_t LKK[2][4] = {{PG_FLT1 * 8 + 4, PG_FLT1 * 8 + 5, PL_DEL, PL_REV},
+                                          {PG_FLT1 * 8 + 4, PG_FLT1 * 8 + 5, PL_CHR, PG_FX * 8 + 1}};
+        for (j = 0; j < 4u; j++)
+            if ((s = enc_take(KNOB[j])) != 0)
+                pl_turn(LKK[sh][j], s, 1);
     } else if (step_held() && ui.page == PG_EDIT) {  /* .. with the EDIT pages up: what they turn, locked on it */
         uint32_t id = page_id(cur(), ui.edit_pg);
         for (j = 0; j < 4u; j++)
@@ -758,6 +787,15 @@ static void ui_input(void)
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0) {
                 par_turn(id, j + 4u * ui.half, s);
+                ui.touched = (int8_t)j;
+                ui.touch_until = fm1_ms + 1500u;
+            }
+    } else if (ui.page == PG_GEN) {                  /* PHRASE: KNOB 1 DENSITY, 2 COMPLEXITY */
+        for (j = 0; j < 4u; j++)
+            if ((s = enc_take(KNOB[j])) != 0 && j < 2u) {
+                uint8_t *v = j ? &ui.gen_cx[ui.sel] : &ui.gen_den[ui.sel];
+                *v = (uint8_t)clampi(*v + s, 0, 100);
+                pat_dirty = 1;
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
             }
@@ -914,7 +952,7 @@ static void ui_input(void)
             say(m, 1200);
         }
     }
-    if ((s = e_pre) != 0 && (ui.page == PG_EDIT || ui.page == PG_FXP)) {   /* EDIT, the effects: PRESETS the page's
+    if ((s = e_pre) != 0 && (ui.page == PG_EDIT || ui.page == PG_FXP || step_page())) {   /* EDIT, the effects: PRESETS the page's
                                                                           * half, right E .. H, left A .. D (never the
                                                                           * machine) */
         ui.ehalf = (uint8_t)(s > 0);
@@ -1021,11 +1059,29 @@ static void ui_input(void)
         return;
     }
     ui.qk = KEY_NONE;
+    if (ui.gen_down) {                               /* the phrase key: let go soon, a new phrase (SHIFT: new locks);
+                                                      * held 0.8 s, the PHRASE page up or down */
+        if (!((keys >> KEY_GEN) & 1u)) {
+            ui.gen_down = 0;
+            if (!ui.gen_long && step_view()) {
+                if (ui.gen_sh)
+                    phrase_relock(ui.sel);
+                else
+                    phrase_new(ui.sel);
+                ui.gen_until = fm1_ms + 400u;
+                flash("NEW", ui.gen_sh ? "LOCKS" : "PHRASE", TRACK_COL[ui.sel]);
+            }
+        } else if (!ui.gen_long && (uint32_t)(fm1_ms - ui.gen_t0) >= 800u) {
+            ui.gen_long = 1;
+            ui.page = ui.page == PG_GEN ? PG_MAIN : PG_GEN;
+            ui.force = 1;
+        }
+    }
     if ((ch & keys) >> KEY_STEP & 1u) {              /* STEP: the step view on or off */
         ui.sv = (uint8_t)!ui.sv;
         if (!ui.sv && ui.step_key != KEY_NONE)
             step_up();
-        if (!ui.sv && ui.page == PG_TRK)
+        if (!ui.sv && (ui.page == PG_TRK || ui.page == PG_GEN))
             ui.page = PG_MAIN;
         ui.force = 1;
     }
@@ -1035,14 +1091,26 @@ static void ui_input(void)
             ui.force = 1;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_GEN) {   /* a new phrase for the track (SHIFT: new
-                                                                         * locks on its steps) */
-            if (sh)
-                phrase_relock(ui.sel);
-            else
-                phrase_new(ui.sel);
-            ui.gen_until = fm1_ms + 400u;
-            flash("NEW", sh ? "LOCKS" : "PHRASE", TRACK_COL[ui.sel]);
+        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_GEN) {   /* the phrase key: on its release or held */
+            ui.gen_down = 1;
+            ui.gen_long = 0;
+            ui.gen_sh = (uint8_t)sh;
+            ui.gen_t0 = fm1_ms;
+            continue;
+        }
+        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_TRIG) {   /* TRIG on or off */
+            ui.trig = (uint8_t)!ui.trig;
+            ui.ehalf = 0;
+            say(ui.trig ? "TRIG ON" : "TRIG OFF", 700);
+            ui.force = 1;
+            continue;
+        }
+        if (((ch & keys) >> k & 1u) && step_view() && (k == KEY_DIR[0] || k == KEY_DIR[1] || k == KEY_DIR[2])) {
+            uint32_t d = k == KEY_DIR[0] ? DIR_REV : k == KEY_DIR[1] ? DIR_PING : DIR_RND;   /* (the track's direction;
+                                                                                         * again: forward) */
+            seq_dir[ui.sel] = (uint8_t)(seq_dir[ui.sel] == d ? DIR_FWD : d);
+            pat_dirty = 1;
+            say(DIR_NAME[seq_dir[ui.sel]], 900);
             continue;
         }
         if (!((ch >> k) & 1u) || !key_plays(k))
@@ -1120,7 +1188,19 @@ static void ui_leds(void)
             continue;
         }
         if (step_view() && k == KEY_GEN) {           /* (the phrase key: dim, lit as it makes one) */
-            fm1_led_key(14u + k, (int32_t)(ui.gen_until - fm1_ms) > 0);
+            fm1_led_key(14u + k, (int32_t)(ui.gen_until - fm1_ms) > 0 || ui.page == PG_GEN);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (step_view() && k == KEY_TRIG) {          /* (TRIG: dim, lit while on) */
+            fm1_led_key(14u + k, ui.trig);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (step_view() && (k == KEY_DIR[0] || k == KEY_DIR[1] || k == KEY_DIR[2])) {   /* (the directions: the one
+                                                                                     * the track goes lit) */
+            uint32_t d = k == KEY_DIR[0] ? DIR_REV : k == KEY_DIR[1] ? DIR_PING : DIR_RND;
+            fm1_led_key(14u + k, seq_dir[ui.sel] == d);
             led_dim_key(14u + k, 1);
             continue;
         }
@@ -1383,14 +1463,26 @@ static void draw_step_page(void)
     static const char *const NAME[4] = {"NOTE", "VEL", "LEN", "COND"};
     uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key), j;
     int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
-    int full = ui.force || ui.shown_page != SHOWN_STEP || ui.shown_sub != i;
+    int full = ui.force || ui.shown_page != SHOWN_STEP || ui.shown_sub != i + 16u * ui.half;
     if (full) {
         char t1[12] = "STEP ";
-        uint8_t h = ui.half;
         fmt_int(t1 + 5, (int32_t)i + 1);
-        ui.half = 0;                             /* (no halves here: the line under the title as A .. D's) */
-        draw_rows_title(t1, "TRIG", TRACK_COL[t]);
-        ui.half = h;
+        draw_rows_title(t1, "TRIG", TRACK_COL[t]);   /* (its half under the title: A .. D, E .. H) */
+    }
+    if (ui.half) {                               /* E .. H: the ratchet */
+        for (j = 0; j < 4u; j++) {
+            int32_t v = j == 0u ? seq_rtg[t][i] : 0;
+            if (!full && ui.shown_rows[j] == v && ((int32_t)j == tc) == ((int32_t)j == ui.shown_touch))
+                continue;
+            if (j == 0u)
+                draw_row(j, "RATCHET", RTG_NAME[v % NRTG], v * 1000 / (NRTG - 1), 0, (int32_t)j == tc, TRACK_COL[t]);
+            else
+                draw_row(j, "", "", 0, 0, 0, TRACK_COL[t]);
+            ui.shown_rows[j] = v;
+        }
+        ui.shown_touch = (int8_t)tc;
+        ui.shown_sub = (uint8_t)(i + 16u);
+        return;
     }
     for (j = 0; j < 4u; j++) {
         int32_t v, fr, key;
@@ -1414,6 +1506,36 @@ static void draw_step_page(void)
     }
     ui.shown_touch = (int8_t)tc;
     ui.shown_sub = (uint8_t)i;
+}
+
+/* the PHRASE page (the phrase key held): the track's DENSITY and COMPLEXITY, as rows */
+static void draw_gen_page(void)
+{
+    uint32_t t = ui.sel, j;
+    int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
+    int full = ui.force || ui.shown_page != PG_GEN || ui.shown_sub != t;
+    if (full) {
+        char t1[12] = "PHRASE ";
+        uint8_t h = ui.half;
+        fmt_int(t1 + 7, (int32_t)t + 1);
+        ui.half = 0;
+        draw_rows_title(t1, "", TRACK_COL[t]);
+        ui.half = h;
+    }
+    for (j = 0; j < 4u; j++) {
+        int32_t v = j == 0u ? ui.gen_den[t] : j == 1u ? ui.gen_cx[t] : 0;
+        char b[8];
+        if (!full && ui.shown_rows[j] == v && ((int32_t)j == tc) == ((int32_t)j == ui.shown_touch))
+            continue;
+        fmt_int(b, v);
+        if (j < 2u)
+            draw_row(j, j ? "COMPLEXITY" : "DENSITY", b, v * 10, 0, (int32_t)j == tc, TRACK_COL[t]);
+        else
+            draw_row(j, "", "", 0, 0, 0, TRACK_COL[t]);
+        ui.shown_rows[j] = v;
+    }
+    ui.shown_touch = (int8_t)tc;
+    ui.shown_sub = (uint8_t)t;
 }
 
 /* the TRACK page (the step view's 2nd black key): the track's LENGTH and CLOCK, as rows */
@@ -1590,6 +1712,12 @@ static void ui_draw(void)
         ui.force = 0;
         return;
     }
+    if (ui.page == PG_GEN) {
+        draw_gen_page();
+        ui.shown_page = PG_GEN;
+        ui.force = 0;
+        return;
+    }
     if (ui.page == PG_TRK) {
         draw_trk_page();
         ui.shown_page = PG_TRK;
@@ -1647,6 +1775,8 @@ static void ui_init(void)
     memset(ui.rec_step, 0xFF, sizeof ui.rec_step);
     memset(ui.lk_ev, 0xFF, sizeof ui.lk_ev);
     ui.lv_k = KEY_NONE;
+    memset(ui.gen_den, 50, sizeof ui.gen_den);
+    memset(ui.gen_cx, 50, sizeof ui.gen_cx);
     ui.click = 1;
     ui.seed = fm1_ticks() ^ 0x5EEDu;
     ui.scale = 6;                                    /* minor pentatonic, from C */

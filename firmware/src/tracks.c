@@ -460,6 +460,18 @@ static const uint8_t DIV_R8[NDIV] = {1, 2, 4, 8, 16, 32};
 static const char *const DIV_NAME[NDIV] = {"1/8", "1/4", "1/2", "1X", "2X", "4X"};
 static volatile uint8_t seq_div[NTRACK] = {SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1};
 static uint32_t seq_tacc[NTRACK];
+/* each track's direction through its steps (the step view's 4th .. 6th black keys) */
+enum { DIR_FWD, DIR_REV, DIR_PING, DIR_RND, NDIR };
+static volatile uint8_t seq_dir[NTRACK];
+static int8_t seq_ppd[NTRACK];            /* (PING: the way it goes now) */
+static uint8_t seq_rnd_n[NTRACK];         /* (RANDOM: steps since the count of its times through moved) */
+/* a step's ratchet: the step played RTG_N times, evenly through it, each a little softer (index 0: once) */
+#define NRTG 6u
+static const uint8_t RTG_N[NRTG] = {1, 2, 3, 4, 6, 8};
+static const char *const RTG_NAME[NRTG] = {"OFF", "2", "3", "4", "6", "8"};
+static volatile uint8_t seq_rtg[NTRACK][NSTEP];
+static uint8_t rt_left[NTRACK], rt_note[NTRACK], rt_vel[NTRACK], rt_step[NTRACK];
+static uint32_t rt_next[NTRACK], rt_int[NTRACK];
 static volatile uint32_t seq_tacc_now[NTRACK];   /* (as the block ended: where in its step the track is) */
 static volatile uint8_t seq_run;          /* PLAY */
 static volatile uint8_t seq_pos[NTRACK];  /* the step playing (the ISR's; the screen and the LEDs read it) */
@@ -505,9 +517,11 @@ static int seq_cond_ok(uint32_t t, uint32_t c)
 }
 /* a note of the sequencer's (a step's, a loop's) on track t, for len8 eighths of a step (0: until it plays again or
  * the sequencer stops), with the locks lk (0 none) */
+static uint32_t seq_sounded[NTRACK];             /* (the notes the sequencer has played a track: the tests count them) */
 static void seq_sound(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, const volatile uint8_t *lid,
                       const volatile int16_t *lv)
 {
+    seq_sounded[t]++;
     uint32_t i, k = SEQ_HOLD;
     for (i = 0; i < SEQ_HOLD; i++)               /* (the same note sounding: let go first, its slot taken) */
         if (sq_note[t][i] == n || (!sq_note[t][i] && k == SEQ_HOLD))
@@ -532,6 +546,51 @@ static void seq_sound(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, const
         sq_left[t][k] = (uint16_t)(bl ? (bl < 0xFFFEu ? bl : 0xFFFEu) : 1u);
     }
 }
+/* the step track t plays next, by its direction (and its times through counted, for A:B and 1ST) */
+static uint32_t seq_next(uint32_t t, uint32_t len)
+{
+    uint32_t pos = seq_pos[t], p;
+    int first = pos == 0xFFu;
+    if (!first && pos >= len)
+        pos = len - 1u;                          /* (the length made shorter under it) */
+    switch (seq_dir[t]) {
+    case DIR_REV:
+        p = first || pos == 0u ? len - 1u : pos - 1u;
+        if (!first && pos == 0u)
+            seq_loop[t]++;
+        break;
+    case DIR_PING:                               /* (0 .. len - 1 .. 0 .., the ends once each) */
+        if (first || len < 2u) {
+            seq_ppd[t] = 1;
+            p = 0;
+            break;
+        }
+        if (seq_ppd[t] > 0 && pos + 1u >= len)
+            seq_ppd[t] = -1;
+        else if (seq_ppd[t] < 0 && pos == 0u) {
+            seq_ppd[t] = 1;
+            seq_loop[t]++;
+        }
+        p = (uint32_t)((int32_t)pos + seq_ppd[t]);
+        break;
+    case DIR_RND:
+        seq_rnd = seq_rnd * 1664525u + 1013904223u;
+        p = (seq_rnd >> 16) % len;
+        if (!first && ++seq_rnd_n[t] >= len) {
+            seq_rnd_n[t] = 0;
+            seq_loop[t]++;
+        }
+        break;
+    default:
+        p = first ? 0u : pos + 1u;
+        if (p >= len) {
+            p = 0;
+            seq_loop[t]++;
+        }
+        break;
+    }
+    return p < len ? p : 0u;
+}
 static void seq_trig(uint32_t t, uint32_t p)
 {
     uint32_t n = seq_note[t][p], g = seq_glen[t][p], i;
@@ -541,8 +600,23 @@ static void seq_trig(uint32_t t, uint32_t p)
     }
     if (!n || !seq_cond_ok(t, seq_cond[t][p]))
         return;
-    seq_sound(t, n, seq_vel[t][p], g >= GLEN_INF ? 0u : maxi(1, GLEN_8TH[g] * 8 / DIV_R8[seq_div[t] % NDIV]),
-              seq_lid[t][p], seq_lv[t][p]);   /* (the length in the tempo's 16ths: its own steps' as its clock goes) */
+    {
+        uint32_t r8 = DIV_R8[seq_div[t] % NDIV], rn = RTG_N[seq_rtg[t][p] % NRTG];
+        uint32_t len8 = g >= GLEN_INF ? 0u : (uint32_t)maxi(1, GLEN_8TH[g] * 8 / (int32_t)r8);   /* (in the tempo's
+                                                                                              * 16ths) */
+        if (rn > 1u) {                           /* a ratchet: the hits after the first, as the step goes on */
+            uint32_t hit8 = (uint32_t)maxi(1, (int32_t)(64u / r8 / (2u * rn)));
+            if (len8 == 0u || len8 > hit8)
+                len8 = hit8;
+            rt_left[t] = (uint8_t)(rn - 1u);
+            rt_int[t] = SEQ_STEP8 / rn;
+            rt_next[t] = seq_tacc[t] + rt_int[t];
+            rt_note[t] = (uint8_t)n;
+            rt_vel[t] = seq_vel[t][p];
+            rt_step[t] = (uint8_t)p;
+        }
+        seq_sound(t, n, seq_vel[t][p], len8, seq_lid[t][p], seq_lv[t][p]);
+    }
     for (i = 0; i < NPL; i++) {                  /* (the track's: until its next step plays) */
         uint32_t id = seq_lid[t][p][i];
         trk[t].tv[i] = seq_lv[t][p][i];
@@ -636,6 +710,8 @@ static void seq_block(void)
             seq_loop[t] = 0;
             seq_pre[t] = 0;
             seq_tacc[t] = SEQ_STEP8;
+            seq_rnd_n[t] = 0;
+            rt_left[t] = 0;
         }
         seq_gstep = 15;
         seq_gcount = 0xFFFFFFFFu;
@@ -658,15 +734,18 @@ static void seq_block(void)
     }
     for (t = 0; t < NTRACK; t++) {               /* each track on its own clock */
         if (seq_tacc[t] >= SEQ_STEP8) {
-            uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_pos[t] + 1u;
+            uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_next(t, len);
             seq_tacc[t] -= SEQ_STEP8;
-            if (p >= len) {
-                p = 0;
-                if (seq_pos[t] != 0xFFu)
-                    seq_loop[t]++;
-            }
+            rt_left[t] = 0;                      /* (a ratchet not done by the next step: cut) */
             seq_pos[t] = (uint8_t)p;
             seq_trig(t, p);
+        } else if (rt_left[t] && seq_tacc[t] >= rt_next[t]) {   /* the ratchet's next hit */
+            uint32_t r8 = DIV_R8[seq_div[t] % NDIV], rn = RTG_N[seq_rtg[t][rt_step[t]] % NRTG];
+            rt_vel[t] = (uint8_t)maxi(1, rt_vel[t] - rt_vel[t] / 8);
+            seq_sound(t, rt_note[t], rt_vel[t], (uint32_t)maxi(1, (int32_t)(64u / r8 / (2u * (rn > 1u ? rn : 2u)))),
+                      seq_lid[t][rt_step[t]], seq_lv[t][rt_step[t]]);
+            rt_next[t] += rt_int[t];
+            rt_left[t]--;
         }
         seq_tacc[t] += CTL * (uint32_t)fx_bpm10 * DIV_R8[seq_div[t] % NDIV];
         seq_tacc_now[t] = seq_tacc[t];

@@ -1,5 +1,34 @@
 # Changelog
 
+## Build 20
+
+Added
+- The PHRASE page: in the step view, the phrase key (first black key) held 0.8 s brings it up and down (the key lit
+  while up). KNOB 1 the track's DENSITY, KNOB 2 its COMPLEXITY, 0 to 100, 50 as the generator drew before. DENSITY
+  below 50 thins the phrase out (the strong steps, on the beat and loud, go last); above 50 it adds ghost hits between
+  the steps, soft and short, often on a condition. COMPLEXITY below 50 takes locks away; above 50 adds more, as the
+  track's role locks; from 40 up it adds ratchets now and then (on hats, snares, percussion and noise most). SHIFT +
+  the phrase key (new locks) follows COMPLEXITY too. A short press of the phrase key still makes a new phrase, the
+  page staying up. DENSITY and COMPLEXITY are kept with the pattern, a track each.
+- Ratchets: a step can play 2, 3, 4, 6 or 8 times, evenly through it, each hit a little softer (on its own clock,
+  cut by the next step). Set on TRIG's other half (PRESETS right): RATCHET on KNOB 1.
+- The track's direction: in the step view, the fourth black key from the left plays the track REVERSE, the fifth
+  PING-PONG (both ends once), the sixth RANDOM; the key lit is the direction, pressing it again goes back to forward.
+  A:B and 1ST count the times through in every direction. Kept with the pattern. The seventh and eighth black keys
+  are free.
+
+Changed
+- TRIG is back, on the third black key from the left: on (lit), a step held shows its own page (NOTE, VEL, LEN, COND;
+  PRESETS right: RATCHET). Off, a step held locks what the knobs set on the track's view (FREQ, RESO, the delay and
+  reverb sends; SHIFT: chorus, overdrive), as in build 15; the EDIT pages still lock any parameter.
+- The phrase key acts when let go (so it can be held for its page).
+- A pattern keeps each track's direction and phrase settings and each step's ratchet (patterns saved before still
+  load, forward, 50, 50, no ratchets).
+
+Fixed
+- A new phrase on a pattern already full of locks on other tracks could hang the generator; it now takes locks from
+  the other tracks, then this track's softest notes, until the pattern fits.
+
 ## Build 19
 
 Added
