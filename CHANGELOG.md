@@ -1,5 +1,21 @@
 # Changelog
 
+## Build 24
+
+Added
+- COMP, a master compressor after the Digitone II's (manual 12.5), on the effects' pages (SEQ): the pages now run
+  CHORUS, COMP, DELAY, REVERB. It works on the mix with the chorus's return in it, before the delay's and the
+  reverb's returns are added. A-D: THRESHOLD (-60 to 0 dB), ATTACK (0.03 to 30 ms), RELEASE (10 ms to 2 s), RATIO
+  (1.5, 2, 3, 4, 6, 8, 16, 20). E-H (PRESETS right): MAKEUP (0 to +24 dB), SC FILTER (bipolar: to the left a
+  low-pass on what it listens to -- the bass, so it pumps with the kicks; to the right a high-pass), SC SOURCE (MIX,
+  or a track T1 to T6: the mix ducked under that track), MIX (dry to wet). Stereo, linked.
+  Its start, for pounding drums: -12 dB, 10 ms (the kick's attack through), 100 ms, 4:1, +3 dB, listening below
+  about 200 Hz, fully wet; on the phrase renders it takes 1 to 3 dB off on the whole and 4 to 6 dB on the hits.
+  Kept with the session; sessions saved before load with the start values.
+
+Changed
+- The effects' pages' order: CHORUS, COMP, DELAY, REVERB (it was REVERB, DELAY, CHORUS).
+
 ## Build 23
 
 Added

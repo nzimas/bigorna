@@ -4,7 +4,7 @@
  *   FX SEL ENV LFO EDIT GLO   the top row: tracks 1 to 6 (lit: the chosen one; the others glow while they sound)
  *   PRESETS (knob)            the track's machine: FM TONE, FM DRUM, WAVETONE, SWARMER (each track keeps a sound of
  *                             each, so turning back finds it) -- on the track's view only: on the EDIT pages it moves
- *                             through them, on the effects' pages through REVERB, DELAY, CHORUS
+ *                             through them, on the effects' pages the half shown
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
@@ -58,7 +58,8 @@
  *                             FX -- eight parameters a page: KNOB 1 .. 4 its A .. D, or (PRESETS turned right; left
  *                             back) its E .. H; OCT- / OCT+ the page before / after
  *   ARP                       the patterns (projects.c)
- *   SEQ                       the send effects' pages: REVERB, DELAY, CHORUS in turn, then back (OCT- / OCT+ too);
+ *   SEQ                       the effects' pages: CHORUS, COMP (the master compressor), DELAY, REVERB in turn, then
+ *                             back (OCT- / OCT+ too);
  *                             KNOB 1 .. 4 the first four of the page, or (PRESETS turned right; left back) the next
  *   SELECT (knob)             the track's level; ALGORITHM (knob) its pan
  *   KNOB 1 .. 4               the track's filter FREQ and RESO, its delay and reverb sends; with SHIFT, KNOB 3 the
@@ -97,7 +98,7 @@ static struct {
     uint8_t sel;
     uint8_t page;
     uint8_t edit_pg;             /* the EDIT page shown (0 .. pages_n - 1) */
-    uint8_t fx_pg;               /* the effect shown: 0 REVERB, 1 DELAY, 2 CHORUS */
+    uint8_t fx_pg;               /* the effect shown: FXP_* (CHORUS, COMP, DELAY, REVERB) */
     uint8_t half;                /* the half of the page shown: 0 A .. D, 1 E .. H (the pages': ehalf; else SHIFT held) */
     uint8_t ehalf;               /* the EDIT and effects pages' half, set by PRESETS */
     int8_t oct[NTRACK];
@@ -177,7 +178,10 @@ static struct {
 static const char *const RVN[NRV] = {"PRE", "DECAY", "FREQ", "GAIN", "HPF", "LPF", "VOLUME"};
 static const char *const DLN[NDL] = {"TIME", "PING PONG", "WIDTH", "FEEDBACK", "HPF", "LPF", "REVERB", "VOLUME"};
 static const char *const CHN[NCH] = {"DEPTH", "SPEED", "HPF", "WIDTH", "DELAY", "REVERB", "VOLUME"};
-static const char *const FXT[3] = {"REVERB", "DELAY", "CHORUS"};
+static const char *const CPN[NCP] = {"THRESHOLD", "ATTACK", "RELEASE", "RATIO", "MAKEUP", "SC FILTER", "SC SOURCE",
+                                     "MIX"};
+enum { FXP_CHR, FXP_CMP, FXP_DEL, FXP_REV, NFXP };   /* (the effects' pages, in turn) */
+static const char *const FXT[NFXP] = {"CHORUS", "COMP", "DELAY", "REVERB"};
 #define C_SEND RGB(140, 190, 255)
 #define C_OK RGB(60, 220, 90)
 #define C_BAD RGB(255, 40, 40)
@@ -399,15 +403,22 @@ static void par_turn(uint32_t id, uint32_t j, int32_t s)   /* a parameter of the
         snd->flt[F_TYPE] = (uint8_t)(snd->fmach == FLT_LEG ? snd->flt[F_TYPE] != 0 : snd->flt[F_TYPE]);
     mark(ui.sel);
 }
-static uint8_t *fx_vals(void) { return ui.fx_pg == 0 ? fx_rv : ui.fx_pg == 1 ? fx_dl : fx_ch; }
-static uint32_t fx_n(void) { return ui.fx_pg == 0 ? NRV : ui.fx_pg == 1 ? NDL : NCH; }
-/* an effect's parameter: 0 shown as it is (DELAY's TIME, PING PONG), 1 as 0 .. 100, 2 as -50 .. +50 (DELAY's WIDTH) */
+static uint8_t *fx_vals(void)
+{
+    return ui.fx_pg == FXP_REV ? fx_rv : ui.fx_pg == FXP_DEL ? fx_dl : ui.fx_pg == FXP_CMP ? fx_cp : fx_ch;
+}
+static uint32_t fx_n(void) { return ui.fx_pg == FXP_REV ? NRV : ui.fx_pg == FXP_DEL ? NDL : ui.fx_pg == FXP_CMP ? NCP : NCH; }
+/* an effect's parameter: 0 shown as it is (DELAY's TIME, PING PONG), 1 as 0 .. 100, 2 as -50 .. +50 (DELAY's WIDTH,
+ * COMP's SC FILTER), 3 a list (COMP's RATIO, SC SOURCE) */
 static uint32_t fx_kind(uint32_t j)
 {
-    if (ui.fx_pg == 1 && (j == DL_TIME || j == DL_X))
+    if (ui.fx_pg == FXP_DEL && (j == DL_TIME || j == DL_X))
         return 0;
-    return ui.fx_pg == 1 && j == DL_WID ? 2u : 1u;
+    if (ui.fx_pg == FXP_CMP && (j == CP_RAT || j == CP_SCS))
+        return 3u;
+    return (ui.fx_pg == FXP_DEL && j == DL_WID) || (ui.fx_pg == FXP_CMP && j == CP_SCF) ? 2u : 1u;
 }
+static uint32_t fx_list_n(uint32_t j) { return j == CP_RAT ? NCP_RAT : NCP_SCS; }
 static void fx_turn(uint32_t j, int32_t s)
 {
     uint8_t *v = fx_vals();
@@ -416,7 +427,8 @@ static void fx_turn(uint32_t j, int32_t s)
         return;
     kd = fx_kind(j);
     v[j] = (uint8_t)(kd == 1u ? pct_raw(pct_disp(v[j]) + s) : kd == 2u ? bip_raw(bip_disp(v[j]) + s)
-                     : clampi(v[j] + s, 0, ui.fx_pg == 1 && j == DL_X ? 1 : 127));
+                     : kd == 3u ? clampi(v[j] + s, 0, (int32_t)fx_list_n(j) - 1)
+                     : clampi(v[j] + s, 0, ui.fx_pg == FXP_DEL && j == DL_X ? 1 : 127));
     fx_cook_all();
     prj_dirty = 1;
 }
@@ -816,11 +828,11 @@ static void ui_input(void)
                 ui.edit_pg = 0;
             ui.force = 1;
         }
-    if (btn_bit(press, B_SEQ)) {                     /* REVERB, DELAY, CHORUS, back */
+    if (btn_bit(press, B_SEQ)) {                     /* CHORUS, COMP, DELAY, REVERB, back */
         if (ui.page != PG_FXP) {
             ui.page = PG_FXP;
             ui.fx_pg = 0;
-        } else if (++ui.fx_pg >= 3u)
+        } else if (++ui.fx_pg >= NFXP)
             ui.page = PG_MAIN;
         ui.ehalf = 0;
         ui.force = 1;
@@ -1060,8 +1072,8 @@ static void ui_input(void)
             ui.edit_pg = (uint8_t)((ui.edit_pg + n + (uint32_t)(d + (int)n)) % n);
             ui.ehalf = 0;
             ui.force = 1;
-        } else if (ui.page == PG_FXP) {              /* REVERB, DELAY, CHORUS */
-            ui.fx_pg = (uint8_t)((ui.fx_pg + 3u + (uint32_t)(d + 3)) % 3u);
+        } else if (ui.page == PG_FXP) {              /* CHORUS, COMP, DELAY, REVERB */
+            ui.fx_pg = (uint8_t)((ui.fx_pg + NFXP + (uint32_t)(d + (int)NFXP)) % NFXP);
             ui.ehalf = 0;
             ui.force = 1;
         } else {
@@ -1566,23 +1578,28 @@ static void dl_time_text(char *b, int32_t v)   /* TIME as 128th notes: 1 .. 128 
 }
 static void fx_text(uint32_t k, int32_t x, char *b)   /* an effect's parameter k, as it reads */
 {
-    if (ui.fx_pg == 1 && k == DL_TIME)
+    if (ui.fx_pg == FXP_CMP && fx_kind(k) == 3u)
+        str_cpy(b, k == CP_RAT ? CP_RATN[x % NCP_RAT] : CP_SCSN[x % NCP_SCS], 8);
+    else if (ui.fx_pg == FXP_DEL && k == DL_TIME)
         dl_time_text(b, x);
-    else if (ui.fx_pg == 1 && k == DL_X)
+    else if (ui.fx_pg == FXP_DEL && k == DL_X)
         str_cpy(b, x ? "ON" : "OFF", 4);
-    else if (ui.fx_pg == 1 && k == DL_FDBK) {    /* (FEEDBACK: as the share it feeds back, 64 the whole) */
+    else if (ui.fx_pg == FXP_DEL && k == DL_FDBK) {   /* (FEEDBACK: as the share it feeds back, 64 the whole) */
         fmt_int(b, x * 100 / 64);
         str_cpy(b + str_len(b), "%", 2);
-    } else if ((ui.fx_pg == 0 && k == RV_DEC && x >= 127))
+    } else if ((ui.fx_pg == FXP_REV && k == RV_DEC && x >= 127))
         str_cpy(b, "INF", 4);
-    else if (ui.fx_pg == 1 && k == DL_WID) {
+    else if (fx_kind(k) == 2u) {
         int32_t d = bip_disp(x);
         str_cpy(b, d > 0 ? "+" : "", 2);
         fmt_int(b + str_len(b), d);
     } else
         fmt_int(b, pct_disp(x));
 }
-static const char *fx_name(uint32_t k) { return ui.fx_pg == 0 ? RVN[k] : ui.fx_pg == 1 ? DLN[k] : CHN[k]; }
+static const char *fx_name(uint32_t k)
+{
+    return ui.fx_pg == FXP_REV ? RVN[k] : ui.fx_pg == FXP_DEL ? DLN[k] : ui.fx_pg == FXP_CMP ? CPN[k] : CHN[k];
+}
 static void draw_fx_page(void)
 {
     const uint8_t *v = fx_vals();
@@ -1599,8 +1616,10 @@ static void draw_fx_page(void)
         if (!full && ui.shown_rows[j] == x && ((int32_t)j == t) == ((int32_t)j == ui.shown_touch))
             continue;
         fx_text(k, x, b);
-        draw_row(j, name, b, (ui.fx_pg == 1 && k == DL_X ? x * 127 : x) * 1000 / 127, ui.fx_pg == 1 && k == DL_WID,
-                 (int32_t)j == t, C_SEND);
+        draw_row(j, name, b,
+                 k < fx_n() && fx_kind(k) == 3u ? x * 1000 / (int32_t)(fx_list_n(k) - 1u)
+                 : (ui.fx_pg == FXP_DEL && k == DL_X ? x * 127 : x) * 1000 / 127,
+                 k < fx_n() && fx_kind(k) == 2u, (int32_t)j == t, C_SEND);
         ui.shown_rows[j] = x;
     }
     ui.shown_touch = (int8_t)t;

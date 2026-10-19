@@ -50,7 +50,9 @@ typedef struct {
     uint8_t dl[NDL], rv[NRV], ch[NCH];
     uint8_t pat;                 /* the pattern playing as it was saved */
     sound_t snd[NTRACK][NENG];
+    uint8_t cp[NCP];             /* the master compressor (from build 24: sessions before end at snd, PRJ_LEN23) */
 } prj_body_t;
+#define PRJ_LEN23 __builtin_offsetof(prj_body_t, cp)
 typedef struct {
     uint8_t used;                /* saved */
     uint8_t pad;
@@ -166,6 +168,7 @@ static void prj_from17(void)
         d->family = a.family;
         d->seed = a.seed;
     }
+    memcpy(((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->cp, CP0, NCP);
     prj_head_fill(PRJ_MAGIC, ((prj_head_t *)(void *)prj_buf)->what, sizeof(prj_body_t));
 }
 static int prj_read(uint32_t k, uint32_t s)
@@ -177,6 +180,13 @@ static int prj_read(uint32_t k, uint32_t s)
     if (!s && prj_head_ok(h, magic, k * 16u, sizeof(prj_body17_t)) &&
         h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), sizeof(prj_body17_t))) {
         prj_from17();                            /* (saved before build 18) */
+        return 0;
+    }
+    if (!s && prj_head_ok(h, magic, k * 16u, PRJ_LEN23) &&
+        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN23)) {   /* (builds 18 .. 23: no compressor --
+                                                                             * its start values) */
+        memcpy(((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->cp, CP0, NCP);
+        prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
         return 0;
     }
     if (!prj_head_ok(h, magic, k * 16u + s, len) || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
@@ -207,7 +217,8 @@ static void prj_scan(int flash_ok)
         prj_has[k] = 0;
         if (prj_ok && !prj_flash_read(prj_sector(k, 0), &h, sizeof h))
             prj_has[k] = (uint8_t)(prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)) ||
-                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body17_t)));
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body17_t)) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN23));
     }
 }
 
@@ -506,6 +517,7 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     memcpy(b->dl, fx_dl, NDL);
     memcpy(b->rv, fx_rv, NRV);
     memcpy(b->ch, fx_ch, NCH);
+    memcpy(b->cp, fx_cp, NCP);
     memcpy(b->snd, ui.snd, sizeof b->snd);
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
@@ -525,6 +537,7 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     memcpy(fx_dl, b->dl, NDL);
     memcpy(fx_rv, b->rv, NRV);
     memcpy(fx_ch, b->ch, NCH);
+    memcpy(fx_cp, b->cp, NCP);
     ui.tempo = (int16_t)clampi(b->tempo, TEMPO_MIN, TEMPO_MAX);
     ui.root = (uint8_t)(b->root % 12u);
     ui.scale = (uint8_t)(b->scale < NSCALE ? b->scale : 0);

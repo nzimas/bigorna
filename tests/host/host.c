@@ -353,14 +353,22 @@ static int cmd_screens(const char *dir)
     ui_input();
     shot(dir, "dial_freq");
     fm1_ms += 2000;
+    host_press = 1u << PANEL_BTN[B_SEQ];        /* the effects: CHORUS, COMP, DELAY, REVERB, back */
+    ui_input();
+    shot(dir, "fx_chorus");
     host_press = 1u << PANEL_BTN[B_SEQ];
     ui_input();
-    shot(dir, "fx_reverb");
+    shot(dir, "fx_comp");
+    host_enc[PANEL_ENC[EN_PRESET]] = 1;
+    ui_input();
+    ui_input();
+    shot(dir, "fx_comp_eh");
     host_press = 1u << PANEL_BTN[B_SEQ];
     ui_input();
     shot(dir, "fx_delay");
     host_press = 1u << PANEL_BTN[B_SEQ];
     ui_input();
+    shot(dir, "fx_reverb");
     host_press = 1u << PANEL_BTN[B_SEQ];
     ui_input();
     host_press = 1u << PANEL_BTN[B_ARP];
@@ -1656,6 +1664,57 @@ static int cmd_projects(const char *dir)
         EXPECT(same, "its sounds as they were, MANGLE off");
         EXPECT(!prj_load(2), "(session 3 back)");
     }
+    {   /* the compressor: kept with the session; a session from builds 18 .. 23 loads with its start values */
+        static uint8_t sec[PRJ_SECT];
+        prj_head_t *h = (prj_head_t *)(void *)sec;
+        fx_cp[CP_THR] = 50;
+        fx_cp[CP_SCS] = 1;
+        EXPECT(!prj_save(2), "(session 3 saved)");
+        fx_cp[CP_THR] = 0;
+        fx_cp[CP_SCS] = 0;
+        EXPECT(!prj_load(2) && fx_cp[CP_THR] == 50u && fx_cp[CP_SCS] == 1u && cpc.sct == 1u,
+               "the compressor kept with the session");
+        memcpy(sec, host_flash + prj_sector(2, 0), sizeof sec);   /* (session 3 as build 23 kept it: no compressor) */
+        h->what = 10u * 16u;
+        h->len = PRJ_LEN23;
+        h->body_crc = prj_crc(sec + sizeof(prj_head_t), PRJ_LEN23);
+        h->head_crc = prj_crc(sec, __builtin_offsetof(prj_head_t, head_crc));
+        memcpy(host_flash + prj_sector(10, 0), sec, sizeof sec);
+        prj_scan(1);
+        EXPECT(prj_has[10] && !prj_load(10) && !memcmp(fx_cp, CP0, NCP), "a session from build 23: the compressor's start");
+        EXPECT(!prj_load(2), "(session 3 back)");
+    }
+    {   /* the compressor works: a loud mix takes gain off, more at a lower threshold; a track as the sidechain */
+        int32_t out[2 * CTL];
+        uint32_t i;
+        int32_t gr_hi, gr_lo;
+        memcpy(fx_cp, CP0, NCP);
+        fx_cp[CP_SCF] = 64;                      /* (listening to it all) */
+        fx_cp[CP_THR] = 127;                     /* 0 dB: next to nothing off */
+        fx_cook_all();
+        for (i = 0; i < 4u; i++)
+            ev_post(EV_ON, i, 48 + 7 * i, 127);
+        for (i = 0; i < 600u; i++)
+            mix_block(out);
+        gr_hi = cp.gr;
+        fx_cp[CP_THR] = 40;                      /* -41 dB */
+        fx_cook_all();
+        for (i = 0; i < 600u; i++)
+            mix_block(out);
+        gr_lo = cp.gr;
+        EXPECT(gr_lo > gr_hi + (6 << 16), "a lower threshold: more taken off");
+        fx_cp[CP_SCS] = 6;                       /* track 6 as the sidechain: silent -- nothing off */
+        fx_cook_all();
+        for (i = 0; i < 600u; i++)
+            mix_block(out);
+        EXPECT(cp.gr < gr_lo / 4, "a silent track as the sidechain: the mix let be");
+        for (i = 0; i < 4u; i++)
+            ev_post(EV_STOP, i, 0, 0);
+        for (i = 0; i < 400u; i++)
+            mix_block(out);
+        memcpy(fx_cp, CP0, NCP);
+        fx_cook_all();
+    }
     /* the long presses: ARP held saves the pattern playing, HOME held the project */
     pat_tempo = 77;
     pat_dirty = 1;
@@ -1706,10 +1765,21 @@ static int cmd_phrases(const char *dir, int n)
             ui_publish();
         }
         seq_run = 1;
+        double grs = 0;
+        int32_t grmax = 0;
+        if (getenv("CP")) {                       /* CP=thr,atk,rel,rat,mup,scf,scs,mix: the compressor by hand */
+            int v[8];
+            sscanf(getenv("CP"), "%d,%d,%d,%d,%d,%d,%d,%d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7]);
+            for (i = 0; i < 8u; i++)
+                fx_cp[i] = (uint8_t)v[i];
+            fx_cook_all();
+        }
         for (i = 0; i < fr; i++) {
             uint32_t j;
             ui_publish();
             mix_block(out);
+            grs += cp.gr / 65536.0;
+            grmax = cp.gr > grmax ? cp.gr : grmax;
             for (j = 0; j < 2u * CTL; j++) {
                 int32_t x = out[j] > 32767 ? 32767 : out[j] < -32768 ? -32768 : out[j];
                 pb[i * 2u * CTL + j] = (int16_t)x;
@@ -1722,6 +1792,7 @@ static int cmd_phrases(const char *dir, int n)
         wav_write(path, pb, fr * CTL);
         printf("phrase %2u  peak %5.1f dBFS  rms %5.1f dBFS ", k, 20 * log10(pk / 32768.0 + 1e-9),
                10 * log10(sq / (fr * CTL * 2.0) / (32768.0 * 32768.0) + 1e-12));
+        printf(" GR mean %4.1f max %4.1f dB ", grs / fr, grmax / 65536.0);
         for (t = 0; t < NTRACK; t++)
             printf(" %s", RO_NAME[phrase_role(&ui.snd[t][ui.eng[t]])]);
         printf("\n");

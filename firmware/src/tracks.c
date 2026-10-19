@@ -1133,6 +1133,8 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
             sc += dc;
             x = (int32_t)(((int64_t)buf[i] * g) >> 14);
             pk = maxi(pk, absi(x));
+            if (cpc.sct == t + 1u)
+                cp_sc[i] = x;                    /* (the compressor's sidechain: this track) */
             mixl[i] += mulq15(x, pl);
             mixr[i] += mulq15(x, pr);
             dlin[i] += mulq15(x, sd);
@@ -1204,6 +1206,7 @@ static void mix_block(int32_t *out)
     int32_t l_[CTL], r_[CTL], dlin[CTL], rvin[CTL], chin[CTL];
     uint32_t i, t, c0 = COST_NOW();
     events_take();
+    memset(cp_sc, 0, sizeof cp_sc);
     seq_block();
     {   /* MANGLE's clock: where in the bar this block starts (the sequencer's, playing; else its own at the tempo) */
         uint32_t bpm = (uint32_t)clampi(fx_bpm10, 100, 3000);
@@ -1226,6 +1229,7 @@ static void mix_block(int32_t *out)
     for (t = 0; t < NTRACK; t++)
         track_block(t, l_, r_, dlin, rvin, chin);
     ch_block(chin, l_, r_, dlin, rvin);
+    cp_block(l_, r_);                            /* the compressor: before the delay's and the reverb's returns */
     dl_block(dlin, l_, r_, rvin);
     rv_block(rvin, l_, r_);
     met_block(l_, r_);

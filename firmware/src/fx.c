@@ -11,11 +11,25 @@
  *           lowered), HPF, LPF (on its input), VOL. A plate after Jon Dattorro, "Effect Design, Part 1" (J.
  *           Audio Eng. Soc. 45(9), 1997), its lengths scaled to 44.1 kHz and stretched a little by DEC.
  *   CHORUS  DPTH, SPD, HPF (on its input), WDTH, DEL, REV, VOL: two taps on one short line, swept by an LFO a
- *           quarter of a cycle apart. */
+ *           quarter of a cycle apart.
+ *   COMP    the master compressor (the Digitone II's, manual 12.5): on the mix, the chorus's return in it, before
+ *           the delay's and the reverb's returns. THRESHOLD (-60 .. 0 dB), ATTACK (0.03 .. 30 ms), RELEASE (10 ms ..
+ *           2 s), RATIO (1.5, 2, 3, 4, 6, 8, 16, 20), MAKEUP (0 .. +24 dB), SC FILTER (what it listens to through
+ *           a low-pass, below the middle -- the bass: it pumps --, or a high-pass, above), SC SOURCE (the mix, or a
+ *           track: the mix ducked under it), MIX (dry .. wet). Stereo, linked: the level followed sample by sample,
+ *           the gain moved once a block, gliding. Set at the start for pounding drums: -12 dB, 10 ms (the kick's
+ *           attack through), 100 ms, 4:1, +3 dB, listening below ~200 Hz -- on the phrases host phrases renders,
+ *           1 .. 3 dB taken off on the whole, 4 .. 6 dB on the hits. */
 
 enum { DL_TIME, DL_X, DL_WID, DL_FDBK, DL_HPF, DL_LPF, DL_REV, DL_VOL, NDL };
 enum { RV_PRE, RV_DEC, RV_FREQ, RV_GAIN, RV_HPF, RV_LPF, RV_VOL, NRV };
 enum { CH_DPTH, CH_SPD, CH_HPF, CH_WDTH, CH_DEL, CH_REV, CH_VOL, NCH };
+enum { CP_THR, CP_ATK, CP_REL, CP_RAT, CP_MUP, CP_SCF, CP_SCS, CP_MIX, NCP };
+#define NCP_RAT 8u
+#define NCP_SCS 7u
+static const uint8_t CP_RAT10[NCP_RAT] = {15, 20, 30, 40, 60, 80, 160, 200};   /* (x 10) */
+static const char *const CP_RATN[NCP_RAT] = {"1.5", "2", "3", "4", "6", "8", "16", "20"};
+static const char *const CP_SCSN[NCP_SCS] = {"MIX", "T1", "T2", "T3", "T4", "T5", "T6"};
 
 static volatile int32_t fx_bpm10 = 1200;         /* the tempo, x 10 (the delay's time follows it) */
 
@@ -352,13 +366,82 @@ static void rv_block(const int32_t *in, int32_t *ol, int32_t *or_)
     }
 }
 
+/* ----------------------------------------------------------- compressor --- */
+static volatile struct {
+    int32_t thr, mup;            /* dB, Q16 */
+    int32_t slope;               /* 1 - 1 / ratio, Q16 */
+    uint32_t att, rel;           /* the follower's steps a sample, Q24 */
+    int32_t sclp, schp;          /* the sidechain's low-pass or high-pass, Q15 (0: none) */
+    int32_t mix;                 /* Q15 */
+    uint8_t sct;                 /* the sidechain: 0 the mix, 1 .. 6 a track */
+} cpc;
+static struct {
+    int32_t env;                 /* the level followed (x 256) */
+    int32_t f;                   /* the sidechain filter's state */
+    int32_t g;                   /* the gain as the last block ended, Q16 */
+    int32_t gr;                  /* the gain taken off, dB Q16 (the screen's) */
+} cp;
+static int32_t cp_sc[CTL];       /* a track's signal, for the sidechain (tracks.c fills it) */
+static uint32_t cp_step(uint32_t base8, int32_t oct16)   /* a follower's step: base8 (samples x 256) x 2^oct, Q24 */
+{
+    uint32_t n8 = (exp2_q16(oct16) >> 12) * (base8 >> 4);
+    return 0xFFFFFFFFu / (n8 > 256u ? n8 : 256u);   /* (2^32 / (n x 256) = 2^24 / n) */
+}
+static void cp_cook(const uint8_t *p)
+{
+    int32_t f = clampi(p[CP_SCF], 0, 127) - 64;
+    cpc.thr = -(60 << 16) + clampi(p[CP_THR], 0, 127) * ((60 << 16) / 127);
+    cpc.mup = clampi(p[CP_MUP], 0, 127) * ((24 << 16) / 127);
+    cpc.slope = Q16 - (int32_t)((uint32_t)Q16 * 10u / CP_RAT10[p[CP_RAT] % NCP_RAT]);
+    cpc.att = cp_step(339u, clampi(p[CP_ATK], 0, 127) * 5143);        /* 0.03 ms x 1000^(v / 127) */
+    cpc.rel = cp_step(112896u, clampi(p[CP_REL], 0, 127) * 3945);     /* 10 ms x 200^(v / 127) */
+    /* the sidechain: below the middle a low-pass from 20 kHz down 8.4 octaves (~60 Hz), above a high-pass from
+     * 20 Hz up 6.6 octaves (~2 kHz) */
+    cpc.sclp = f < 0 ? lp1_coef((int32_t)((20000u * (uint64_t)exp2_q16(f * 8601)) >> 16)) : 0;
+    cpc.schp = f > 0 ? lp1_coef((int32_t)((20u * (uint64_t)exp2_q16(f * 6866)) >> 16)) : 0;
+    cpc.mix = clampi(p[CP_MIX], 0, 127) * Q15 / 127;
+    cpc.sct = (uint8_t)(p[CP_SCS] % NCP_SCS);
+}
+static void cp_block(int32_t *l, int32_t *r)
+{
+    uint32_t i;
+    int32_t g0 = cp.g ? cp.g : Q16, g1, dg, db, gain;
+    for (i = 0; i < CTL; i++) {                  /* the level, followed */
+        int32_t x = cpc.sct ? cp_sc[i] : (l[i] + r[i]) >> 1, a;
+        if (cpc.sclp) {
+            cp.f += mulq15(x - cp.f, cpc.sclp);
+            x = cp.f;
+        } else if (cpc.schp) {
+            cp.f += mulq15(x - cp.f, cpc.schp);
+            x -= cp.f;
+        }
+        a = absi(x) << 8;
+        cp.env += (int32_t)(((int64_t)(a - cp.env) * (int32_t)(a > cp.env ? cpc.att : cpc.rel)) >> 24);
+    }
+    /* the gain: over the threshold, the ratio's share taken off; the makeup on */
+    db = cp.env > 256 ? (log2_q16((uint32_t)cp.env) - (23 << 16)) * 602 / 100 : -(96 << 16);   /* (dBFS, Q16) */
+    cp.gr = db > cpc.thr ? (int32_t)(((int64_t)(db - cpc.thr) * cpc.slope) >> 16) : 0;
+    gain = cpc.mup - cp.gr;
+    g1 = (int32_t)exp2_q16(gain * 100 / 602);
+    dg = (g1 - g0) / (int32_t)CTL;
+    for (i = 0; i < CTL; i++) {
+        int32_t g = g0 + dg * (int32_t)(i + 1u), wl = (int32_t)(((int64_t)l[i] * g) >> 16),
+                wr = (int32_t)(((int64_t)r[i] * g) >> 16);
+        l[i] += mulq15(wl - l[i], cpc.mix);
+        r[i] += mulq15(wr - r[i], cpc.mix);
+    }
+    cp.g = g1;
+}
+
 /* --------------------------------------------------------- the interface --- */
-static uint8_t fx_dl[NDL], fx_rv[NRV], fx_ch[NCH];   /* (the main loop's) */
+static uint8_t fx_dl[NDL], fx_rv[NRV], fx_ch[NCH], fx_cp[NCP];   /* (the main loop's) */
+static const uint8_t CP0[NCP] = {102, 107, 55, 3, 16, 14, 0, 127};   /* (pounding drums: see above) */
 static void fx_cook_all(void)
 {
     dl_cook(fx_dl);
     rv_cook(fx_rv);
     ch_cook(fx_ch);
+    cp_cook(fx_cp);
 }
 static void fx_init(void)
 {
@@ -368,6 +451,8 @@ static void fx_init(void)
     memcpy(fx_dl, DL0, NDL);
     memcpy(fx_rv, RV0, NRV);
     memcpy(fx_ch, CH0, NCH);
+    memcpy(fx_cp, CP0, NCP);
+    memset(&cp, 0, sizeof cp);
     rv_init();
     dl_init();
     memset(ch_line, 0, sizeof ch_line);
