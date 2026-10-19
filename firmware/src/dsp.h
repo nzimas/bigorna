@@ -40,7 +40,7 @@ enum { PATH_OPEN, PATH_AMBIENT, PATH_EXP, PATH_N };
 
 AINL int32_t clampi(int32_t x, int32_t lo, int32_t hi) { return x < lo ? lo : x > hi ? hi : x; }
 AINL int32_t mulq15(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 15); }
-static inline int32_t mulq16(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 16); }
+AINL int32_t mulq16(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 16); }
 AINL int32_t mulq12(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 12); }
 AINL int32_t absi(int32_t x) { return x < 0 ? -x : x; }
 AINL int32_t maxi(int32_t a, int32_t b) { return a > b ? a : b; }

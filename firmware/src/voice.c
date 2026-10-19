@@ -175,18 +175,21 @@ typedef struct {
 } vck_t;
 
 /* OVERDRIVE, after TONITOR's distortion (its layers.c): two gain stages in series as in a valve preamp, the first
- * symmetric (odd harmonics), the second clipping sooner on one side (even harmonics), at twice the sample rate
- * (linear interpolation up, a [1/4 1/2 1/4] half-band down); the highs lifted 6 dB before them and lowered after
+ * symmetric (odd harmonics), the second clipping sooner on one side (even harmonics) -- at the sample rate (TONITOR's
+ * runs at twice it; on a voice, short of time, the cost halved); the highs lifted 6 dB before them and lowered after
  * (the mids and highs distort, the bass less: less mud); a DC blocker, and a low-pass coming down from 16 kHz to
  * 6.5 kHz as the amount goes up. The amount (0 .. 100) sets the drive into the first stage (x 0.5 .. x 32), the
  * second's gain (x 1 .. x 2.5) and bias, and the first's bias as a share (0.15 .. 0.35) of the input's own peak, so
  * the clipped wave stays lopsided however hard it is driven; below 6 it fades in. TONITOR brings the level back by
  * following it (~0.2 s): on a voice that would pump a drum's hit, so here the level comes back by a curve of the
  * amount, measured (host od) */
-static const uint16_t OD_MK[11] = {4096, 5690, 3886, 2981, 2543, 2342, 2255, 2225, 2221, 2234, 2255};   /* Q12, a 10 */
+static const uint16_t OD_MK[11] = {4096, 5362, 3674, 2831, 2425, 2237, 2155, 2122, 2117, 2127, 2147};   /* Q12, a 10 */
 static void od_cook(vck_t *c, int32_t a)
 {
     int32_t amt = a * 256;
+    if (a < 2)
+        a = 0;                                    /* (1: not heard, and not worth its cost) */
+    amt = a * 256;
     c->od_g = amt;
     if (!a)
         return;
@@ -304,25 +307,19 @@ static void vc_od(vchain_t *v, const vck_t *c, int32_t *x)
 {
     uint32_t i;
     for (i = 0; i < CTL; i++) {
-        int32_t dry = x[i], e, ym, y, o;
+        int32_t dry = x[i], e, o;
         v->od_pre += mulq15(dry - v->od_pre, OD_EMPH);
         e = 2 * dry - v->od_pre;                 /* the highs +6 dB */
         v->od_env = absi(e) > v->od_env ? absi(e) : v->od_env - (v->od_env >> 12);
         e += mulq15(v->od_env, c->od_beta);      /* (a bias in step with the level: lopsided however hard) */
-        ym = od_stage(c, (v->od_ep + e) >> 1);
-        y = od_stage(c, e);
-        o = (v->od_ymp + 2 * v->od_yp + ym) >> 2;   /* (one sample late) */
-        v->od_ep = e;
-        v->od_ymp = ym;
-        v->od_yp = y;
+        o = od_stage(c, e);
         v->od_post += mulq15(o - v->od_post, OD_EMPH);
         o = (o + v->od_post) >> 1;               /* the highs -6 dB again */
         v->od_dc += (((o << 8) - v->od_dc) * 37) >> 15;   /* (~8 Hz) */
         o -= v->od_dc >> 8;
         v->od_lp += mulq15(o - v->od_lp, c->od_tone);
         o = mulq12(v->od_lp, c->od_mk);
-        x[i] = v->od_dryp + mulq15(o - v->od_dryp, c->od_w);
-        v->od_dryp = dry;
+        x[i] = dry + mulq15(o - dry, c->od_w);
     }
 }
 static void vc_bw(vchain_t *v, const vck_t *c, int32_t *x)
@@ -372,33 +369,35 @@ static void vc_filter(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, i
         }
         break;
     }
-    case FLT_LP4: {   /* four TPT one-poles, the feedback solved for (zero delay), the input soft-clipped */
-        int32_t g = svf_g(hz_of_oct(oct)), G, G2, G4, k = c->lp4_k, comp = 4096 + k / 2;
-        int32_t sv[4] = {v->s1.ic1, v->s1.ic2, v->s2.ic1, v->s2.ic2};   /* (the four states) */
+    case FLT_LP4: {   /* a ladder: four TPT one-poles, the feedback from the last output a sample before (the zero-
+                       * delay solve cost twice as much, on a voice that is short of time), the input soft-clipped;
+                       * the feedback kept below where the sample's delay would let it run away */
+        int32_t g = svf_g(hz_of_oct(oct)), G, k = c->lp4_k, comp = 4096 + k / 2, y4 = v->s2.ic2 >> 1;
+        int32_t s0 = v->s1.ic1, s1 = v->s1.ic2, s2 = v->s2.ic1, s3 = v->s2.ic2;
         uint32_t den = (uint32_t)((1 << 24) + g) >> 8;
         G = Q16 - (int32_t)(0xFFFFFFFFu / den);              /* g / (1 + g) = 1 - 1 / (1 + g), Q16 */
-        G2 = mulq16(G, G);
-        G4 = mulq16(G2, G2);
-        {
-            int32_t inv = (int32_t)(4096u * 4096u / (uint32_t)(4096 + mulq16(k, G4)));   /* 1 / (1 + k G^4), Q12 */
-            int32_t om = Q16 - G;
-            for (i = 0; i < CTL; i++) {
-                int32_t S = mulq16(om, mulq16(G, mulq16(G2, sv[0])) + mulq16(G2, sv[1]) + mulq16(G, sv[2]) + sv[3]);
-                int32_t y4 = mulq12(mulq16(G4, mulq12(x[i], comp)) + S, inv), u, y, j;
-                u = tanh_q15(mulq12(x[i], comp) - mulq12(y4, k));
-                for (j = 0; j < 4; j++) {                    /* v = (u - s) G, y = v + s, s = y + v */
-                    int32_t vv = mulq16(u - sv[j], G);
-                    y = vv + sv[j];
-                    sv[j] = y + vv;
-                    u = y;
-                }
-                x[i] = u;
-            }
+        k = mulq16(k, Q16 - (G >> 1));                       /* (less of it as the cutoff nears the top) */
+        for (i = 0; i < CTL; i++) {
+            int32_t u = tanh_q15(mulq12(x[i], comp) - mulq12(y4, k)), vv;
+            vv = mulq16(u - s0, G);                          /* v = (u - s) G, y = v + s, s = y + v */
+            u = vv + s0;
+            s0 = u + vv;
+            vv = mulq16(u - s1, G);
+            u = vv + s1;
+            s1 = u + vv;
+            vv = mulq16(u - s2, G);
+            u = vv + s2;
+            s2 = u + vv;
+            vv = mulq16(u - s3, G);
+            u = vv + s3;
+            s3 = u + vv;
+            y4 = u;
+            x[i] = u;
         }
-        v->s1.ic1 = sv[0];
-        v->s1.ic2 = sv[1];
-        v->s2.ic1 = sv[2];
-        v->s2.ic2 = sv[3];
+        v->s1.ic1 = s0;
+        v->s1.ic2 = s1;
+        v->s2.ic1 = s2;
+        v->s2.ic2 = s3;
         break;
     }
     default: {   /* COMB- / COMB+: a line tuned to FREQ as a note (220 x 2^((n - 69) / 12) Hz: n 127 is 6.3 kHz; the

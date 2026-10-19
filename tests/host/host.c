@@ -2131,6 +2131,133 @@ static int cmd_duck2(void)
     return 0;
 }
 
+/* host prof: where a block's time goes -- the mix with no voice (the effects), then a SWARM DRONE voice, two, a kick;
+ * and each effect alone */
+static double prof_ns(void (*fn)(void), uint32_t n)
+{
+    struct timespec t0, t1;
+    uint32_t i;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    for (i = 0; i < n; i++)
+        fn();
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    return ((t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec)) / n;
+}
+static int32_t prof_out[2 * CTL], prof_a[CTL], prof_b[CTL], prof_c[CTL], prof_d[CTL], prof_e[CTL];
+static void prof_mix(void) { mix_block(prof_out); }
+static void prof_rv(void) { rv_block(prof_a, prof_b, prof_c); }
+static void prof_dl(void) { dl_block(prof_a, prof_b, prof_c, prof_d); }
+static void prof_ch(void) { ch_block(prof_a, prof_b, prof_c, prof_d, prof_e); }
+static void prof_cp(void) { cp_block(prof_b, prof_c); }
+static int cmd_prof(void)
+{
+    uint32_t i;
+    double base;
+    tracks_init();
+    ui_init();
+    host_ticks = 0;
+    gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 2, -1, 99u);    /* DRIVEN KICK */
+    ui.eng[0] = ENG_FMD;
+    gen_sound(&ui.snd[1][ENG_SWM], ENG_SWM, 54, -1, 7u);    /* SWARM DRONE */
+    ui.eng[1] = ENG_SWM;
+    for (i = 0; i < NTRACK; i++)
+        mark(i);
+    for (i = 0; i < 8u; i++) {
+        ui_publish();
+        mix_block(prof_out);
+    }
+    for (i = 0; i < CTL; i++)
+        prof_a[i] = prof_b[i] = prof_c[i] = (int32_t)((i * 7919u) % 20000u) - 10000;
+    base = prof_ns(prof_mix, 20000);
+    printf("the mix, no voice:          %7.0f ns\n", base);
+    printf("  reverb %6.0f  delay %6.0f  chorus %6.0f  comp %6.0f ns\n", prof_ns(prof_rv, 20000), prof_ns(prof_dl, 20000),
+           prof_ns(prof_ch, 20000), prof_ns(prof_cp, 20000));
+    ev_post(EV_ON, 1, 48, 127);
+    for (i = 0; i < 200u; i++)
+        mix_block(prof_out);
+    printf("+ one SWARM DRONE voice:    %7.0f ns\n", prof_ns(prof_mix, 20000));
+    ev_post(EV_ON, 1, 55, 127);
+    for (i = 0; i < 200u; i++)
+        mix_block(prof_out);
+    printf("+ two:                      %7.0f ns\n", prof_ns(prof_mix, 20000));
+    ev_post(EV_ON, 0, 36, 127);
+    for (i = 0; i < 20u; i++)
+        mix_block(prof_out);
+    printf("+ a DRIVEN KICK:            %7.0f ns\n", prof_ns(prof_mix, 2000));
+    {   /* one voice in parts: the machine, then the chain's stages (each recipe of interest) */
+        static const int R[4] = {54, 53, 2, 43};       /* SWARM DRONE, SWARM PAD, DRIVEN KICK, WAVE PAD */
+        uint32_t r;
+        for (r = 0; r < 4u; r++) {
+            sound_t sn;
+            ck_t c;
+            vmem_t m;
+            int32_t b[CTL];
+            struct timespec t0, t1;
+            uint32_t n, N = 20000;
+            double tm, tc;
+            gen_sound(&sn, RECIPES[R[r]].mach, R[r], -1, 5u);
+            ck_cook(&c, &sn);
+            memset(&m, 0, sizeof m);
+            switch (c.mach) {
+            case ENG_FMT: ft_on(&m.m.ft, &c.m.ft, 1); break;
+            case ENG_FMD: fd_on(&m.m.fd, &c.m.fd, 1, 1); break;
+            case ENG_WAV: wt_on(&m.m.wt, &c.m.wt, 1, 1); break;
+            default: sw_on(&m.m.sw, 1, 1); break;
+            }
+            vc_on(&m.ch, &c.ch, 1);
+            clock_gettime(CLOCK_MONOTONIC, &t0);
+            for (n = 0; n < N; n++) {
+                int32_t note16 = 48 << 16;
+                switch (c.mach) {
+                case ENG_FMT: ft_render(&m.m.ft, &c.m.ft, note_inc(note16), note16, b); break;
+                case ENG_FMD: fd_render(&m.m.fd, &c.m.fd, note16, b); break;
+                case ENG_WAV: wt_render(&m.m.wt, &c.m.wt, note16, b); break;
+                default: sw_render(&m.m.sw, &c.m.sw, note16, b); break;
+                }
+            }
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+            tm = ((t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec)) / N;
+            clock_gettime(CLOCK_MONOTONIC, &t0);
+            for (n = 0; n < N; n++) {
+                uint32_t q;
+                for (q = 0; q < CTL; q++)
+                    b[q] = (int32_t)(q * 977u % 16000u) - 8000;
+                vc_block(&m.ch, &c.ch, b, 48 << 16, 127);
+            }
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+            tc = ((t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec)) / N;
+            printf("%-12s %-9s machine %5.0f ns, chain %5.0f ns (filter %s, drive %d, bits %d, srr %d)\n", RECIPES[R[r]].name,
+                   ENG_NAME[c.mach], tm, tc, FLT_NAME[c.ch.fmach], sn.fx[X_OD], sn.fx[X_BR], sn.fx[X_SRR]);
+            {   /* the chain's stages, one by one */
+                double tf, to, tb;
+                clock_gettime(CLOCK_MONOTONIC, &t0);
+                for (n = 0; n < N; n++)
+                    vc_filter(&m.ch, &c.ch, b, 48 << 16, 1 << 23);
+                clock_gettime(CLOCK_MONOTONIC, &t1);
+                tf = ((t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec)) / N;
+                to = 0;
+                if (c.ch.od_g) {
+                    clock_gettime(CLOCK_MONOTONIC, &t0);
+                    for (n = 0; n < N; n++)
+                        vc_od(&m.ch, &c.ch, b);
+                    clock_gettime(CLOCK_MONOTONIC, &t1);
+                    to = ((t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec)) / N;
+                }
+                tb = 0;
+                if (c.ch.br_bits) {
+                    clock_gettime(CLOCK_MONOTONIC, &t0);
+                    for (n = 0; n < N; n++)
+                        vc_br(&c.ch, b);
+                    clock_gettime(CLOCK_MONOTONIC, &t1);
+                    tb = ((t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec)) / N;
+                }
+                printf("               filter %5.0f, drive %5.0f, bits %5.0f ns\n", tf, to, tb);
+            }
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -2148,6 +2275,8 @@ int main(int argc, char **argv)
                sizeof(swck_t), sizeof(vmem_t), sizeof(voice_t), sizeof(prj_body_t));
         return 0;
     }
+    if (argc >= 2 && !strcmp(argv[1], "prof"))
+        return cmd_prof();
     if (argc >= 2 && !strcmp(argv[1], "duck2"))
         return cmd_duck2();
     if (argc >= 2 && !strcmp(argv[1], "duck"))

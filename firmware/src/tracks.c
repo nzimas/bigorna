@@ -120,10 +120,11 @@ static track_t trk[NTRACK];
 static volatile int32_t trk_gain[NTRACK], trk_pl[NTRACK], trk_pr[NTRACK];
 
 /* the budget (as TONITOR's): each machine's voice cost measured as it renders, so a start that would overrun the
- * block lets the oldest release tails go first, quickly, rather than the audio arriving late */
+ * block lets the quietest release tails go first (tail_victim), over ~6 ms, rather than the audio arriving late */
 #define COST_NOW() fm1_ticks()
 #define BLK_TICKS ((uint32_t)CTL * 1000000u / FS * FM1_TICKS_PER_US)
-#define BUDGET (BLK_TICKS * 82u / 100u)
+#define BUDGET (BLK_TICKS * 90u / 100u)   /* (82 % until build 28: tails went that the time had room for) */
+#define SHED 8u                  /* blocks of the budget's fade (~6 ms: no click) */
 static uint32_t eng_cost[NENG];
 static uint32_t blk_last, blk_new;
 static uint32_t blk_clock;
@@ -1224,8 +1225,8 @@ static void budget_guard(void)
         uint32_t ok = tail_victim();
         if (ok == NVOICE)
             return;
-        vox[ok].fade = QUICK;
-        vox[ok].fade_n = QUICK;
+        vox[ok].fade = SHED;
+        vox[ok].fade_n = SHED;
         pred -= pred < vox[ok].cost ? pred : vox[ok].cost;
     }
 }

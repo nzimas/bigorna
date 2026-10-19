@@ -1,5 +1,23 @@
 # Changelog
 
+## Build 28
+
+Fixed
+- A kick still lost its body, with a pop, as a second note was added to a pad on another track: the FM-1 ran short of
+  time and the voice budget's guard let the kick go (its gate over, its body counted as a tail) in 2 ms. Each voice
+  cost too much, and most of it was not the machine but its chain:
+  - OVERDRIVE ran at twice the sample rate (since build 16) -- half the chain's time, even at a drive barely heard. It
+    runs at the sample rate now (the same two stages, emphasis, bias and tone; the level curve measured again, within
+    about 1 dB), and below 2 it is off.
+  - LOWPASS 4 solved its feedback exactly each sample; it now takes it from the sample before, as a classic ladder
+    (the feedback eased as the cutoff nears the top, where that delay would let it run away). Its resonance moves a
+    little.
+  - mulq16, the multiply most of the filters use, is always inlined now, as the others were.
+  A pad voice's chain now takes ~40 % less time (on the host: a SWARM DRONE voice 1.1 to 0.7 us a block; a kick and
+  two pad notes 4.4 to 3.3 us with the effects).
+- The guard lets tails go only past 90 % of the block's time (82 % before: there was room), and over ~6 ms, not 2 (no
+  click).
+
 ## Build 27
 
 Fixed
