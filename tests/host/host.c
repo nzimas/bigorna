@@ -127,7 +127,7 @@ static int prj_flash_read(uint32_t off, void *p, uint32_t n)
 }
 static int prj_flash_erase(uint32_t off)
 {
-    if (off < PRJ_LO || off + 4096u > PRJ_LO + PRJ_SLOTS * PRJ_SECT || (off & 4095u))
+    if (off < PRJ_LO || off + 4096u > PRJ_LO + PRJ_SLOTS * PRJ_SECTS * PRJ_SECT || (off & 4095u))
         return -8;
     memset(host_flash + off, 0xFF, 4096u);
     host_erases++;
@@ -136,7 +136,7 @@ static int prj_flash_erase(uint32_t off)
 static int prj_flash_prog(uint32_t off, const void *p, uint32_t n)
 {
     uint32_t i;
-    if (off < PRJ_LO || off + n > PRJ_LO + PRJ_SLOTS * PRJ_SECT)
+    if (off < PRJ_LO || off + n > PRJ_LO + PRJ_SLOTS * PRJ_SECTS * PRJ_SECT)
         return -8;
     for (i = 0; i < n; i++)
         host_flash[off + i] &= ((const uint8_t *)p)[i];
@@ -517,7 +517,7 @@ static int cmd_projects(const char *dir)
 {
     sound_t keep;
     memset(host_flash, 0xFF, sizeof host_flash);
-    memcpy(host_flash + PRJ_LO + 6u * PRJ_SECT, "ACS1 another firmware's session", 31);   /* (TONITOR's, say) */
+    memcpy(host_flash + prj_sector(6, 0), "ACS1 another firmware's session", 31);   /* (TONITOR's, say) */
     prj_scan(1);
     tracks_init();
     ui_init();
@@ -529,7 +529,7 @@ static int cmd_projects(const char *dir)
     turn(EN_PRESET, 2);                          /* PROJECT 3 */
     shot(dir, "prj_list");
     btn(B_SAVE, 0);
-    EXPECT(ui.page == PG_PRJD && pj.slot == 2u, "SAVE opens slot 3's page");
+    EXPECT(ui.page == PG_PRJD && pj.slot[0] == 2u, "SAVE opens slot 3's page");
     shot(dir, "prj_page_empty");
     turn(EN_PRESET, 4);                          /* TEMPO */
     btn(B_SAVE, 0);                              /* the focus on its value */
@@ -587,7 +587,7 @@ static int cmd_projects(const char *dir)
     btn(B_SAVE, 0);
     EXPECT(prj_has[5], "COPY into an empty slot, at once");
     {
-        int rc = prj_read(5);
+        int rc = prj_read(5, 0);
         const prj_body_t *b = (const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t));
         EXPECT(!rc && b->tempo == 137, "the copy reads back, as the original");
     }
@@ -612,6 +612,81 @@ static int cmd_projects(const char *dir)
     EXPECT(prj_has[2] && !prj_has[5] && !prj_has[6], "a scan after: as it was");
     btn(B_SAVE, 1);
     shot(dir, "prj_list_after");
+    /* the patterns */
+    btn(B_GLO, 0);
+    btn(B_ARP, 0);
+    EXPECT(ui.page == PG_PAT, "ARP opens the patterns");
+    turn(EN_PRESET, 19);                         /* PATTERN 20: the second page */
+    shot(dir, "pat_grid");
+    btn(B_SAVE, 0);
+    EXPECT(ui.page == PG_PATD && pj.slot[1] == 19u, "SAVE opens pattern 20's page");
+    turn(EN_PRESET, 4);                          /* TEMPO: GLOBAL, then 10, 15 .. 40, 41 .. */
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, 1);
+    EXPECT(pj.val == 10, "one click from GLOBAL: 10 BPM");
+    turn(EN_PRESET, 6);
+    EXPECT(pj.val == 40, "five a click to 40");
+    turn(EN_PRESET, 3);
+    EXPECT(pj.val == 43, "then one a click");
+    turn(EN_PRESET, -4);
+    EXPECT(pj.val == 35, "and back down");
+    shot(dir, "pat_tempo_edit");
+    btn(B_SAVE, 0);
+    EXPECT(pat_tempo == 35 && fx_bpm10 == 350 && pat_dirty, "the pattern's tempo plays, over the project's");
+    turn(EN_PRESET, -3);                         /* SAVE */
+    btn(B_SAVE, 0);
+    EXPECT(pat_store[19].used && pat_store[19].tempo == 35 && pat_cur == 19u && !pat_dirty, "SAVE into pattern 20");
+    shot(dir, "pat_page");
+    {   /* (written into project 3's flash: its pattern sector read back) */
+        int rc = prj_read(2, 1u + 19u / PAT_PER);
+        const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
+        EXPECT(!rc && pp[19 % PAT_PER].used && pp[19 % PAT_PER].tempo == 35, "the pattern is in the project's flash");
+    }
+    btn(B_SAVE, 1);
+    EXPECT(pat_store[0].used, "the project's SAVE stored the pattern playing (1) too");
+    turn(EN_PRESET, -18);                        /* PATTERN 2, empty: LOAD does nothing */
+    btn(B_SAVE, 0);
+    btn(B_SAVE, 0);
+    EXPECT(pj.ask == PQ_NONE && ui.page == PG_PATD && pat_cur == 19u, "LOAD of an empty pattern: nothing");
+    btn(B_SAVE, 1);
+    turn(EN_PRESET, 18);
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, 2);                          /* COPY to 21 */
+    btn(B_SAVE, 0);
+    btn(B_SAVE, 0);
+    EXPECT(pat_store[20].used && pat_store[20].tempo == 35, "COPY a pattern");
+    turn(EN_PRESET, 1);                          /* DELETE 20 */
+    btn(B_SAVE, 0);
+    shot(dir, "pat_ask_delete");
+    turn(EN_PRESET, 1);
+    btn(B_SAVE, 0);
+    EXPECT(!pat_store[19].used && pat_store[20].used, "DELETE a pattern");
+    btn(B_GLO, 0);
+    /* the long presses: ARP held saves the pattern playing, HOME held the project */
+    pat_tempo = 77;
+    pat_dirty = 1;
+    fm1_in.buttons |= 1u << PANEL_BTN[B_ARP];
+    host_press = 1u << PANEL_BTN[B_ARP];
+    ui_input();
+    fm1_ms += 900;
+    ui_input();
+    fm1_in.buttons = 0;
+    ui_input();
+    fm1_ms += 2000;
+    EXPECT(ui.page == PG_MAIN && pat_store[pat_cur].tempo == 77 && !pat_dirty, "ARP held saves the pattern playing");
+    ui.tempo = 99;
+    prj_dirty = 1;
+    fm1_in.buttons |= 1u << PANEL_BTN[B_HOME];
+    host_press = 1u << PANEL_BTN[B_HOME];
+    ui_input();
+    fm1_ms += 900;
+    ui_input();
+    fm1_in.buttons = 0;
+    ui_input();
+    fm1_ms += 2000;
+    EXPECT(!prj_dirty && !prj_read(2, 0) && ((const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t)))->tempo == 99,
+           "HOME held saves the project");
+    shot(dir, "pat_main");
     printf("projects: %d failures, %u erases\n", fails, host_erases);
     return fails ? 1 : 0;
 }

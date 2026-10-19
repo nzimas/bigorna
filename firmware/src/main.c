@@ -261,7 +261,7 @@ static void ota_commit(const uint8_t *parm)
 
 /* the projects' flash (projects.c): their area only */
 #define PRJ_AREA_LO 0x00097000u
-#define PRJ_AREA_HI (PRJ_AREA_LO + 32u * 4096u)
+#define PRJ_AREA_HI (PRJ_AREA_LO + 72u * 4096u)   /* (8 projects of 9 sectors) */
 static int prj_flash_read(uint32_t off, void *p, uint32_t n) { return st_read(off, p, n); }
 static int prj_flash_erase(uint32_t off)
 {

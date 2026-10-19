@@ -34,7 +34,8 @@ static const uint8_t KNOB[4] = {EN_K1, EN_K2, EN_K3, EN_K4};
 
 static const uint16_t TRACK_COL[NTRACK] = {RGB(255, 214, 0), RGB(0, 214, 255), RGB(255, 92, 210),
                                            RGB(96, 255, 96), RGB(255, 140, 0), RGB(190, 160, 255)};
-enum { PG_MAIN, PG_EDIT, PG_FXP, PG_PRJ, PG_PRJD };   /* (the projects' list and a project's page: projects.c) */
+enum { PG_MAIN, PG_EDIT, PG_FXP, PG_PRJ, PG_PRJD, PG_PAT, PG_PATD };   /* (the projects' and patterns' lists and
+                                                                     * pages: projects.c) */
 
 static struct {
     uint8_t sel;
@@ -53,6 +54,8 @@ static struct {
     uint32_t keys;
     char msg[16];
     uint32_t msg_until, home_until;
+    uint32_t home_t0, arp_t0;    /* HOME, ARP pressed at (held 0.8 s: a save; let go sooner: a press) */
+    uint8_t home_down, home_long, arp_down, arp_long;
     uint32_t seed;
     uint8_t scale, root;
     int16_t tempo;               /* the project's, BPM */
@@ -85,11 +88,14 @@ static const char *const FXT[3] = {"REVERB", "DELAY", "CHORUS"};
 #define C_OK RGB(60, 220, 90)
 #define C_BAD RGB(255, 40, 40)
 /* projects.c (after this file) */
-static uint8_t prj_dirty;
+static uint8_t prj_dirty, pat_cur, pat_dirty;
 static int8_t prj_cur;
 static void prj_press(int sh);
 static void prj_preset(int32_t s);
 static void prj_draw(void);
+static void prj_quick_save(void);
+static void pat_quick_save(void);
+static int pg_any(void) { return ui.page >= PG_PRJ; }   /* a projects' or patterns' page */
 
 static void say(const char *s, uint32_t ms)
 {
@@ -249,7 +255,7 @@ static void ui_input(void)
     for (t = 0; t < NTRACK; t++)
         if (btn_bit(press, TRACK_BTN[t])) {
             ui.sel = (uint8_t)t;
-            if (ui.page == PG_FXP || ui.page == PG_PRJ || ui.page == PG_PRJD)
+            if (ui.page == PG_FXP || pg_any())
                 ui.page = PG_MAIN;
             if (ui.page == PG_EDIT && ui.edit_pg >= pages_n(cur()))
                 ui.edit_pg = 0;
@@ -264,15 +270,47 @@ static void ui_input(void)
         ui.force = 1;
     }
     if (btn_bit(press, B_SAVE)) {                    /* the projects (projects.c) */
-        if (ui.page == PG_PRJ || ui.page == PG_PRJD)
+        if (pg_any())
             prj_press(sh);
         else if (!sh) {
             ui.page = PG_PRJ;
             ui.force = 1;
         }
     }
-    if (btn_bit(press, B_HOME))
-        new_sound(sh);
+    /* HOME: let go soon, a new sound (SHIFT: of the same family); held 0.8 s, the project saved. ARP: let go soon, the
+     * PATTERNS page up or down; held, the pattern saved */
+    if (btn_bit(press, B_HOME)) {
+        ui.home_down = 1;
+        ui.home_long = 0;
+        ui.home_t0 = fm1_ms;
+    }
+    if (ui.home_down) {
+        if (!btn_bit(fm1_in.buttons, B_HOME)) {
+            ui.home_down = 0;
+            if (!ui.home_long)
+                new_sound(sh);
+        } else if (!ui.home_long && (uint32_t)(fm1_ms - ui.home_t0) >= 800u) {
+            ui.home_long = 1;
+            prj_quick_save();
+        }
+    }
+    if (btn_bit(press, B_ARP)) {
+        ui.arp_down = 1;
+        ui.arp_long = 0;
+        ui.arp_t0 = fm1_ms;
+    }
+    if (ui.arp_down) {
+        if (!btn_bit(fm1_in.buttons, B_ARP)) {
+            ui.arp_down = 0;
+            if (!ui.arp_long) {
+                ui.page = ui.page == PG_PAT || ui.page == PG_PATD ? PG_MAIN : PG_PAT;
+                ui.force = 1;
+            }
+        } else if (!ui.arp_long && (uint32_t)(fm1_ms - ui.arp_t0) >= 800u) {
+            ui.arp_long = 1;
+            pat_quick_save();
+        }
+    }
     ui.half = (uint8_t)sh;
     if (ui.page == PG_EDIT) {                        /* the page's parameters */
         uint32_t id = page_id(cur(), ui.edit_pg);
@@ -298,7 +336,7 @@ static void ui_input(void)
                 dial(ID[sh][j], J[sh][j]);
             }
     }
-    if (ui.page == PG_PRJ || ui.page == PG_PRJD) {   /* PRESETS is the projects'; SELECT does nothing there */
+    if (pg_any()) {                                  /* PRESETS is the pages'; SELECT does nothing there */
         if ((s = enc_take(EN_PRESET)) != 0)
             prj_preset(s);
         (void)enc_take(EN_SELECT);
@@ -422,7 +460,7 @@ static void ui_leds(void)
     }
     fm1_led_key(PANEL_BTN[B_HOME], (int32_t)(ui.home_until - fm1_ms) > 0);
     fm1_led_key(PANEL_BTN[B_SEQ], ui.page == PG_FXP);
-    fm1_led_key(PANEL_BTN[B_ARP], 0);
+    fm1_led_key(PANEL_BTN[B_ARP], ui.page == PG_PAT || ui.page == PG_PATD);
     fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD);
     fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || ui.oct[ui.sel] < 0);
     fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || ui.oct[ui.sel] > 0);
@@ -448,11 +486,16 @@ static void draw_number(void)
     char d[2] = {(char)('1' + ui.sel), 0};
     CV_AREA(0, BAND_A, 240, BAND_B - BAND_A, C_BLACK) {
         cv_text_c(3, &FONT_XL, d, TRACK_COL[ui.sel]);
-        if (prj_cur >= 0) {                          /* the project loaded, top left: P7 -- orange with changes not
-                                                      * saved */
-            char pn[8] = "P";
-            fmt_int(pn + 1, prj_cur + 1);
-            cv_text(4, 2, &FONT_S, pn, prj_dirty ? RGB(255, 170, 60) : C_GREY);
+        {   /* top left: the project loaded (P3, in the PROJECTS page's colour; none yet: P-) and under it the pattern
+             * playing (20, in the PATTERNS page's), each orange with changes not saved */
+            char pn[8] = "P", pt[4];
+            if (prj_cur >= 0)
+                fmt_int(pn + 1, prj_cur + 1);
+            else
+                str_cpy(pn + 1, "-", 2);
+            fmt_int(pt, pat_cur + 1);
+            cv_text(4, 2, &FONT_S, pn, prj_dirty ? RGB(255, 170, 60) : RGB(120, 255, 200));
+            cv_text(4, 6 + FONT_S.h, &FONT_S, pt, pat_dirty ? RGB(255, 170, 60) : RGB(255, 210, 120));
         }
         if (ui.oct[ui.sel]) {                         /* the octave, top right: +1, -2 */
             char o[4] = {ui.oct[ui.sel] < 0 ? '-' : '+', (char)('0' + (ui.oct[ui.sel] < 0 ? -ui.oct[ui.sel] : ui.oct[ui.sel])), 0, 0};
@@ -752,7 +795,7 @@ static void ui_draw(void)
         ui.force = 0;
         return;
     }
-    if (ui.page == PG_PRJ || ui.page == PG_PRJD) {
+    if (pg_any()) {
         prj_draw();
         ui.shown_page = ui.page;
         ui.force = 0;
@@ -763,8 +806,8 @@ static void ui_draw(void)
         ui.force = 1;
         lcd_fill(0, 0, 240, 240, C_BLACK);           /* (the gaps between the bands, from the page before) */
     }
-    if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != prj_cur * 2 + prj_dirty) {
-        ui.shown_prj = (int16_t)(prj_cur * 2 + prj_dirty);
+    if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != prj_cur * 128 + prj_dirty * 64 + pat_cur * 2 + pat_dirty) {
+        ui.shown_prj = (int16_t)(prj_cur * 128 + prj_dirty * 64 + pat_cur * 2 + pat_dirty);
         draw_number();
         ui.shown_sel = ui.sel;
         ui.shown_eng = ui.shown_msg = ui.shown_pan = ui.shown_level = -100;

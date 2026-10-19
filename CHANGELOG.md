@@ -1,5 +1,31 @@
 # Changelog
 
+## Build 7
+
+Added
+- Patterns: 32 in each project, saved inside it. A pattern holds its tempo (and, to come, its sequence); the sounds
+  stay the project's.
+  - ARP: the PATTERNS page, 1 to 32, sixteen a page in four rows of four (the page shown by which half of the line
+    under the title is thick); PRESETS moves through them, SAVE opens one's page. ARP again goes back.
+  - A pattern's page: LOAD, SAVE, COPY, DELETE, then TEMPO: GLOBAL (the project's) or 10 to 300 BPM -- from GLOBAL,
+    a click to 10, then 5 BPM a click to 40, then 1 BPM a click. SAVE, PRESETS, SAVE to set it, as on a project's
+    page. A pattern's tempo plays over the project's.
+  - Saving, copying or deleting a pattern writes it into the project's flash at once when the project has a slot;
+    a project never saved keeps its patterns until it is.
+  - A project's SAVE stores the pattern playing into its slot too.
+  - The main screen shows, at the top left, the project (P3, green) and under it the pattern playing (20, amber),
+    each orange with changes not saved.
+- HOME held (0.8 s): the project playing saved into its slot (NO PROJECT if it has none yet). HOME's new sound now
+  comes when HOME is let go.
+- ARP held (0.8 s): the pattern playing saved into its slot.
+
+Changed
+- Projects: 8 slots (was 32), nine 4 KB sectors each: the project, then its 32 patterns four a sector. Projects
+  saved with builds 3 to 6 are not read.
+- A project's and a pattern's pages: the operations (LOAD, SAVE, COPY, DELETE) and the values (TEMPO, ROOT,
+  SCALE) are two sections, a line between them; DELETE in red; the DELETE question without a sentence under it.
+  The titles are centred.
+
 ## Build 6
 
 Changed
