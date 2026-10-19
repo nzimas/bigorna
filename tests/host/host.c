@@ -749,13 +749,9 @@ static int cmd_projects(const char *dir)
         EXPECT(pat_cur == 0u && seq_note[5][0] == n1 && seq_note[5][8] == n0, "and pattern 1 back, its steps");
         EXPECT(seq_cond[5][0] == CD_AB + 2 && seq_vel[5][0] == VEL_DEF - 20 && seq_glen[5][0] == GLEN_DEF + 2,
                "with their velocity, length, condition");
-        /* SHIFT + ARP held: a white key loads its pattern; held, empties it */
-        fm1_in.notes |= 1u << KEY_SHIFT;
-        ui_input();
-        fm1_in.buttons |= 1u << PANEL_BTN[B_ARP];
-        host_press = 1u << PANEL_BTN[B_ARP];
-        ui_input();
-        EXPECT(ui.quick && ui.page == PG_PAT, "SHIFT + ARP held shows the patterns");
+        /* the PATTERNS grid: a white key loads its pattern; held, empties it */
+        btn(B_ARP, 0);
+        EXPECT(ui.page == PG_PAT, "ARP shows the patterns");
         fm1_in.notes |= 1u << kw[12];
         ui_input();
         fm1_in.notes &= ~(1u << kw[12]);
@@ -780,12 +776,10 @@ static int cmd_projects(const char *dir)
         fm1_in.notes &= ~(1u << kw[0]);
         ui_input();
         EXPECT(pat_cur == 12u, "let go after: nothing loaded");
+        EXPECT(ui.page == PG_PAT, "the grid stays");
         fm1_ms += 2000;
-        fm1_in.buttons = 0;
-        ui_input();
-        fm1_in.notes = 0;
-        ui_input();
-        EXPECT(!ui.quick && ui.page == PG_MAIN, "let go: back to what was shown");
+        btn(B_GLO, 0);
+        EXPECT(ui.page == PG_MAIN, "a track's button: back to playing");
         /* the phrase key: a new phrase on the track, from its sound's role */
         tap(KEY_STEP);
         ui_leds();
@@ -903,13 +897,91 @@ static int cmd_projects(const char *dir)
         EXPECT(ui.rec == REC_OFF && seq_run && !met_on, "REC again: off, it plays on");
         btn(B_REC, 0);
         EXPECT(ui.rec == REC_ON && met_on, "REC playing: recording at once (punch in)");
-        btn(B_REC, 1);
-        EXPECT(!ui.click && !met_on, "SHIFT + REC: the metronome off");
-        btn(B_REC, 1);
+        btn(B_PLAY, 1);
+        EXPECT(!ui.click && !met_on, "SHIFT + PLAY: the metronome off");
+        btn(B_PLAY, 1);
         btn(B_PLAY, 0);
         EXPECT(!seq_run && ui.rec == REC_OFF, "PLAY: stopped, recording off");
         for (i = 0; i < 4u; i++)
             mix_block(out);
+    }
+    {   /* the looper: SHIFT + REC armed; the first note starts it; REC ends it at the nearest step; it plays */
+        int32_t out[2 * CTL];
+        uint32_t kw[16], k, i, n0, n2, found;
+        for (k = 0; k < NKEY; k++)
+            if (white_ix(k) >= 0)
+                kw[white_ix(k)] = k;
+        ui.sel = 0;
+        btn(B_REC, 1);
+        EXPECT(ui.lrec == 1 && met_on && !seq_run, "SHIFT + REC: the looper armed, the metronome on");
+        fm1_in.notes |= 1u << kw[0];
+        ui_input();
+        n0 = key_note(kw[0], ui.oct[0]);
+        EXPECT(seq_run && ui.lrec == 2 && loops[0][0].n == 1u && loops[0][0].ev[0].step == 0u, "the first note: step 0");
+        fm1_ms += 15000u * 10u / (uint32_t)fx_bpm10;   /* (held a step) */
+        fm1_in.notes &= ~(1u << kw[0]);
+        ui_input();
+        EXPECT(loops[0][0].ev[0].len8 == 8u, "held a step: 8 eighths");
+        while (!(seq_gcount == 3u && seq_acc_now > SEQ_16TH * 3u / 5u))
+            mix_block(out);
+        tap(kw[2]);
+        n2 = key_note(kw[2], ui.oct[0]);
+        EXPECT(loops[0][0].n == 2u && loops[0][0].ev[1].step == 4u, "late in step 4: quantized to step 5");
+        ui_draw();
+        shot(dir, "loop_rec");
+        while (!(seq_gcount == 9u && seq_acc_now < SEQ_16TH / 3u))
+            mix_block(out);
+        btn(B_REC, 0);
+        EXPECT(!ui.lrec && loops[0][0].on && loops[0][0].len == 9u && loops[0][0].anchor == 9u && !met_on,
+               "REC: the loop ends, 9 steps long");
+        for (i = 0; i < 2u; i++)
+            mix_block(out);
+        for (i = 0, found = 0; i < SEQ_HOLD; i++)
+            found |= sq_note[0][i] == n0;
+        EXPECT(found, "its first step played at once (it had gone by)");
+        while (seq_gcount != 13u)
+            mix_block(out);
+        for (i = 0, found = 0; i < SEQ_HOLD; i++)
+            found |= sq_note[0][i] == n2;
+        EXPECT(found, "its fifth step plays, quantized");
+        /* SHIFT + REC held: the loops on the white keys */
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        fm1_in.buttons |= 1u << PANEL_BTN[B_REC];
+        host_press = 1u << PANEL_BTN[B_REC];
+        ui_input();
+        fm1_ms += 500;
+        ui_input();
+        EXPECT(ui.lview, "SHIFT + REC held: the loops shown");
+        ui_leds();
+        EXPECT(host_led[14u + kw[0]] && !host_led[14u + kw[1]], "loop 1 lit, no loop 2");
+        tap(kw[0]);
+        EXPECT(loops[0][0].mute, "its key: muted");
+        fm1_in.notes |= 1u << kw[0];
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        EXPECT(!loops[0][0].on, "held: emptied");
+        fm1_in.notes = 0;
+        ui_input();
+        fm1_in.buttons = 0;
+        ui_input();
+        EXPECT(!ui.lrec && !ui.lview, "let go after the loops were shown: not armed");
+        btn(B_PLAY, 0);
+        EXPECT(!seq_run, "stopped");
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        btn(B_PLAY, 1);
+        EXPECT(!ui.click, "SHIFT + PLAY: the metronome off");
+        btn(B_PLAY, 1);
+        /* PRESETS on a session's page: the page's, never the machine */
+        k = ui.eng[ui.sel];
+        btn(B_SAVE, 0);
+        turn(EN_PRESET, 2);
+        btn(B_SAVE, 0);
+        turn(EN_PRESET, 3);
+        EXPECT(ui.eng[ui.sel] == k, "PRESETS on the sessions' pages leaves the machine");
+        btn(B_SAVE, 1);
+        btn(B_GLO, 0);
     }
     /* the long presses: ARP held saves the pattern playing, HOME held the project */
     pat_tempo = 77;

@@ -12,10 +12,8 @@
  *                     page SAVE runs LOAD, SAVE, COPY or DELETE, or moves the focus to a value: PRESETS changes it,
  *                     SAVE sets it, SHIFT + SAVE leaves it as it was; SHIFT + SAVE goes back a page
  *   ARP               the PATTERNS grid, 1 .. 16 in four rows of four: PRESETS moves through them, ARP loads the one
- *                     chosen
- *   SHIFT + ARP held  the PATTERNS grid shown and the white keys lit dimly (the pattern playing's brighter): a white
- *                     key let go soon loads its pattern; held 0.8 s, empties it (the one playing too); let go of
- *                     SHIFT or ARP, back to what was shown
+ *                     chosen. The white keys are the 16 patterns there, lit dimly (the one playing brighter): a white
+ *                     key let go soon loads its pattern (the grid stays); held 0.8 s, empties it (the one playing too)
  *   HOME held         the session playing saved, into its slot
  *   ARP held          the pattern playing saved, into its slot of the session (and into the flash if the session has
  *                     a slot)
@@ -273,7 +271,7 @@ static int pat_save(uint32_t k)
     prj_dirty = 1;                               /* (the project's pattern changed: saved with it) */
     return pat_flush(k);
 }
-/* SHIFT + ARP and a white key held: pattern k emptied (the one playing too: its steps gone) */
+/* the PATTERNS grid and a white key held: pattern k emptied (the one playing too: its steps gone) */
 static void pat_clear(uint32_t k)
 {
     char n[12] = "PATTERN ";
@@ -589,7 +587,7 @@ static void prj_preset(int32_t s)
         pj.row = (uint8_t)clampi((int32_t)pj.row + s, 0, (int32_t)pg_rows() - 1);
 }
 
-/* SHIFT + ARP and a white key: pattern k playing (an empty one too: GLOBAL, nothing in it) */
+/* the PATTERNS grid and a white key: pattern k playing (an empty one too: GLOBAL, nothing in it) */
 static void pat_switch(uint32_t k)
 {
     if (k >= PAT_SLOTS)

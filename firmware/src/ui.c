@@ -15,12 +15,20 @@
  *                               the 1st   a new phrase for the track (phrase.c): its steps, conditions and locks
  *                               the 4th   TRIG: the knobs on the step held: KNOB 1 the note (in the scale), 2 its
  *                                         velocity, 3 its length, 4 its trig condition
- *   PLAY                      the sequencer: plays, or stops (and recording ends)
+ *   PLAY                      the sequencer: plays, or stops (and recording ends, a loop being recorded is dropped)
+ *   SHIFT + PLAY              the metronome off or on (it clicks while REC or the looper is armed or recording)
  *   REC                       recording into the chosen track's steps. Stopped: armed (REC flashes, the metronome
  *                             counts), the first note played starts the sequencer and is step 1. Playing: recording
  *                             at once (punch in). Each note played goes to the nearest step, its velocity and its
  *                             length (as held) with it, over what the step held; round and round until REC again
- *                             (it plays on). SHIFT + REC: the metronome off or on (it clicks while REC is on)
+ *                             (it plays on)
+ *   SHIFT + REC               the looper (after TONITOR's): a new loop on the chosen track, armed; the first note
+ *                             played starts it (and the sequencer, if stopped); every note played after is in it, at
+ *                             the nearest step, with its velocity and length, until REC ends it (at the nearest step):
+ *                             it plays from there, round and round in its own length (up to 16 bars), over the
+ *                             track's steps. Three loops a track
+ *   SHIFT + REC held          the track's loops on the first three white keys (lit: playing; dim: muted): a key let
+ *                             go soon mutes its loop or plays it again; held 0.8 s, empties it
  *   the black key before it   EDIT: the parameter pages of the track's sound -- SYN 1 .. 4, FLTR 1, FLTR 2, AMP,
  *                             FX -- KNOB 1 .. 4 the page's A .. D, with SHIFT held E .. H
  *   ARP                       the patterns (projects.c)
@@ -71,9 +79,18 @@ static struct {
     uint32_t gen_until;          /* the phrase key lit fully until */
     uint8_t smode;               /* the step view's knobs: SM_* (the black key chosen) */
     uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
-    uint8_t qk, qk_long;         /* SHIFT + ARP: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
+    uint8_t qk, qk_long;         /* the PATTERNS grid: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
     uint8_t rec;                 /* REC_* */
     uint8_t click;               /* the metronome while recording */
+    uint8_t lrec;                /* the looper: 0 off, 1 armed, 2 recording */
+    uint8_t lt, ll;              /* .. the track and the loop it records */
+    uint32_t lstart;             /* .. the step its first note went to (seq_gcount's count) */
+    uint8_t lrec_down, lview;    /* SHIFT + REC held: on release, armed -- unless the loops were shown (lview) */
+    uint32_t lrec_t0;
+    uint8_t lv_k, lv_long;       /* the loops shown: the white key held, held 0.8 s */
+    uint32_t lv_t0;
+    uint16_t lk_ev[NKEY];        /* a key held as the looper recorded it: its note in the loop (0xFFFF none) .. */
+    uint32_t lk_t0[NKEY];        /* .. and when it was pressed */
     uint8_t rec_step[NKEY], rec_tr[NKEY];   /* a key held as it was recorded: its step (0xFF none) and track .. */
     uint32_t rec_t0[NKEY];       /* .. and when it was pressed */
     uint32_t qk_t0;
@@ -83,7 +100,6 @@ static struct {
     uint32_t msg_until, home_until;
     uint32_t home_t0, arp_t0;    /* HOME, ARP pressed at (held 0.8 s: a save; let go sooner: a press) */
     uint8_t home_down, home_long, arp_down, arp_long;
-    uint8_t quick, quick_prev;   /* SHIFT + ARP held: the patterns on the white keys; the page shown before */
     uint32_t seed;
     uint8_t scale, root;
     int16_t tempo;               /* the project's, BPM */
@@ -307,8 +323,121 @@ enum { REC_OFF, REC_ARMED, REC_ON };
 static void rec_set(uint32_t r)
 {
     ui.rec = (uint8_t)r;
-    met_on = (uint8_t)(r != REC_OFF && ui.click);
+    met_on = (uint8_t)((r != REC_OFF || ui.lrec) && ui.click);
     ui.force = 1;
+}
+
+/* the looper (the loops themselves: tracks.c). The step a note goes to: the nearest, in seq_gcount's count */
+static uint32_t loop_qnow(void)
+{
+    uint32_t g = seq_gcount, acc = seq_acc_now;
+    return g == 0xFFFFFFFFu ? 0u : g + (acc >= SEQ_16TH / 2u);
+}
+static uint32_t loop_len8(uint32_t ms)           /* a time held, in eighths of a step */
+{
+    uint32_t e = ((ms > 60000u ? 60000u : ms) * (uint32_t)fx_bpm10 * 8u + 75000u) / 150000u;   /* (rounded) */
+    return e ? (e < 2048u ? e : 2048u) : 1u;
+}
+static void loop_arm(void)
+{
+    uint32_t t = ui.sel, l;
+    for (l = 0; l < NLOOP && loops[t][l].on; l++)
+        ;
+    if (l == NLOOP) {
+        say("3 LOOPS", 1200);
+        return;
+    }
+    loops[t][l].n = 0;
+    ui.lt = (uint8_t)t;
+    ui.ll = (uint8_t)l;
+    ui.lrec = 1;
+    memset(ui.lk_ev, 0xFF, sizeof ui.lk_ev);
+    rec_set(REC_OFF);                            /* (REC's recording off: one at a time) */
+    say("LOOP ARMED", 900);
+}
+static void loop_drop(void)                      /* the loop being recorded, dropped */
+{
+    loops[ui.lt][ui.ll].n = 0;
+    ui.lrec = 0;
+    rec_set(ui.rec);
+}
+/* a note played with the looper armed or recording (k: its key, NKEY none) */
+static void loop_note(uint32_t note, uint32_t vel, uint32_t k)
+{
+    loop_t *p = &loops[ui.lt][ui.ll];
+    uint32_t q;
+    if (!ui.lrec || ui.sel != ui.lt)
+        return;
+    if (!seq_run) {                              /* (stopped: the sequencer starts on it) */
+        seq_run = 1;
+        q = 0;
+    } else
+        q = loop_qnow();
+    if (ui.lrec == 1) {
+        ui.lstart = q;
+        ui.lrec = 2;
+        ui.force = 1;
+    }
+    if (q - ui.lstart >= LOOP_MAX || p->n >= LOOP_EV)
+        return;
+    p->ev[p->n].step = (uint16_t)(q - ui.lstart);
+    p->ev[p->n].len8 = 4;
+    p->ev[p->n].note = (uint8_t)note;
+    p->ev[p->n].vel = (uint8_t)clampi((int32_t)vel, 1, 127);
+    if (k < NKEY) {
+        ui.lk_ev[k] = p->n;
+        ui.lk_t0[k] = fm1_ms;
+    }
+    p->n++;
+}
+static void loop_release(uint32_t k)             /* a key the looper recorded let go: its note's length */
+{
+    if (ui.lrec == 2 && ui.lk_ev[k] < loops[ui.lt][ui.ll].n)
+        loops[ui.lt][ui.ll].ev[ui.lk_ev[k]].len8 = (uint16_t)loop_len8(fm1_ms - ui.lk_t0[k]);
+    ui.lk_ev[k] = 0xFFFF;
+}
+/* REC: the loop ends at the nearest step and plays from there (armed, nothing played: not armed) */
+static void loop_end(void)
+{
+    loop_t *p = &loops[ui.lt][ui.ll];
+    uint32_t q = loop_qnow(), len, i, j;
+    char m[8] = "LOOP ";
+    if (ui.lrec != 2 || !p->n) {
+        loop_drop();
+        say("LOOP OFF", 900);
+        return;
+    }
+    len = q - ui.lstart;
+    len = len < 1u ? 1u : len > LOOP_MAX ? LOOP_MAX : len;
+    for (i = 0; i < NKEY; i++)                   /* (keys still held: their notes to here) */
+        if (ui.lk_ev[i] != 0xFFFFu)
+            loop_release(i);
+    for (i = 0; i < p->n; i++)                   /* (a note at the end is the loop's first) */
+        p->ev[i].step = (uint16_t)(p->ev[i].step % len);
+    for (i = 1; i < p->n; i++) {                 /* (in order of steps) */
+        lev_t e = p->ev[i];
+        for (j = i; j > 0u && p->ev[j - 1u].step > e.step; j--)
+            p->ev[j] = p->ev[j - 1u];
+        p->ev[j] = e;
+    }
+    p->len = (uint16_t)len;
+    p->anchor = q;
+    p->mute = 0;
+    p->cur = 0;
+    p->kick = (uint8_t)(seq_gcount != 0xFFFFFFFFu && q <= seq_gcount);   /* (its first step gone by: played now) */
+    RING_PUBLISH();
+    p->on = 1;
+    ui.lrec = 0;
+    rec_set(ui.rec);
+    fmt_int(m + 5, ui.ll + 1);
+    say(m, 1200);
+}
+static uint32_t loops_n(uint32_t t)
+{
+    uint32_t l, n = 0;
+    for (l = 0; l < NLOOP; l++)
+        n += loops[t][l].on;
+    return n;
 }
 /* a note played while recording (k: its key, NKEY none): into the chosen track's nearest step; the step the
  * sequencer comes to next is not played that once (the key has) */
@@ -376,6 +505,7 @@ static void midi_take(void)
             ui.last_note[ui.sel] = (uint8_t)note;
             ev_post(EV_ON, ui.sel, note, vel);
             rec_note(note, vel, NKEY);
+            loop_note(note, vel, NKEY);
         } else if ((cin == 8u || cin == 9u) && ui.midi_track[note] != 0xFFu) {
             ev_post(EV_OFF, ui.midi_track[note], note, 0);
             ui.midi_track[note] = 0xFFu;
@@ -458,7 +588,7 @@ static void step_up(void)
 static void ui_input(void)
 {
     uint32_t rel, press = fm1_input_edges(&rel), keys, ch, k, t, j;
-    int32_t s;
+    int32_t s, e_pre, e_sel, e_alg;
     int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u);
     (void)rel;
     for (t = 0; t < NTRACK; t++)
@@ -503,21 +633,10 @@ static void ui_input(void)
             prj_quick_save();
         }
     }
-    if (btn_bit(press, B_ARP) && sh) {               /* SHIFT + ARP: the patterns on the white keys, while held */
-        ui.quick = 1;
-        ui.quick_prev = ui.page;
-        ui.page = PG_PAT;
-        ui.force = 1;
-    } else if (btn_bit(press, B_ARP)) {
+    if (btn_bit(press, B_ARP)) {
         ui.arp_down = 1;
         ui.arp_long = 0;
         ui.arp_t0 = fm1_ms;
-    }
-    if (ui.quick && (!btn_bit(fm1_in.buttons, B_ARP) || !sh)) {   /* let go: back to what was shown */
-        ui.quick = 0;
-        ui.qk = KEY_NONE;
-        ui.page = ui.quick_prev;
-        ui.force = 1;
     }
     if (ui.arp_down) {
         if (!btn_bit(fm1_in.buttons, B_ARP)) {
@@ -563,29 +682,59 @@ static void ui_input(void)
                 dial(ID[sh][j], J[sh][j]);
             }
     }
-    if (btn_bit(press, B_PLAY)) {                    /* the sequencer (stopped: recording ends; armed: it plays,
-                                                      * recording) */
+    if (btn_bit(press, B_PLAY) && sh) {              /* SHIFT + PLAY: the metronome */
+        ui.click = (uint8_t)!ui.click;
+        rec_set(ui.rec);
+        say(ui.click ? "CLICK ON" : "CLICK OFF", 900);
+    } else if (btn_bit(press, B_PLAY)) {             /* the sequencer (stopped: recording ends, a loop being
+                                                      * recorded dropped; armed: it plays, recording) */
         seq_run = (uint8_t)!seq_run;
+        if (!seq_run && ui.lrec)
+            loop_drop();
         if (!seq_run && ui.rec)
             rec_set(REC_OFF);
         else if (seq_run && ui.rec == REC_ARMED)
             rec_set(REC_ON);
         say(seq_run ? "PLAY" : "STOP", 700);
     }
-    if (btn_bit(press, B_REC) && sh) {               /* SHIFT + REC: the metronome */
-        ui.click = (uint8_t)!ui.click;
-        rec_set(ui.rec);
-        say(ui.click ? "CLICK ON" : "CLICK OFF", 900);
+    if (btn_bit(press, B_REC) && ui.lrec)            /* the looper armed or recording: REC ends the loop */
+        loop_end();
+    else if (btn_bit(press, B_REC) && sh) {          /* SHIFT + REC: the looper (on release; held: its loops) */
+        ui.lrec_down = 1;
+        ui.lview = 0;
+        ui.lrec_t0 = fm1_ms;
     } else if (btn_bit(press, B_REC)) {              /* REC: armed (playing: recording), or off */
         rec_set(ui.rec ? REC_OFF : seq_run ? REC_ON : REC_ARMED);
         say(ui.rec == REC_ON ? "RECORDING" : ui.rec == REC_ARMED ? "REC ARMED" : "REC OFF", 900);
     }
-    if (pg_any()) {                                  /* PRESETS is the pages'; SELECT does nothing there */
-        if ((s = enc_take(EN_PRESET)) != 0)
-            prj_preset(s);
-        (void)enc_take(EN_SELECT);
+    if (ui.lrec_down) {
+        if (!btn_bit(fm1_in.buttons, B_REC)) {
+            ui.lrec_down = 0;
+            if (!ui.lview)
+                loop_arm();
+            ui.lview = 0;
+            ui.lv_k = KEY_NONE;
+            ui.force = 1;
+        } else if (!ui.lview && (uint32_t)(fm1_ms - ui.lrec_t0) >= 400u) {
+            char m[12] = "LOOPS ";
+            ui.lview = 1;
+            fmt_int(m + 6, (int32_t)loops_n(ui.sel));
+            say(m, 1500);
+        }
     }
-    if ((s = enc_take(EN_SELECT)) != 0) {            /* the level */
+    if (ui.lrec == 2 && loop_qnow() - ui.lstart >= LOOP_MAX)   /* (16 bars: the loop ends by itself) */
+        loop_end();
+    /* PRESETS, SELECT, ALGORITHM: each read once, then to the page's own use (on the sessions' and patterns' pages
+     * PRESETS is theirs, SELECT and ALGORITHM do nothing) */
+    e_pre = enc_take(EN_PRESET);
+    e_sel = enc_take(EN_SELECT);
+    e_alg = enc_take(EN_ALGO);
+    if (pg_any()) {
+        if (e_pre)
+            prj_preset(e_pre);
+        e_pre = e_sel = e_alg = 0;
+    }
+    if ((s = e_sel) != 0) {                          /* the level */
         char m[12] = "VOL ";
         int32_t lv = clampi(ui.level[ui.sel] + s, 0, LEVEL_MAX);
         ui.level[ui.sel] = (int8_t)lv;
@@ -599,7 +748,7 @@ static void ui_input(void)
         }
         say(m, 1200);
     }
-    if ((s = enc_take(EN_ALGO)) != 0) {              /* the pan */
+    if ((s = e_alg) != 0) {                          /* the pan */
         char m[12] = "PAN ";
         int32_t pn = clampi(ui.pan[ui.sel] + s, -PAN_MAX, PAN_MAX);
         ui.pan[ui.sel] = (int8_t)pn;
@@ -631,7 +780,7 @@ static void ui_input(void)
             say(m, 1200);
         }
     }
-    if ((s = enc_take(EN_PRESET)) != 0) {            /* the machine */
+    if ((s = e_pre) != 0) {                          /* the machine */
         int32_t e = clampi((int32_t)ui.eng[ui.sel] + (s > 0 ? 1 : -1), 0, NENG - 1);
         if (e != ui.eng[ui.sel]) {
             ui.eng[ui.sel] = (uint8_t)e;
@@ -649,15 +798,53 @@ static void ui_input(void)
             ui.edit_pg = 0;
         ui.force = 1;
     }
-    if (ui.quick) {                                  /* SHIFT + ARP held: a white key let go soon, its pattern
-                                                      * loaded; held 0.8 s, emptied */
+    if (ui.lrec_down) {                              /* SHIFT + REC held: the loops on the first three white keys */
         for (k = 0; k < NKEY; k++)
+            if (((ch & keys) >> k & 1u) && white_ix(k) >= 0 && white_ix(k) < (int32_t)NLOOP && ui.lv_k == KEY_NONE) {
+                ui.lview = 1;
+                ui.lv_k = (uint8_t)k;
+                ui.lv_long = 0;
+                ui.lv_t0 = fm1_ms;
+            }
+        if (ui.lv_k != KEY_NONE) {
+            loop_t *p = &loops[ui.sel][white_ix(ui.lv_k)];
+            char m[12] = "LOOP ";
+            fmt_int(m + 5, white_ix(ui.lv_k) + 1);
+            if (!((keys >> ui.lv_k) & 1u)) {
+                if (!ui.lv_long && p->on) {     /* (let go soon: muted, or playing again) */
+                    p->mute = (uint8_t)!p->mute;
+                    str_cpy(m + str_len(m), p->mute ? " MUTE" : " ON", 6);
+                    say(m, 900);
+                }
+                ui.lv_k = KEY_NONE;
+            } else if (!ui.lv_long && (uint32_t)(fm1_ms - ui.lv_t0) >= 800u) {
+                ui.lv_long = 1;                  /* (held: emptied) */
+                p->on = 0;
+                RING_PUBLISH();
+                p->n = 0;
+                p->len = 0;
+                flash("EMPTY", m, C_BAD);
+            }
+        }
+        ui.keys = keys;
+        midi_take();
+        return;
+    }
+    ui.lv_k = KEY_NONE;
+    if (ui.page == PG_PAT) {                         /* the PATTERNS grid: a white key let go soon, its pattern
+                                                      * loaded; held 0.8 s, emptied */
+        for (k = 0; k < NKEY; k++) {
+            if (((ch & ~keys) >> k & 1u) && ui.key_track[k] != KEY_NONE) {   /* (a note held from before: let go) */
+                ev_post(EV_OFF, ui.key_track[k], ui.key_note[k], 0);
+                ui.key_track[k] = KEY_NONE;
+            }
             if (((ch & keys) >> k & 1u) && white_ix(k) >= 0 && ui.qk == KEY_NONE) {
                 ui.qk = (uint8_t)k;
                 ui.qk_long = 0;
                 ui.qk_t0 = fm1_ms;
                 ui.key_track[k] = KEY_NONE;
             }
+        }
         if (ui.qk != KEY_NONE) {
             if (!((keys >> ui.qk) & 1u)) {
                 if (!ui.qk_long)
@@ -708,6 +895,7 @@ static void ui_input(void)
             ui.last_note[ui.sel] = (uint8_t)note;
             ev_post(EV_ON, ui.sel, note, 127);
             rec_note(note, 127, k);
+            loop_note(note, 127, k);
         } else if (k == ui.step_key)
             step_up();
         else if (ui.key_track[k] != KEY_NONE) {
@@ -715,6 +903,8 @@ static void ui_input(void)
             ui.key_track[k] = KEY_NONE;
             if (ui.rec_step[k] != 0xFFu)
                 rec_release(k);
+            if (ui.lk_ev[k] != 0xFFFFu)
+                loop_release(k);
         }
     }
     ui.keys = keys;
@@ -747,10 +937,19 @@ static void ui_leds(void)
     fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD);
     fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || ui.oct[ui.sel] < 0);
     fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || ui.oct[ui.sel] > 0);
-    fm1_led_key(PANEL_BTN[B_REC], ui.rec == REC_ON || (ui.rec == REC_ARMED && (fm1_ms / 250u) & 1u));
+    fm1_led_key(PANEL_BTN[B_REC], ui.rec == REC_ON || ui.lrec == 2 ||
+                                      ((ui.rec == REC_ARMED || ui.lrec == 1) && (fm1_ms / 250u) & 1u));
     fm1_led_key(PANEL_BTN[B_PLAY], seq_run && (seq_pos[ui.sel] & 3u) == 0u);   /* (the beat, while it plays) */
     for (k = 0; k < NKEY; k++) {
-        if (ui.quick && white_ix(k) >= 0) {          /* (SHIFT + ARP: every white key a pattern, dim; the playing one lit) */
+        if (ui.lrec_down && white_ix(k) >= 0) {      /* (the loops: playing lit, muted dim) */
+            int32_t w = white_ix(k);
+            const loop_t *p = &loops[ui.sel][w < (int32_t)NLOOP ? w : 0];
+            fm1_led_key(14u + k, w < (int32_t)NLOOP && p->on && !p->mute);
+            led_dim_key(14u + k, w < (int32_t)NLOOP && p->on && p->mute);
+            continue;
+        }
+        if (ui.page == PG_PAT && white_ix(k) >= 0) {   /* (the PATTERNS grid: every white key a pattern, dim; the playing
+                                                        * one lit) */
             fm1_led_key(14u + k, white_ix(k) == (int32_t)pat_cur);
             led_dim_key(14u + k, 1);
             continue;
@@ -801,10 +1000,11 @@ static void draw_number(void)
             char pn[8] = "P";
             fmt_int(pn + 1, pat_cur + 1);
             cv_text(4, 2, &FONT_S, pn, pat_dirty ? RGB(255, 140, 0) : C_WHITE);
-            if (ui.rec) {                            /* (recording, right, under the octave: REC in red; armed:
-                                                      * ARM) */
-                const char *r = ui.rec == REC_ON ? "REC" : "ARM";
-                cv_text(236 - text_w(&FONT_S, r), 6 + FONT_S.h, &FONT_S, r, ui.rec == REC_ON ? C_BAD : RGB(255, 140, 0));
+            if (ui.rec || ui.lrec) {                 /* (recording, right, under the octave: REC or LOOP in red;
+                                                      * armed: ARM) */
+                const char *r = ui.lrec == 2 ? "LOOP" : ui.rec == REC_ON ? "REC" : "ARM";
+                cv_text(236 - text_w(&FONT_S, r), 6 + FONT_S.h, &FONT_S, r,
+                        ui.lrec == 2 || ui.rec == REC_ON ? C_BAD : RGB(255, 140, 0));
             }
         }
         if (ui.oct[ui.sel]) {                         /* the octave, top right: +1, -2 */
@@ -1204,8 +1404,8 @@ static void ui_draw(void)
         ui.force = 1;
         lcd_fill(0, 0, 240, 240, C_BLACK);           /* (the gaps between the bands, from the page before) */
     }
-    if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pat_cur * 8 + pat_dirty * 4 + ui.rec) {
-        ui.shown_prj = (int16_t)(pat_cur * 8 + pat_dirty * 4 + ui.rec);
+    if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec) {
+        ui.shown_prj = (int16_t)(pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec);
         draw_number();
         ui.shown_sel = ui.sel;
         ui.shown_eng = ui.shown_msg = ui.shown_pan = ui.shown_level = -100;
@@ -1251,6 +1451,8 @@ static void ui_init(void)
     memset(ui.key_track, 0xFF, sizeof ui.key_track);
     ui.step_key = ui.qk = KEY_NONE;
     memset(ui.rec_step, 0xFF, sizeof ui.rec_step);
+    memset(ui.lk_ev, 0xFF, sizeof ui.lk_ev);
+    ui.lv_k = KEY_NONE;
     ui.click = 1;
     ui.shown_steps = -1;
     ui.seed = fm1_ticks() ^ 0x5EEDu;

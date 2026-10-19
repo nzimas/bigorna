@@ -1,5 +1,30 @@
 # Changelog
 
+## Build 13
+
+Added
+- A looper, after TONITOR's, with up to three loops a track.
+  - SHIFT + REC arms a new loop on the chosen track (REC flashes, the metronome counts). The first note played
+    starts it, and the sequencer too if it was stopped.
+  - Every note played on the track goes into the loop, quantized to the nearest step, with its velocity and its
+    length as held; there is no bar limit up to 16 bars (a loop reaching 16 bars ends by itself).
+  - REC ends the loop at the nearest step. It plays from there at once, round and round in its own length, over the
+    track's steps and in time with them. LOOP shows in red at the top right while recording.
+  - SHIFT + REC held shows the track's loops on the first three white keys: lit while playing, dim while muted. A
+    key let go soon mutes its loop or plays it again; held 0.8 s, it empties the loop (EMPTY / LOOP n).
+  - Loops play while the sequencer runs and start again from their first step on PLAY. They are not saved.
+- On the PATTERNS grid (ARP), the white keys are the 16 patterns: a key let go soon loads its pattern and the grid
+  stays up; held 0.8 s, it empties the pattern.
+
+Changed
+- SHIFT + PLAY turns the metronome off or on (it was SHIFT + REC, now the looper).
+- SHIFT + ARP is gone: ARP alone shows the patterns on the white keys.
+
+Fixed
+- Turning PRESETS on the sessions' pages could also change the track's machine. PRESETS, SELECT and ALGORITHM
+  are now each read once and go to the page shown only; on the sessions' and patterns' pages SELECT and ALGORITHM
+  do nothing (the level and the pan no longer change there either).
+
 ## Build 12
 
 Added

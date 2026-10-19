@@ -448,7 +448,7 @@ static uint8_t seq_was;
 static uint16_t seq_loop[NTRACK];         /* the times the track has played through since PLAY */
 static uint8_t seq_pre[NTRACK];           /* the last condition evaluated on the track (but PRE): 0 none yet, 1 false,
                                            * 2 true */
-#define SEQ_HOLD 4u                       /* notes a track's steps keep sounding at once */
+#define SEQ_HOLD 6u                       /* notes a track's steps and loops keep sounding at once */
 static uint8_t sq_note[NTRACK][SEQ_HOLD];
 static uint16_t sq_left[NTRACK][SEQ_HOLD];   /* blocks left (0xFFFF: INF) */
 static void seq_release(void)
@@ -483,38 +483,98 @@ static int seq_cond_ok(uint32_t t, uint32_t c)
     seq_pre[t] = (uint8_t)(r ? 2u : 1u);
     return r;
 }
+/* a note of the sequencer's (a step's, a loop's) on track t, for len8 eighths of a step (0: until it plays again or
+ * the sequencer stops), with the locks lk (0 none) */
+static void seq_sound(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, const volatile uint8_t *lk)
+{
+    uint32_t i, k = SEQ_HOLD;
+    for (i = 0; i < SEQ_HOLD; i++)               /* (the same note sounding: let go first, its slot taken) */
+        if (sq_note[t][i] == n || (!sq_note[t][i] && k == SEQ_HOLD))
+            k = i;
+    if (k == SEQ_HOLD)                           /* (all sounding: the one nearest its end) */
+        for (k = 0, i = 1; i < SEQ_HOLD; i++)
+            if (sq_left[t][i] < sq_left[t][k])
+                k = i;
+    if (sq_note[t][k])
+        note_off(t, sq_note[t][k], SRC_SEQ);
+    note_vel = (uint8_t)(vel ? vel : VEL_DEF);
+    note_lk = lk;
+    note_on(t, n, SRC_SEQ);
+    note_lk = 0;
+    note_vel = 127;
+    sq_note[t][k] = (uint8_t)n;
+    if (!len8)
+        sq_left[t][k] = 0xFFFFu;
+    else {   /* (blocks: eighths x the blocks of an eighth, x 16 for its fraction) */
+        uint32_t bl = (len8 < 4096u ? len8 : 4096u) * (SEQ_16TH / 8u * 16u / (CTL * (uint32_t)clampi(fx_bpm10, 100, 3000))) / 16u;
+        sq_left[t][k] = (uint16_t)(bl ? (bl < 0xFFFEu ? bl : 0xFFFEu) : 1u);
+    }
+}
 static void seq_trig(uint32_t t, uint32_t p)
 {
-    uint32_t n = seq_note[t][p], g = seq_glen[t][p], i, k = SEQ_HOLD;
+    uint32_t n = seq_note[t][p], g = seq_glen[t][p], i;
     if (seq_skip[t][p]) {
         seq_skip[t][p] = 0;
         return;
     }
     if (!n || !seq_cond_ok(t, seq_cond[t][p]))
         return;
-    for (i = 0; i < SEQ_HOLD; i++)               /* (the same note sounding: let go first, its slot taken) */
-        if (sq_note[t][i] == n || (!sq_note[t][i] && k == SEQ_HOLD))
-            k = i;
-    if (k == SEQ_HOLD)                           /* (all four sounding: the one nearest its end) */
-        for (k = 0, i = 1; i < SEQ_HOLD; i++)
-            if (sq_left[t][i] < sq_left[t][k])
-                k = i;
-    if (sq_note[t][k])
-        note_off(t, sq_note[t][k], SRC_SEQ);
-    note_vel = (uint8_t)(seq_vel[t][p] ? seq_vel[t][p] : VEL_DEF);
-    note_lk = seq_lock[t][p];
-    note_on(t, n, SRC_SEQ);
-    note_lk = 0;
-    note_vel = 127;
+    seq_sound(t, n, seq_vel[t][p], g >= GLEN_INF ? 0u : GLEN_8TH[g], seq_lock[t][p]);
     for (i = 0; i < NLK - NVLK; i++)             /* (the track's: until its next step plays) */
         trk[t].tlk[i] = seq_lock[t][p][NVLK + i];
-    sq_note[t][k] = (uint8_t)n;
-    if (g >= GLEN_INF)
-        sq_left[t][k] = 0xFFFFu;
-    else {
-        uint32_t bl = GLEN_8TH[g] * (SEQ_16TH / 8u) / (CTL * (uint32_t)clampi(fx_bpm10, 100, 3000));
-        sq_left[t][k] = (uint16_t)(bl ? (bl < 0xFFFEu ? bl : 0xFFFEu) : 1u);
-    }
+}
+
+/* ---------------------------------------------------------------- the looper --- */
+/* up to three loops a track, each its own length in steps (up to 16 bars), played over the track's steps in time
+ * with them: notes at steps (recorded quantized: ui.c), each with its velocity and its length in eighths of a step.
+ * A loop being recorded is not played (on 0) until it is ended; then it plays from its first step on the step it
+ * ended at (anchor, in seq_gcount's count) */
+#define NLOOP 3u
+#define LOOP_EV 128u
+#define LOOP_MAX 256u
+typedef struct { uint16_t step, len8; uint8_t note, vel; } lev_t;
+typedef struct {
+    volatile uint8_t on, mute;
+    volatile uint8_t kick;       /* ended after its first step had gone by: that step's notes played at once */
+    uint16_t len, n;
+    volatile uint32_t anchor;
+    uint16_t cur;                /* (the ISR's: the next note) */
+    lev_t ev[LOOP_EV];
+} loop_t;
+static loop_t loops[NTRACK][NLOOP];
+static volatile uint32_t seq_gcount;      /* the steps played since PLAY (the first: 0) */
+static void loop_kick(void)                      /* (each block: a loop's first step, late) */
+{
+    uint32_t t, l;
+    for (t = 0; t < NTRACK; t++)
+        for (l = 0; l < NLOOP; l++) {
+            loop_t *p = &loops[t][l];
+            if (!p->on || !p->kick)
+                continue;
+            for (p->cur = 0; p->cur < p->n && p->ev[p->cur].step == 0u; p->cur++)
+                if (!p->mute)
+                    seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0);
+            p->kick = 0;
+        }
+}
+static void loop_step(void)
+{
+    uint32_t t, l;
+    for (t = 0; t < NTRACK; t++)
+        for (l = 0; l < NLOOP; l++) {
+            loop_t *p = &loops[t][l];
+            uint32_t ph;
+            if (!p->on || !p->len || (int32_t)(seq_gcount - p->anchor) < 0 || p->kick)
+                continue;
+            ph = (seq_gcount - p->anchor) % p->len;
+            if (!ph)
+                p->cur = 0;
+            while (p->cur < p->n && p->ev[p->cur].step < ph)
+                p->cur++;
+            for (; p->cur < p->n && p->ev[p->cur].step == ph; p->cur++)
+                if (!p->mute)
+                    seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0);
+        }
 }
 static void seq_block(void)
 {
@@ -551,6 +611,10 @@ static void seq_block(void)
             seq_pre[t] = 0;
         }
         seq_gstep = 15;
+        seq_gcount = 0xFFFFFFFFu;
+        for (t = 0; t < NTRACK; t++)             /* (the loops from their first steps) */
+            for (i = 0; i < NLOOP; i++)
+                loops[t][i].anchor = 0;
     }
     for (t = 0; t < NTRACK; t++)                 /* the lengths run out */
         for (i = 0; i < SEQ_HOLD; i++)
@@ -561,6 +625,7 @@ static void seq_block(void)
     if (seq_acc >= SEQ_16TH) {
         seq_acc -= SEQ_16TH;
         seq_gstep = (uint8_t)((seq_gstep + 1u) & 15u);
+        seq_gcount++;
         met_tick(seq_gstep);
         for (t = 0; t < NTRACK; t++) {
             uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_pos[t] + 1u;
@@ -572,7 +637,9 @@ static void seq_block(void)
             seq_pos[t] = (uint8_t)p;
             seq_trig(t, p);
         }
+        loop_step();
     }
+    loop_kick();
     seq_acc += CTL * (uint32_t)fx_bpm10;
     seq_acc_now = seq_acc;
 }
