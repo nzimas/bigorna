@@ -1,5 +1,35 @@
 # Changelog
 
+## Build 9
+
+Added
+- A step sequencer: 16 steps a track, a 16th note each at the tempo.
+  - While SHIFT is held, the white keys are the chosen track's 16 steps, and the bottom of the screen shows them
+    (with a note in the track's colour, empty as a grey frame, the step playing white).
+  - A white key on an empty step places the last note played on that track.
+  - A white key on a step that holds a note, let go without turning PRESETS, empties it.
+  - While a step is held, PRESETS moves its note up or down the scale, and the screen shows the step and its note
+    (STEP 5  C#3). The note sounds while the step is held.
+  - The white keys' LEDs show the steps while SHIFT is held: lit with a note, dim when empty. While the sequencer
+    plays, the step playing shows the other way round.
+  - PLAY starts and stops the sequencer; its LED blinks on the beat.
+  - Each track's steps are saved with the pattern. Each track also has a length, stored and played but not yet
+    settable (16).
+- SHIFT + ARP held, a white key held 0.8 s: its pattern is emptied (in the flash too when the session has a slot),
+  and the screen flashes EMPTY / PATTERN n. A white key let go sooner loads its pattern, as before.
+
+Changed
+- Projects are now called sessions on the screen (SESSIONS, SESSION 3, NO SESSION).
+- The top left of the main screen shows only the pattern playing, on one line: P1 to P16, white, or orange with
+  changes not saved.
+- The patterns have no page of their own: ARP opens the PATTERNS grid, PRESETS moves through it, and ARP loads the
+  pattern chosen. Loading a pattern replaces the steps playing; changes not saved are lost.
+- A session loads at its pattern 1; so does the start.
+- SHIFT no longer latches held notes.
+
+Removed
+- The pattern's page (LOAD, SAVE, COPY, DELETE, TEMPO). Patterns play at the session's tempo for now.
+
 ## Build 8
 
 Changed

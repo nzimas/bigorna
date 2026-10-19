@@ -7,10 +7,13 @@
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
- *   the rightmost black key   SHIFT: keys held latch when it is pressed; SHIFT and a latched key let it go
+ *   the rightmost black key   SHIFT: while held, the white keys are the track's 16 steps. A key on an empty step puts
+ *                             the track's last note played there; a key on a step that holds a note (let go without
+ *                             turning PRESETS) empties it. A step held, PRESETS moves its note up or down the scale
+ *   PLAY                      the sequencer: plays, or stops
  *   the black key before it   EDIT: the parameter pages of the track's sound -- SYN 1 .. 4, FLTR 1, FLTR 2, AMP,
  *                             FX -- KNOB 1 .. 4 the page's A .. D, with SHIFT held E .. H
- *   ARP                       the SCALE page: SELECT the root, ALGORITHM the scale
+ *   ARP                       the patterns (projects.c)
  *   SEQ                       the send effects' pages: REVERB, DELAY, CHORUS in turn, then back; KNOB 1 .. 4 the
  *                             first four of the page, with SHIFT held the next four
  *   SELECT (knob)             the track's level; ALGORITHM (knob) its pan
@@ -34,8 +37,8 @@ static const uint8_t KNOB[4] = {EN_K1, EN_K2, EN_K3, EN_K4};
 
 static const uint16_t TRACK_COL[NTRACK] = {RGB(255, 214, 0), RGB(0, 214, 255), RGB(255, 92, 210),
                                            RGB(96, 255, 96), RGB(255, 140, 0), RGB(190, 160, 255)};
-enum { PG_MAIN, PG_EDIT, PG_FXP, PG_PRJ, PG_PRJD, PG_PAT, PG_PATD };   /* (the projects' and patterns' lists and
-                                                                     * pages: projects.c) */
+enum { PG_MAIN, PG_EDIT, PG_FXP, PG_PRJ, PG_PRJD, PG_PAT };   /* (the sessions' list and page, the patterns' grid:
+                                                              * projects.c) */
 
 static struct {
     uint8_t sel;
@@ -48,8 +51,12 @@ static struct {
     sound_t snd[NTRACK][NENG];
     uint8_t dirty[NTRACK];       /* the sound changed: to be published */
     uint8_t key_track[NKEY], key_note[NKEY];
-    uint32_t latch[NTRACK];
-    uint8_t latch_note[NTRACK][NKEY];
+    uint8_t last_note[NTRACK];   /* the note last played on each track (0: none yet): what a step is given */
+    uint8_t step_key;            /* SHIFT: the key of the step held (KEY_NONE none) */
+    uint8_t step_new, step_turned;   /* .. its note put there as it was pressed; PRESETS turned since */
+    uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
+    uint8_t qk, qk_long;         /* SHIFT + ARP: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
+    uint32_t qk_t0;
     uint8_t midi_track[128];
     uint32_t keys;
     char msg[16];
@@ -76,7 +83,8 @@ static struct {
     int32_t shown_rows[4];
     int8_t shown_touch;
     uint8_t shown_page, shown_half, shown_sub;
-    int16_t shown_prj;           /* (the project shown at the top left, and its changes) */
+    int16_t shown_prj;           /* (the pattern shown at the top left, and its changes) */
+    int32_t shown_steps;         /* (the steps' strip, folded into one number; -1 not shown) */
     uint32_t meter_at;
     uint8_t force;
 } ui;
@@ -97,6 +105,7 @@ static void prj_draw(void);
 static void prj_quick_save(void);
 static void pat_quick_save(void);
 static void pat_switch(uint32_t k);
+static void pat_clear(uint32_t k);
 static int pg_any(void) { return ui.page >= PG_PRJ; }   /* a projects' or patterns' page */
 
 static void say(const char *s, uint32_t ms)
@@ -153,6 +162,32 @@ static uint32_t key_note(uint32_t k, int32_t oct)
     return (uint32_t)clampi(SCALE_BASE + ui.root + 12 * oct + 12 * q + SCALE_STEP[ui.scale][w - q * n], 12, 120);
 }
 static int key_plays(uint32_t k) { return k != KEY_SHIFT && k != KEY_EDIT && (ui.scale == 0 || white_ix(k) >= 0); }
+/* a note in the scale (and the root); the next one up or down from n, d times */
+static int in_scale(int32_t n)
+{
+    uint32_t i, d = (uint32_t)(n - ui.root + 120) % 12u;
+    for (i = 0; i < SCALE_N[ui.scale]; i++)
+        if (SCALE_STEP[ui.scale][i] == d)
+            return 1;
+    return 0;
+}
+static int32_t scale_move(int32_t n, int32_t d)
+{
+    int32_t u = d > 0 ? 1 : -1, m;
+    for (; d; d -= u) {
+        for (m = n + u; m >= 12 && m <= 120 && !in_scale(m); m += u)
+            ;
+        if (m < 12 || m > 120)
+            break;
+        n = m;
+    }
+    return n;
+}
+static void note_text(char *b, uint32_t n)     /* C#3 */
+{
+    str_cpy(b, NOTE_NAME[n % 12u], 4);
+    fmt_int(b + str_len(b), (int32_t)(n / 12u) - 1);
+}
 
 static void level_pan_apply(uint32_t t)
 {
@@ -240,12 +275,70 @@ static void midi_take(void)
             if (ui.midi_track[note] != 0xFFu)
                 ev_post(EV_OFF, ui.midi_track[note], note, 0);
             ui.midi_track[note] = ui.sel;
+            ui.last_note[ui.sel] = (uint8_t)note;
             ev_post(EV_ON, ui.sel, note, vel);
         } else if ((cin == 8u || cin == 9u) && ui.midi_track[note] != 0xFFu) {
             ev_post(EV_OFF, ui.midi_track[note], note, 0);
             ui.midi_track[note] = 0xFFu;
         }
     }
+}
+
+/* SHIFT and a white key: step i of the chosen track. Pressed on an empty step, the track's last note put there; let go
+ * without PRESETS turned, a step that held a note emptied. Held, the step's note sounds */
+static void step_say(uint32_t i, uint32_t n)
+{
+    char m[16] = "STEP ";
+    fmt_int(m + 5, (int32_t)i + 1);
+    str_cpy(m + str_len(m), "  ", 3);
+    if (n)
+        note_text(m + str_len(m), n);
+    else
+        str_cpy(m + str_len(m), "OFF", 4);
+    say(m, 1500);
+}
+static void step_hear(uint32_t n)
+{
+    if (ui.step_heard)
+        ev_post(EV_OFF, ui.sel, ui.step_heard, 0);
+    ui.step_heard = (uint8_t)n;
+    if (n)
+        ev_post(EV_ON, ui.sel, n, 127);
+}
+static void step_down(uint32_t k)
+{
+    uint32_t i = (uint32_t)white_ix(k), n = seq_note[ui.sel][i];
+    ui.step_key = (uint8_t)k;
+    ui.step_turned = 0;
+    ui.step_new = !n;
+    if (!n) {
+        n = ui.last_note[ui.sel] ? ui.last_note[ui.sel] : key_note(0, ui.oct[ui.sel]);
+        seq_note[ui.sel][i] = (uint8_t)n;
+        pat_dirty = 1;
+    }
+    step_say(i, n);
+    step_hear(n);
+}
+static void step_turn(int32_t s)
+{
+    uint32_t i = (uint32_t)white_ix(ui.step_key), n = seq_note[ui.sel][i];
+    n = (uint32_t)scale_move((int32_t)n, s);
+    seq_note[ui.sel][i] = (uint8_t)n;
+    ui.step_turned = 1;
+    pat_dirty = 1;
+    step_say(i, n);
+    step_hear(n);
+}
+static void step_up(void)
+{
+    uint32_t i = (uint32_t)white_ix(ui.step_key);
+    step_hear(0);
+    if (!ui.step_new && !ui.step_turned) {
+        seq_note[ui.sel][i] = 0;
+        pat_dirty = 1;
+        step_say(i, 0);
+    }
+    ui.step_key = KEY_NONE;
 }
 
 static void ui_input(void)
@@ -308,14 +401,15 @@ static void ui_input(void)
     }
     if (ui.quick && (!btn_bit(fm1_in.buttons, B_ARP) || !sh)) {   /* let go: back to what was shown */
         ui.quick = 0;
+        ui.qk = KEY_NONE;
         ui.page = ui.quick_prev;
         ui.force = 1;
     }
     if (ui.arp_down) {
         if (!btn_bit(fm1_in.buttons, B_ARP)) {
             ui.arp_down = 0;
-            if (!ui.arp_long) {                      /* (ARP is to the patterns what SAVE is to the projects) */
-                if (ui.page == PG_PAT || ui.page == PG_PATD)
+            if (!ui.arp_long) {                      /* (the grid up; on it, the pattern chosen loaded) */
+                if (ui.page == PG_PAT)
                     prj_press(0);
                 else
                     ui.page = PG_PAT;
@@ -351,6 +445,12 @@ static void ui_input(void)
                 dial(ID[sh][j], J[sh][j]);
             }
     }
+    if (btn_bit(press, B_PLAY)) {                    /* the sequencer */
+        seq_run = (uint8_t)!seq_run;
+        say(seq_run ? "PLAY" : "STOP", 700);
+    }
+    if (ui.step_key != KEY_NONE && (s = enc_take(EN_PRESET)) != 0)   /* a step held: its note */
+        step_turn(s);
     if (pg_any()) {                                  /* PRESETS is the pages'; SELECT does nothing there */
         if ((s = enc_take(EN_PRESET)) != 0)
             prj_preset(s);
@@ -420,41 +520,48 @@ static void ui_input(void)
             ui.edit_pg = 0;
         ui.force = 1;
     }
-    if (ui.quick) {                                  /* SHIFT + ARP held: a white key, its pattern */
+    if (ui.quick) {                                  /* SHIFT + ARP held: a white key let go soon, its pattern
+                                                      * loaded; held 0.8 s, emptied */
         for (k = 0; k < NKEY; k++)
-            if (((ch & keys) >> k & 1u) && white_ix(k) >= 0) {
-                pat_switch((uint32_t)white_ix(k));
+            if (((ch & keys) >> k & 1u) && white_ix(k) >= 0 && ui.qk == KEY_NONE) {
+                ui.qk = (uint8_t)k;
+                ui.qk_long = 0;
+                ui.qk_t0 = fm1_ms;
                 ui.key_track[k] = KEY_NONE;
             }
+        if (ui.qk != KEY_NONE) {
+            if (!((keys >> ui.qk) & 1u)) {
+                if (!ui.qk_long)
+                    pat_switch((uint32_t)white_ix(ui.qk));
+                ui.qk = KEY_NONE;
+            } else if (!ui.qk_long && (uint32_t)(fm1_ms - ui.qk_t0) >= 800u) {
+                ui.qk_long = 1;
+                pat_clear((uint32_t)white_ix(ui.qk));
+            }
+        }
         ui.keys = keys;
         midi_take();
         return;
     }
-    if ((ch & keys) >> KEY_SHIFT & 1u)               /* SHIFT pressed: the keys held latch */
-        for (k = 0; k < NKEY; k++)
-            if (((ui.keys & keys) >> k & 1u) && key_plays(k) && ui.key_track[k] != KEY_NONE) {
-                t = ui.key_track[k];
-                ui.latch[t] |= 1u << k;
-                ui.latch_note[t][k] = ui.key_note[k];
-                ui.key_track[k] = KEY_NONE;
-            }
+    ui.qk = KEY_NONE;
     for (k = 0; ch && k < NKEY; k++) {
         if (!((ch >> k) & 1u) || !key_plays(k))
             continue;
         if ((keys >> k) & 1u) {
-            uint32_t note = key_note(k, ui.oct[ui.sel]), bit = 1u << k;
+            uint32_t note = key_note(k, ui.oct[ui.sel]);
             ui.key_track[k] = KEY_NONE;
-            if (ui.latch[ui.sel] & bit) {            /* a latched key: SHIFT and it let it go */
-                if (sh) {
-                    ui.latch[ui.sel] &= ~bit;
-                    ev_post(EV_OFF, ui.sel, ui.latch_note[ui.sel][k], 0);
-                }
-            } else {
-                ui.key_track[k] = ui.sel;
-                ui.key_note[k] = (uint8_t)note;
-                ev_post(EV_ON, ui.sel, note, 127);
+            if (sh) {                                /* SHIFT: the white keys are the steps */
+                if (white_ix(k) >= 0 && ui.step_key == KEY_NONE)
+                    step_down(k);
+                continue;
             }
-        } else if (ui.key_track[k] != KEY_NONE) {
+            ui.key_track[k] = ui.sel;
+            ui.key_note[k] = (uint8_t)note;
+            ui.last_note[ui.sel] = (uint8_t)note;
+            ev_post(EV_ON, ui.sel, note, 127);
+        } else if (k == ui.step_key)
+            step_up();
+        else if (ui.key_track[k] != KEY_NONE) {
             ev_post(EV_OFF, ui.key_track[k], ui.key_note[k], 0);
             ui.key_track[k] = KEY_NONE;
         }
@@ -485,21 +592,30 @@ static void ui_leds(void)
     }
     fm1_led_key(PANEL_BTN[B_HOME], (int32_t)(ui.home_until - fm1_ms) > 0);
     fm1_led_key(PANEL_BTN[B_SEQ], ui.page == PG_FXP);
-    fm1_led_key(PANEL_BTN[B_ARP], ui.page == PG_PAT || ui.page == PG_PATD);
+    fm1_led_key(PANEL_BTN[B_ARP], ui.page == PG_PAT);
     fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD);
     fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || ui.oct[ui.sel] < 0);
     fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || ui.oct[ui.sel] > 0);
     fm1_led_key(PANEL_BTN[B_REC], 0);
-    fm1_led_key(PANEL_BTN[B_PLAY], 0);
+    fm1_led_key(PANEL_BTN[B_PLAY], seq_run && (seq_pos[ui.sel] & 3u) == 0u);   /* (the beat, while it plays) */
     for (k = 0; k < NKEY; k++) {
         if (ui.quick && white_ix(k) >= 0) {          /* (SHIFT + ARP: every white key a pattern, dim; the playing one lit) */
             fm1_led_key(14u + k, white_ix(k) == (int32_t)pat_cur);
             led_dim_key(14u + k, 1);
             continue;
         }
+        if (ui.half && white_ix(k) >= 0) {           /* (SHIFT: the steps; with a note lit, empty dim, the one
+                                                      * playing the other way round) */
+            uint32_t i = (uint32_t)white_ix(k);
+            int on = seq_note[ui.sel][i] != 0;
+            if (seq_run && seq_pos[ui.sel] == i)
+                on = !on;
+            fm1_led_key(14u + k, on || k == ui.step_key);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
         led_dim_key(14u + k, 0);
-        fm1_led_key(14u + k, key_plays(k) && ((((ui.keys >> k) & 1u) && ui.key_track[k] == ui.sel) ||
-                                             ((ui.latch[ui.sel] >> k) & 1u)));
+        fm1_led_key(14u + k, key_plays(k) && ((ui.keys >> k) & 1u) && ui.key_track[k] == ui.sel);
     }
     fm1_led_key(14u + KEY_SHIFT, (ui.keys >> KEY_SHIFT) & 1u);
     fm1_led_key(14u + KEY_EDIT, ui.page == PG_EDIT);
@@ -518,16 +634,10 @@ static void draw_number(void)
     char d[2] = {(char)('1' + ui.sel), 0};
     CV_AREA(0, BAND_A, 240, BAND_B - BAND_A, C_BLACK) {
         cv_text_c(3, &FONT_XL, d, TRACK_COL[ui.sel]);
-        {   /* top left: the project loaded (P3, in the PROJECTS page's colour; none yet: P-) and under it the pattern
-             * playing (20, in the PATTERNS page's), each orange with changes not saved */
-            char pn[8] = "P", pt[4];
-            if (prj_cur >= 0)
-                fmt_int(pn + 1, prj_cur + 1);
-            else
-                str_cpy(pn + 1, "-", 2);
-            fmt_int(pt, pat_cur + 1);
-            cv_text(4, 2, &FONT_S, pn, prj_dirty ? RGB(255, 170, 60) : RGB(120, 255, 200));
-            cv_text(4, 6 + FONT_S.h, &FONT_S, pt, pat_dirty ? RGB(255, 170, 60) : RGB(255, 210, 120));
+        {   /* top left: the pattern playing (P3; orange with changes not saved) */
+            char pn[8] = "P";
+            fmt_int(pn + 1, pat_cur + 1);
+            cv_text(4, 2, &FONT_S, pn, pat_dirty ? RGB(255, 140, 0) : C_WHITE);
         }
         if (ui.oct[ui.sel]) {                         /* the octave, top right: +1, -2 */
             char o[4] = {ui.oct[ui.sel] < 0 ? '-' : '+', (char)('0' + (ui.oct[ui.sel] < 0 ? -ui.oct[ui.sel] : ui.oct[ui.sel])), 0, 0};
@@ -593,6 +703,34 @@ static void draw_pan(void)
     cv_rect(x - 6, 3, 12, 18, TRACK_COL[ui.sel]);
     cv_blit(0, BAND_D);
     ui.shown_pan = pn;
+}
+
+/* SHIFT held: the chosen track's 16 steps, four groups of four; with a note in the track's colour, empty a grey frame,
+ * the one playing white, the one held framed white */
+static void draw_steps(void)
+{
+    uint32_t i, t = ui.sel, pos = seq_run ? seq_pos[t] : 0xFFu, len = seq_len[t] ? seq_len[t] : NSTEP;
+    uint32_t h = 0;
+    int32_t key;
+    for (i = 0; i < NSTEP; i++)
+        h = h << 1 | (seq_note[t][i] != 0);
+    key = (int32_t)((h << 14 | t << 11 | (pos & 31u) << 5 | (ui.step_key != KEY_NONE ? (uint32_t)white_ix(ui.step_key) + 1u : 0u)) & 0x3FFFFFFFu);
+    if (!ui.force && key == ui.shown_steps)
+        return;
+    cv_begin(240, 240 - BAND_M, C_BLACK);
+    for (i = 0; i < NSTEP; i++) {
+        int32_t x = 4 + (int32_t)i * 14 + (int32_t)(i / 4u) * 4;
+        int held = ui.step_key != KEY_NONE && (uint32_t)white_ix(ui.step_key) == i;
+        uint16_t c = i >= len ? RGB(30, 30, 30) : i == pos ? C_WHITE : seq_note[t][i] ? TRACK_COL[t] : 0;
+        if (c)
+            cv_rect(x, 6, 12, 36, c);
+        else
+            cv_frame(x, 6, 12, 36, 2, C_GREY);
+        if (held)
+            cv_frame(x - 1, 2, 14, 44, 2, C_WHITE);
+    }
+    cv_blit(0, BAND_M);
+    ui.shown_steps = key;
 }
 
 /* a page of four rows (EDIT, the effects): a title, then each row its name and value, a bar under them; the
@@ -838,8 +976,8 @@ static void ui_draw(void)
         ui.force = 1;
         lcd_fill(0, 0, 240, 240, C_BLACK);           /* (the gaps between the bands, from the page before) */
     }
-    if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != prj_cur * 128 + prj_dirty * 64 + pat_cur * 2 + pat_dirty) {
-        ui.shown_prj = (int16_t)(prj_cur * 128 + prj_dirty * 64 + pat_cur * 2 + pat_dirty);
+    if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pat_cur * 2 + pat_dirty) {
+        ui.shown_prj = (int16_t)(pat_cur * 2 + pat_dirty);
         draw_number();
         ui.shown_sel = ui.sel;
         ui.shown_eng = ui.shown_msg = ui.shown_pan = ui.shown_level = -100;
@@ -853,6 +991,15 @@ static void ui_draw(void)
         draw_sound(c, msg);
         str_cpy(ui.shown_text, c, sizeof ui.shown_text);
         ui.shown_msg = msg;
+    }
+    if (ui.half) {                                   /* SHIFT: the steps where the meter and the pan were */
+        draw_steps();
+        ui.force = 0;
+        return;
+    }
+    if (ui.shown_steps >= 0) {
+        ui.shown_steps = -1;
+        ui.shown_level = ui.shown_pan = -100;
     }
     px = meter_px(trk[ui.sel].meter);
     if (ui.shown_level != ui.level[ui.sel] || ((uint32_t)(fm1_ms - ui.meter_at) >= 30u && px != ui.shown_meter)) {
@@ -874,6 +1021,8 @@ static void ui_init(void)
     memset(&ui, 0, sizeof ui);
     memset(ui.midi_track, 0xFF, sizeof ui.midi_track);
     memset(ui.key_track, 0xFF, sizeof ui.key_track);
+    ui.step_key = ui.qk = KEY_NONE;
+    ui.shown_steps = -1;
     ui.seed = fm1_ticks() ^ 0x5EEDu;
     ui.scale = 6;                                    /* minor pentatonic, from C */
     ui.tempo = 120;

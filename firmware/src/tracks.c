@@ -62,7 +62,7 @@ static vmem_t vmem[NVOICE] POOL;
 
 #define FADE 12u                 /* blocks of a fade (~9 ms) */
 #define QUICK 3u                 /* blocks of the budget's fade (~2 ms) */
-enum { SRC_KEY, SRC_SEQ };       /* who plays a note: the keys (and MIDI), or a sequencer (to come) */
+enum { SRC_KEY, SRC_SEQ };       /* who plays a note: the keys (and MIDI), or the sequencer */
 typedef struct {
     uint8_t note, gate, src;     /* the note, held, by whom */
     uint8_t sounding;            /* the voice renders */
@@ -327,6 +327,63 @@ static void events_take(void)
     }
 }
 
+/* ------------------------------------------------------------ the sequencer --- */
+/* 16 steps a track, a 16th note each at the tempo; a step holds its note (0: empty), played for half a step. The
+ * main loop writes the steps and the lengths (bytes: whole as written), the ISR plays them */
+#define NSTEP 16u
+#define SEQ_16TH (FS * 15u * 10u)         /* a 16th note, in samples x the tempo x 10 */
+static volatile uint8_t seq_note[NTRACK][NSTEP];
+static volatile uint8_t seq_len[NTRACK];  /* (0: 16) */
+static volatile uint8_t seq_run;          /* PLAY */
+static volatile uint8_t seq_pos[NTRACK];  /* the step playing (the ISR's; the screen and the LEDs read it) */
+static uint32_t seq_acc;
+static uint8_t seq_was, seq_half, seq_on[NTRACK];   /* (seq_on: the note sounding, 0 none) */
+static void seq_release(void)
+{
+    uint32_t t;
+    for (t = 0; t < NTRACK; t++)
+        if (seq_on[t]) {
+            note_off(t, seq_on[t], SRC_SEQ);
+            seq_on[t] = 0;
+        }
+}
+static void seq_block(void)
+{
+    uint32_t t;
+    if (!seq_run) {
+        if (seq_was)
+            seq_release();
+        seq_was = 0;
+        return;
+    }
+    if (!seq_was) {                              /* started: step 1 now */
+        seq_was = 1;
+        seq_acc = SEQ_16TH;
+        for (t = 0; t < NTRACK; t++)
+            seq_pos[t] = 0xFF;
+    }
+    if (seq_acc >= SEQ_16TH) {
+        seq_acc -= SEQ_16TH;
+        seq_half = 0;
+        seq_release();
+        for (t = 0; t < NTRACK; t++) {
+            uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_pos[t] + 1u, n;
+            if (p >= len)
+                p = 0;
+            seq_pos[t] = (uint8_t)p;
+            if ((n = seq_note[t][p]) != 0) {
+                note_on(t, n, SRC_SEQ);
+                seq_on[t] = (uint8_t)n;
+            }
+        }
+    }
+    seq_acc += CTL * (uint32_t)fx_bpm10;
+    if (!seq_half && seq_acc >= SEQ_16TH / 2u) {
+        seq_half = 1;
+        seq_release();
+    }
+}
+
 /* ------------------------------------------------------------- the mix --- */
 #define TRACK_GAIN 6144          /* Q12, x 1.5 */
 #define LIM 19661                /* a track's ceiling, 0.6 (Q15) */
@@ -529,6 +586,7 @@ static void mix_block(int32_t *out)
     int32_t l_[CTL], r_[CTL], dlin[CTL], rvin[CTL], chin[CTL];
     uint32_t i, t, c0 = COST_NOW();
     events_take();
+    seq_block();
     budget_guard();
     if (shed_req) {
         if (!shed_voice(0) && shed_req > 1u)

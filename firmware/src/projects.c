@@ -1,27 +1,29 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Projects and their patterns, in the FM-1's flash (the user data area TONITOR kept its sessions in).
+ * Sessions and their patterns, in the FM-1's flash (the user data area TONITOR kept its sessions in).
  *
- * 16 projects, four 4 KB sectors each: the project (every track's machine, its sound on each machine, octave, level
- * and pan; the send effects; the tempo, root and scale; the pattern last loaded), then its 16 patterns, six a sector
- * (a pattern, 680 bytes: its tempo -- or GLOBAL, the project's -- and room for its sequence, to come, kept as the steps
- * that hold something rather than every step).
- * The project playing is kept in RAM whole, its 16 patterns with it; the pattern playing is one of them.
+ * 16 sessions, four 4 KB sectors each: the session (every track's machine, its sound on each machine, octave, level
+ * and pan; the send effects; the tempo, root and scale), then its 16 patterns, six a sector (a pattern, 680 bytes:
+ * each track's 16 steps and its length; its tempo, kept for later, GLOBAL -- the session's -- for now).
+ * The session playing is kept in RAM whole, its 16 patterns with it; the pattern playing is one of them, its steps
+ * in the sequencer's (tracks.c) as they are edited.
+ * (In the code a session is a "project".)
  *
- *   SAVE              the PROJECTS page: PROJECT 1 .. 16; PRESETS moves through them, SAVE opens one's page. On the
+ *   SAVE              the SESSIONS page: SESSION 1 .. 16; PRESETS moves through them, SAVE opens one's page. On the
  *                     page SAVE runs LOAD, SAVE, COPY or DELETE, or moves the focus to a value: PRESETS changes it,
  *                     SAVE sets it, SHIFT + SAVE leaves it as it was; SHIFT + SAVE goes back a page
- *   ARP               the PATTERNS page, 1 .. 16 in four rows of four, and ARP is to it what SAVE is to the projects:
- *                     ARP on a slot opens its page, ARP runs LOAD, SAVE, COPY or DELETE there, or sets TEMPO
- *   SHIFT + ARP held  the PATTERNS page shown and the white keys lit dimly (the pattern playing's brighter): a white
- *                     key loads its pattern; let go, back to what was shown
- *   HOME held         the project playing saved, into its slot
- *   ARP held          the pattern playing saved, into its slot of the project (and into the flash if the project has a
- *                     slot)
+ *   ARP               the PATTERNS grid, 1 .. 16 in four rows of four: PRESETS moves through them, ARP loads the one
+ *                     chosen
+ *   SHIFT + ARP held  the PATTERNS grid shown and the white keys lit dimly (the pattern playing's brighter): a white
+ *                     key let go soon loads its pattern; held 0.8 s, empties it (the one playing too); let go of
+ *                     SHIFT or ARP, back to what was shown
+ *   HOME held         the session playing saved, into its slot
+ *   ARP held          the pattern playing saved, into its slot of the session (and into the flash if the session has
+ *                     a slot)
  *   a track's button  back to playing
+ * A session loads with its pattern 1; so does the start.
  * LOAD with changes not saved, SAVE over another, DELETE, and COPY over another ask first: NO / YES on PRESETS, SAVE
- * (ARP, a pattern's) answers. COPY asks for the slot to copy to (PRESETS), then SAVE (ARP).
- * A project's SAVE stores the pattern playing into its slot too, then the whole project. A pattern's SAVE makes it the
- * pattern playing.
+ * answers. COPY asks for the slot to copy to (PRESETS), then SAVE.
+ * A session's SAVE stores the pattern playing into its slot too, then the whole session.
  *
  * Each sector begins with a head: magic, format, what it is (the project, or which four patterns), the body's length
  * and CRC, the head's own CRC. A sector whose head does not check (empty, erased, another firmware's) is empty. */
@@ -46,15 +48,17 @@ typedef struct {
     uint8_t eng[NTRACK];
     int8_t oct[NTRACK], level[NTRACK], pan[NTRACK];
     uint8_t dl[NDL], rv[NRV], ch[NCH];
-    uint8_t pat;                 /* the pattern last loaded */
+    uint8_t pat;                 /* the pattern playing as it was saved */
     sound_t snd[NTRACK][NENG];
 } prj_body_t;
 typedef struct {
     uint8_t used;                /* saved */
     uint8_t pad;
     uint16_t tempo;              /* 0: GLOBAL (the project's) */
-    uint8_t seq[676];            /* (the sequence, to come) */
+    uint8_t seq[676];            /* the steps: SEQ_LEN, SEQ_NOTE (the rest for later) */
 } pat_t;
+#define SEQ_LEN 0u               /* seq[t]: track t's length (0: 16) */
+#define SEQ_NOTE 8u              /* seq[8 + 16 t + i]: track t's step i, its note (0: empty) */
 typedef char prj_fits[sizeof(prj_head_t) + sizeof(prj_body_t) <= PRJ_SECT ? 1 : -1];
 typedef char pat_fits[sizeof(prj_head_t) + PAT_PER * sizeof(pat_t) <= PRJ_SECT ? 1 : -1];
 
@@ -145,14 +149,27 @@ static void tempo_apply(void)
 }
 static void pat_take(pat_t *p)               /* the pattern playing, into a slot of the store */
 {
+    uint32_t t, i;
     memset(p, 0, sizeof *p);
     p->used = 1;
     p->tempo = pat_tempo;
+    for (t = 0; t < NTRACK; t++) {
+        p->seq[SEQ_LEN + t] = seq_len[t];
+        for (i = 0; i < NSTEP; i++)
+            p->seq[SEQ_NOTE + t * NSTEP + i] = seq_note[t][i];
+    }
 }
-static void pat_give(uint32_t k)             /* slot k of the store, as the pattern playing */
+static void pat_give(uint32_t k)             /* slot k of the store, as the pattern playing (empty: no steps) */
 {
+    const pat_t *p = &pat_store[k];
+    uint32_t t, i;
     pat_cur = (uint8_t)k;
-    pat_tempo = pat_store[k].used ? pat_store[k].tempo : 0;
+    pat_tempo = p->used ? p->tempo : 0;
+    for (t = 0; t < NTRACK; t++) {
+        seq_len[t] = p->used && p->seq[SEQ_LEN + t] <= NSTEP ? p->seq[SEQ_LEN + t] : 0;
+        for (i = 0; i < NSTEP; i++)
+            seq_note[t][i] = p->used ? p->seq[SEQ_NOTE + t * NSTEP + i] : 0;
+    }
     pat_dirty = 0;
     tempo_apply();
 }
@@ -173,15 +190,20 @@ static int pat_save(uint32_t k)
     prj_dirty = 1;                               /* (the project's pattern changed: saved with it) */
     return pat_flush(k);
 }
-static int pat_copy(uint32_t from, uint32_t to)
+/* SHIFT + ARP and a white key held: pattern k emptied (the one playing too: its steps gone) */
+static void pat_clear(uint32_t k)
 {
-    pat_store[to] = pat_store[from];
-    return pat_flush(to);
-}
-static int pat_delete(uint32_t k)
-{
+    char n[12] = "PATTERN ";
+    int rc;
+    if (k >= PAT_SLOTS)
+        return;
     memset(&pat_store[k], 0, sizeof pat_store[k]);
-    return pat_flush(k);
+    if (k == pat_cur)
+        pat_give(k);
+    rc = pat_flush(k);
+    fmt_int(n + 8, (int32_t)k + 1);
+    flash(rc ? "FAILED" : "EMPTY", n, rc ? C_BAD : RGB(255, 210, 120));
+    ui.force = 1;
 }
 
 /* ---------------------------------------------------------------- projects --- */
@@ -209,7 +231,6 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     uint32_t t;
     for (t = 0; t < NTRACK; t++) {
         ev_post(EV_STOP, t, 0, 0);
-        ui.latch[t] = 0;
         ui.eng[t] = (uint8_t)(b->eng[t] % NENG);
         ui.oct[t] = (int8_t)clampi(b->oct[t], -3, 3);
         ui.level[t] = (int8_t)clampi(b->level[t], 0, LEVEL_MAX);
@@ -261,7 +282,7 @@ static int prj_load(uint32_t k)
     }
     prj_give(&b);
     prj_cur = (int8_t)k;
-    pat_give(b.pat % PAT_SLOTS);
+    pat_give(0);                                 /* (a session starts at its pattern 1) */
     prj_dirty = 0;
     return 0;
 }
@@ -293,7 +314,7 @@ static int prj_delete(uint32_t k)
 }
 
 /* -------------------------------------------------------------- the pages --- */
-/* the rows of a page: the operations, then the values; a project's has ROOT and SCALE, a pattern's not */
+/* the rows of a session's page: the operations, then the values */
 enum { PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_ROOT, PR_SCALE, PR_N };
 static const char *const PR_NAME[PR_N] = {"LOAD", "SAVE", "COPY", "DELETE", "TEMPO", "ROOT", "SCALE"};
 enum { PQ_NONE, PQ_LOAD, PQ_SAVE, PQ_DELETE, PQ_COPYTO, PQ_COPYOVER };
@@ -311,9 +332,9 @@ static struct {
 #define C_PAT RGB(255, 210, 120)
 #define C_DIRTY RGB(255, 170, 60)
 
-static int pg_pat(void) { return ui.page == PG_PAT || ui.page == PG_PATD; }   /* (a patterns' page) */
+static int pg_pat(void) { return ui.page == PG_PAT; }   /* (the patterns' grid) */
 static uint32_t pg_kind(void) { return (uint32_t)pg_pat(); }
-static uint32_t pg_rows(void) { return pg_pat() ? PR_TEMPO + 1u : PR_N; }
+static uint32_t pg_rows(void) { return PR_N; }
 static uint32_t pg_slots(void) { return pg_pat() ? PAT_SLOTS : PRJ_SLOTS; }
 static int pg_has(uint32_t k) { return pg_pat() ? pat_store[k].used : prj_has[k]; }
 static int pg_cur(uint32_t k) { return pg_pat() ? pat_cur == k : prj_cur == (int8_t)k; }
@@ -322,7 +343,7 @@ static int pg_dirty(void) { return pg_pat() ? pat_dirty : prj_dirty; }
 static void prj_done(int rc, const char *what, uint32_t k)
 {
     char n[12];
-    str_cpy(n, pg_pat() ? "PATTERN " : "PROJECT ", 12);
+    str_cpy(n, pg_pat() ? "PATTERN " : "SESSION ", 12);
     fmt_int(n + 8, (int32_t)k + 1);
     if (!rc)
         flash(what, n, C_OK);
@@ -332,36 +353,25 @@ static void prj_done(int rc, const char *what, uint32_t k)
 }
 static void do_load(uint32_t k)
 {
-    if (pg_pat()) {
-        pat_give(k);
-        prj_done(0, "LOADED", k);
-        return;
-    }
     flash("LOADING", "", C_PRJ);
     ui_draw();
     prj_done(prj_load(k), "LOADED", k);
 }
 static void do_save(uint32_t k)
 {
-    if (pg_pat()) {
-        prj_done(pat_save(k), "SAVED", k);
-        return;
-    }
     flash("SAVING", "", C_PRJ);
     ui_draw();
     prj_done(prj_save(k), "SAVED", k);
 }
 static void do_copy(uint32_t from, uint32_t to)
 {
-    if (!pg_pat()) {
-        flash("COPYING", "", C_PRJ);
-        ui_draw();
-    }
-    prj_done(pg_pat() ? pat_copy(from, to) : prj_copy(from, to), "COPIED", to);
+    flash("COPYING", "", C_PRJ);
+    ui_draw();
+    prj_done(prj_copy(from, to), "COPIED", to);
 }
-static void do_delete(uint32_t k) { prj_done(pg_pat() ? pat_delete(k) : prj_delete(k), "DELETED", k); }
+static void do_delete(uint32_t k) { prj_done(prj_delete(k), "DELETED", k); }
 
-/* SAVE pressed on a projects' or patterns' page */
+/* SAVE pressed on a sessions' page; ARP on the patterns' grid */
 static void prj_press(int sh)
 {
     uint32_t kind = pg_kind(), k = pj.slot[kind];
@@ -374,13 +384,21 @@ static void prj_press(int sh)
         else if (pj.ask)
             pj.ask = PQ_NONE;
         else
-            ui.page = kind ? PG_PAT : PG_PRJ;
+            ui.page = PG_PRJ;
         ui.force = 1;
         return;
     }
     ui.force = 1;
+    if (kind) {                                  /* the patterns' grid: the one chosen loaded */
+        char n[12] = "PATTERN ";
+        pat_switch(k);
+        fmt_int(n + 8, (int32_t)k + 1);
+        ui.page = PG_MAIN;
+        say(n, 900);
+        return;
+    }
     if (list) {                                  /* a slot: its page */
-        ui.page = kind ? PG_PATD : PG_PRJD;
+        ui.page = PG_PRJD;
         pj.row = 0;
         pj.ask = PQ_NONE;
         pj.edit = 0;
@@ -388,17 +406,13 @@ static void prj_press(int sh)
     }
     if (pj.edit) {                               /* the value set: the focus back on the rows */
         pj.edit = 0;
-        if (pj.row == PR_TEMPO && kind) {
-            pat_tempo = (uint16_t)pj.val;
-            pat_dirty = 1;
-        } else if (pj.row == PR_TEMPO)
+        if (pj.row == PR_TEMPO)
             ui.tempo = pj.val;
         else if (pj.row == PR_ROOT)
             ui.root = (uint8_t)pj.val;
         else
             ui.scale = (uint8_t)pj.val;
-        if (!kind || pj.row != PR_TEMPO)
-            prj_dirty = 1;
+        prj_dirty = 1;
         tempo_apply();
         return;
     }
@@ -438,7 +452,7 @@ static void prj_press(int sh)
             say("EMPTY", 900);
             return;
         }
-        if (pg_dirty() && (!kind || pg_cur(k) || pat_dirty)) {   /* (changes not saved would go: asked first) */
+        if (prj_dirty || pat_dirty) {            /* (changes not saved would go: asked first) */
             pj.ask = PQ_LOAD;
             pj.yes = 0;
         } else {
@@ -471,18 +485,9 @@ static void prj_press(int sh)
         break;
     default:                                     /* TEMPO, ROOT, SCALE: the focus on the value */
         pj.edit = 1;
-        pj.val = pj.row == PR_TEMPO ? (kind ? (int16_t)pat_tempo : ui.tempo) : pj.row == PR_ROOT ? ui.root : ui.scale;
+        pj.val = pj.row == PR_TEMPO ? ui.tempo : pj.row == PR_ROOT ? ui.root : ui.scale;
         break;
     }
-}
-/* a pattern's TEMPO, a click on: GLOBAL (0), then 10 .. 40 five at a click, then 41 .. 300 one at a click */
-static int32_t pat_tempo_step(int32_t v, int32_t s)
-{
-    for (; s > 0; s--)
-        v = !v ? TEMPO_MIN : v < 40 ? v + 5 : clampi(v + 1, 0, TEMPO_MAX);
-    for (; s < 0; s++)
-        v = v <= TEMPO_MIN ? 0 : v <= 40 ? v - 5 : v - 1;
-    return v;
 }
 /* PRESETS on a page: through the slots, the rows, the slot to copy to, NO / YES, or the value */
 static void prj_preset(int32_t s)
@@ -495,7 +500,7 @@ static void prj_preset(int32_t s)
     else if (pj.ask)
         pj.yes = (uint8_t)(s > 0);
     else if (pj.edit)
-        pj.val = (int16_t)(pj.row == PR_TEMPO ? (kind ? pat_tempo_step(pj.val, s) : clampi(pj.val + s, TEMPO_MIN, TEMPO_MAX))
+        pj.val = (int16_t)(pj.row == PR_TEMPO ? clampi(pj.val + s, TEMPO_MIN, TEMPO_MAX)
                            : pj.row == PR_ROOT ? (pj.val + s % 12 + 12) % 12 : clampi(pj.val + s, 0, NSCALE - 1));
     else
         pj.row = (uint8_t)clampi((int32_t)pj.row + s, 0, (int32_t)pg_rows() - 1);
@@ -509,11 +514,11 @@ static void pat_switch(uint32_t k)
     pat_give(k);
     pj.slot[1] = (uint8_t)k;
 }
-/* HOME held: the project playing saved into its slot; ARP held: the pattern playing into its slot */
+/* HOME held: the session playing saved into its slot; ARP held: the pattern playing into its slot */
 static void prj_quick_save(void)
 {
     if (prj_cur < 0) {
-        say("NO PROJECT", 1200);                 /* (never saved: its slot chosen on the PROJECTS page) */
+        say("NO SESSION", 1200);                 /* (never saved: its slot chosen on the SESSIONS page) */
         return;
     }
     flash("SAVING", "", C_PRJ);
@@ -542,16 +547,16 @@ static void prj_title(const char *t, int half, uint16_t col, uint16_t line)
         cv_rect(half == 1 ? 0 : 120, 47, 120, 8, line);
     cv_blit(0, 0);
 }
-/* the PROJECTS list: a row a slot, five shown, the one loaded with a block at its right */
+/* the SESSIONS list: a row a slot, five shown, the one loaded with a block at its right */
 static void draw_prj_list(void)
 {
     uint32_t sel = pj.slot[0], top = sel < 2u ? 0u : sel > PRJ_SLOTS - 3u ? PRJ_SLOTS - 5u : sel - 2u, r;
-    prj_title("PROJECTS", 0, C_PRJ, C_PRJ);
+    prj_title("SESSIONS", 0, C_PRJ, C_PRJ);
     for (r = 0; r < 5u; r++) {
         uint32_t k = top + r;
         char n[16];
         uint16_t c = pg_col(k);
-        str_cpy(n, "PROJECT ", 12);
+        str_cpy(n, "SESSION ", 12);
         fmt_int(n + 8, (int32_t)k + 1);
         cv_begin(240, 37, k == sel ? C_WHITE : C_BLACK);
         cv_text(8, (37 - (int32_t)FONT_S.h) / 2, &FONT_S, n, k == sel ? C_BLACK : c);   /* (the pages' size) */
@@ -621,11 +626,9 @@ static void prj_field(uint32_t r, uint32_t k, const char *val, uint16_t fg, int 
 static void prj_value(uint32_t k, char *v, uint32_t n)
 {
     int32_t x = pj.edit && pj.row == k ? pj.val
-                : k == PR_TEMPO ? (pg_pat() ? (int32_t)pat_tempo : ui.tempo) : k == PR_ROOT ? ui.root : ui.scale;
+                : k == PR_TEMPO ? ui.tempo : k == PR_ROOT ? ui.root : ui.scale;
     v[0] = 0;
-    if (k == PR_TEMPO && pg_pat() && !x)
-        str_cpy(v, "GLOBAL", n);
-    else if (k == PR_TEMPO)
+    if (k == PR_TEMPO)
         fmt_int(v, x);
     else if (k == PR_ROOT)
         str_cpy(v, NOTE_NAME[x % 12], n);
@@ -665,7 +668,7 @@ static void draw_prj_page(void)
     uint32_t k = pj.slot[pg_kind()], r, top = prj_top();
     char t[16], v[20];
     uint16_t line = pg_pat() ? C_PAT : C_PRJ;
-    str_cpy(t, pg_pat() ? "PATTERN " : "PROJECT ", 12);
+    str_cpy(t, "SESSION ", 12);
     fmt_int(t + 8, (int32_t)k + 1);
     prj_title(t, 0, pg_col(k), line);
     if (pj.ask == PQ_COPYTO) {                   /* the slot to copy to, very large */
@@ -684,7 +687,7 @@ static void draw_prj_page(void)
     }
     for (r = 0; r < 5u; r++) {
         uint32_t i = top + r;
-        if (i >= pg_rows()) {                    /* (a pattern's page: five rows, all shown) */
+        if (i >= pg_rows()) {
             cv_begin(240, 37, C_BLACK);
             cv_blit(0, 55 + 37 * r);
             continue;

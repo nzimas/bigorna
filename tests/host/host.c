@@ -496,7 +496,8 @@ static int cmd_cost(void)
     return 0;
 }
 
-/* the projects: save, change, load (back as saved), copy, delete, another firmware's data, the questions */
+/* the sessions: save, change, load (back as saved), copy, delete, another firmware's data, the questions; the steps,
+ * the patterns */
 static int fails;
 #define EXPECT(c, what) do { if (!(c)) { printf("FAIL projects: %s\n", what); fails++; } } while (0)
 static void btn(uint32_t b, int sh)
@@ -526,7 +527,7 @@ static int cmd_projects(const char *dir)
     shot(dir, "prj_main_none");
     btn(B_SAVE, 0);
     EXPECT(ui.page == PG_PRJ, "SAVE opens the list");
-    turn(EN_PRESET, 2);                          /* PROJECT 3 */
+    turn(EN_PRESET, 2);                          /* SESSION 3 */
     shot(dir, "prj_list");
     btn(B_SAVE, 0);
     EXPECT(ui.page == PG_PRJD && pj.slot[0] == 2u, "SAVE opens slot 3's page");
@@ -593,7 +594,7 @@ static int cmd_projects(const char *dir)
     }
     btn(B_SAVE, 1);                              /* back to the list */
     EXPECT(ui.page == PG_PRJ, "SHIFT + SAVE goes back a page");
-    turn(EN_PRESET, 3);                          /* PROJECT 6 */
+    turn(EN_PRESET, 3);                          /* SESSION 6 */
     btn(B_SAVE, 0);
     turn(EN_PRESET, 1);                          /* SAVE over another project */
     btn(B_SAVE, 0);
@@ -612,87 +613,126 @@ static int cmd_projects(const char *dir)
     EXPECT(prj_has[2] && !prj_has[5] && !prj_has[6], "a scan after: as it was");
     btn(B_SAVE, 1);
     shot(dir, "prj_list_after");
-    /* the patterns: ARP opens them, ARP on a slot its page, ARP runs there */
+    /* the steps: SHIFT held, the white keys are the chosen track's; the last note played goes in */
     btn(B_GLO, 0);
-    btn(B_ARP, 0);
-    EXPECT(ui.page == PG_PAT, "ARP opens the patterns");
-    turn(EN_PRESET, 11);                         /* PATTERN 12 */
-    shot(dir, "pat_grid");
-    btn(B_ARP, 0);
-    EXPECT(ui.page == PG_PATD && pj.slot[1] == 11u, "ARP opens pattern 12's page");
-    turn(EN_PRESET, 4);                          /* TEMPO: GLOBAL, then 10, 15 .. 40, 41 .. */
-    btn(B_ARP, 0);
-    EXPECT(pj.edit, "ARP on TEMPO moves the focus to the value");
-    turn(EN_PRESET, 1);
-    EXPECT(pj.val == 10, "one click from GLOBAL: 10 BPM");
-    turn(EN_PRESET, 6);
-    EXPECT(pj.val == 40, "five a click to 40");
-    turn(EN_PRESET, 3);
-    EXPECT(pj.val == 43, "then one a click");
-    turn(EN_PRESET, -4);
-    EXPECT(pj.val == 35, "and back down");
-    shot(dir, "pat_tempo_edit");
-    btn(B_ARP, 0);
-    EXPECT(pat_tempo == 35 && fx_bpm10 == 350 && pat_dirty, "the pattern's tempo plays, over the project's");
-    turn(EN_PRESET, -3);                         /* SAVE */
-    btn(B_ARP, 0);
-    EXPECT(pat_store[11].used && pat_store[11].tempo == 35 && pat_cur == 11u && !pat_dirty, "ARP on SAVE: pattern 12 saved, playing");
-    shot(dir, "pat_page");
-    {   /* (written into project 3's flash: its pattern sector read back) */
-        int rc = prj_read(2, 1u + 11u / PAT_PER);
-        const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
-        EXPECT(!rc && pp[11 % PAT_PER].used && pp[11 % PAT_PER].tempo == 35, "the pattern is in the project's flash");
-    }
-    btn(B_SAVE, 0);
-    EXPECT(ui.page == PG_PRJ, "SAVE on a pattern's page: the projects");
-    btn(B_GLO, 0);
-    EXPECT(pat_store[0].used, "the project's SAVE stored the pattern playing (1) too");
-    btn(B_ARP, 0);
-    turn(EN_PRESET, -10);                        /* PATTERN 2, empty: LOAD does nothing */
-    btn(B_ARP, 0);
-    btn(B_ARP, 0);
-    EXPECT(pj.ask == PQ_NONE && ui.page == PG_PATD && pat_cur == 11u, "LOAD of an empty pattern: nothing");
-    btn(B_GLO, 0);
-    btn(B_ARP, 0);
-    turn(EN_PRESET, 10);                         /* 12: COPY to 13 */
-    btn(B_ARP, 0);
-    turn(EN_PRESET, 2);
-    btn(B_ARP, 0);
-    btn(B_ARP, 0);
-    EXPECT(pat_store[12].used && pat_store[12].tempo == 35, "COPY a pattern");
-    turn(EN_PRESET, 1);                          /* DELETE 12 */
-    btn(B_ARP, 0);
-    shot(dir, "pat_ask_delete");
-    turn(EN_PRESET, 1);
-    btn(B_ARP, 0);
-    EXPECT(!pat_store[11].used && pat_store[12].used, "DELETE a pattern");
-    btn(B_GLO, 0);
-    /* SHIFT + ARP held: the patterns on the white keys */
-    fm1_in.notes |= 1u << KEY_SHIFT;
-    ui_input();
-    fm1_in.buttons |= 1u << PANEL_BTN[B_ARP];
-    host_press = 1u << PANEL_BTN[B_ARP];
-    ui_input();
-    EXPECT(ui.quick && ui.page == PG_PAT, "SHIFT + ARP held shows the patterns");
-    ui_leds();
     {
-        uint32_t k13 = 0;
-        while (white_ix(k13) != 12)              /* (the 13th white key) */
-            k13++;
-        fm1_in.notes |= 1u << k13;
+        uint32_t kw[16], k, n0, n1, i;
+        int32_t out[2 * CTL];
+        for (k = 0; k < NKEY; k++)
+            if (white_ix(k) >= 0)
+                kw[white_ix(k)] = k;
+        fm1_in.notes |= 1u << kw[2];
         ui_input();
-        fm1_in.notes &= ~(1u << k13);
+        fm1_in.notes &= ~(1u << kw[2]);
+        ui_input();
+        n0 = ui.last_note[5];
+        EXPECT(n0 == key_note(kw[2], ui.oct[5]) && !pat_dirty, "the note played kept as the track's last");
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        ui_input();
+        fm1_in.notes |= 1u << kw[0];
+        ui_input();
+        EXPECT(seq_note[5][0] == n0 && pat_dirty, "SHIFT and an empty step: the last note there");
+        k = ui.eng[5];
+        turn(EN_PRESET, 1);
+        n1 = seq_note[5][0];
+        EXPECT(n1 > n0 && in_scale((int32_t)n1) && ui.eng[5] == k, "a step held, PRESETS: its note up the scale (not the machine)");
+        fm1_ms += 100;
+        ui.force = 1;
+        ui_draw();
+        shot(dir, "steps_edit");
+        fm1_in.notes &= ~(1u << kw[0]);
+        ui_input();
+        EXPECT(seq_note[5][0] == n1, "let go after a turn: the step kept");
+        for (i = 0; i < 3u; i++) {               /* 5 on, 5 off again, 9 on */
+            k = kw[i == 2u ? 8 : 4];
+            fm1_in.notes |= 1u << k;
+            ui_input();
+            fm1_in.notes &= ~(1u << k);
+            ui_input();
+        }
+        EXPECT(!seq_note[5][4] && seq_note[5][8] == n0, "a step that holds a note, pressed and let go: emptied");
+        ui_leds();
+        EXPECT(host_led[14u + kw[0]] && host_led[14u + kw[8]] && !host_led[14u + kw[4]], "SHIFT: the steps lit");
+        fm1_ms += 2000;
+        ui.force = 1;
+        ui_draw();
+        shot(dir, "steps");
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui_input();
+        btn(B_PLAY, 0);
+        EXPECT(seq_run, "PLAY: the sequencer runs");
+        for (i = 0; i < 4000u && seq_pos[5] != 8u; i++)
+            mix_block(out);
+        EXPECT(seq_pos[5] == 8u && track_sounding(5), "it steps through, step 9 sounding");
+        EXPECT(i > 140u * 8u && i < 160u * 8u, "a 16th note at the tempo");
+        btn(B_PLAY, 0);
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        EXPECT(!seq_run, "PLAY again: stopped");
+        /* ARP held: the pattern (1) saved, its steps with it; the grid: ARP loads the one chosen */
+        fm1_in.buttons |= 1u << PANEL_BTN[B_ARP];
+        host_press = 1u << PANEL_BTN[B_ARP];
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        fm1_in.buttons = 0;
+        ui_input();
+        fm1_ms += 2000;
+        EXPECT(pat_cur == 0u && pat_store[0].used && !pat_dirty && pat_store[0].seq[SEQ_NOTE + 5 * NSTEP + 8] == n0,
+               "ARP held saves the pattern playing, its steps");
+        {   /* (written into session 3's flash) */
+            int rc = prj_read(2, 1u);
+            const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
+            EXPECT(!rc && pp[0].used && pp[0].seq[SEQ_NOTE + 5 * NSTEP] == n1, "the steps are in the session's flash");
+        }
+        btn(B_ARP, 0);
+        EXPECT(ui.page == PG_PAT, "ARP opens the patterns");
+        turn(EN_PRESET, 11);                     /* PATTERN 12 */
+        shot(dir, "pat_grid");
+        btn(B_ARP, 0);
+        EXPECT(ui.page == PG_MAIN && pat_cur == 11u && !seq_note[5][0] && !seq_note[5][8], "ARP on the grid: pattern 12 loaded (empty)");
+        btn(B_ARP, 0);
+        turn(EN_PRESET, -11);
+        btn(B_ARP, 0);
+        EXPECT(pat_cur == 0u && seq_note[5][0] == n1 && seq_note[5][8] == n0, "and pattern 1 back, its steps");
+        /* SHIFT + ARP held: a white key loads its pattern; held, empties it */
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        ui_input();
+        fm1_in.buttons |= 1u << PANEL_BTN[B_ARP];
+        host_press = 1u << PANEL_BTN[B_ARP];
+        ui_input();
+        EXPECT(ui.quick && ui.page == PG_PAT, "SHIFT + ARP held shows the patterns");
+        fm1_in.notes |= 1u << kw[12];
+        ui_input();
+        fm1_in.notes &= ~(1u << kw[12]);
         ui_input();
         ui_leds();
-        EXPECT(pat_cur == 12u && pat_tempo == 35 && fx_bpm10 == 350, "a white key loads its pattern");
-        EXPECT(host_led[14u + k13], "its key lit");
+        EXPECT(pat_cur == 12u && !seq_note[5][0], "a white key loads its pattern");
+        EXPECT(host_led[14u + kw[12]], "its key lit");
+        shot(dir, "pat_quick");
+        fm1_in.notes |= 1u << kw[0];
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        EXPECT(!pat_store[0].used && pat_cur == 12u && ui.flash_on && str_eq(ui.flash_l1, "EMPTY"),
+               "a white key held: its pattern emptied, the one playing kept");
+        ui_draw();
+        shot(dir, "pat_cleared");
+        {
+            int rc = prj_read(2, 1u);
+            const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
+            EXPECT(!rc && !pp[0].used, "emptied in the flash too");
+        }
+        fm1_in.notes &= ~(1u << kw[0]);
+        ui_input();
+        EXPECT(pat_cur == 12u, "let go after: nothing loaded");
+        fm1_ms += 2000;
+        fm1_in.buttons = 0;
+        ui_input();
+        fm1_in.notes = 0;
+        ui_input();
+        EXPECT(!ui.quick && ui.page == PG_MAIN, "let go: back to what was shown");
     }
-    shot(dir, "pat_quick");
-    fm1_in.buttons = 0;
-    ui_input();
-    fm1_in.notes = 0;
-    ui_input();
-    EXPECT(!ui.quick && ui.page == PG_MAIN, "let go: back to what was shown");
     /* the long presses: ARP held saves the pattern playing, HOME held the project */
     pat_tempo = 77;
     pat_dirty = 1;
