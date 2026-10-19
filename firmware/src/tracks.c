@@ -245,8 +245,24 @@ static const volatile int16_t *note_lv;          /* .. values */
 static void note_on(uint32_t t, uint32_t note, uint32_t src)
 {
     track_t *y = &trk[t];
-    uint32_t best = voice_pick(t, y->xfade != 0);
+    uint32_t best;
     voice_t *v;
+    if (!y->xfade && ck_buf[t][ck_use[t]].mach == ENG_FMD) {   /* an FM DRUM track chokes, as a drum machine's: its
+                                                              * last hit faded out (~2 ms) as the next strikes,
+                                                              * the tails never piling up */
+        uint32_t k;
+        for (k = 0; k < NVOICE; k++) {
+            voice_t *w = &vox[k];
+            if (w->track == t && w->sounding && !w->pend) {
+                w->gate = 0;
+                if (!w->fade) {
+                    w->fade = QUICK;
+                    w->fade_n = QUICK;
+                }
+            }
+        }
+    }
+    best = voice_pick(t, y->xfade != 0);
     if (best == NVOICE)
         return;
     v = &vox[best];
@@ -1164,14 +1180,30 @@ static inline int32_t ceiling(int32_t x)
     return x < 0 ? -a : a;
 }
 
-/* overload: the oldest released voice fades; late (2): if none, the oldest held note that has sounded 1.5 s */
+/* a released voice to let go, the budget short: the quietest (its AMP envelope lowest) -- a voice struck in the last
+ * ~150 ms only if there is no other (a kick's gate ends early: its body is a release, and it must not go) */
+#define SHED_YOUNG_BLOCKS 200u
+static uint32_t tail_victim(void)
+{
+    uint32_t k, ok = NVOICE, pass;
+    for (pass = 0; pass < 2u && ok == NVOICE; pass++)
+        for (k = 0; k < NVOICE; k++) {
+            const voice_t *v = &vox[k];
+            if (!v->sounding || v->gate || v->fade || v->pend || (!pass && blk_clock - v->born < SHED_YOUNG_BLOCKS))
+                continue;
+            if (ok == NVOICE || vmem[k].ch.ae.lv < vmem[ok].ch.ae.lv)
+                ok = k;
+        }
+    return ok;
+}
+/* overload: a released voice fades (tail_victim); late (2): if none, the oldest held note that has sounded 1.5 s */
 #define SHED_HELD_BLOCKS 2067u
 static int shed_voice(int held)
 {
-    uint32_t k, ok = NVOICE;
-    for (k = 0; k < NVOICE; k++) {
+    uint32_t k, ok = held ? NVOICE : tail_victim();
+    for (k = 0; held && k < NVOICE; k++) {
         const voice_t *v = &vox[k];
-        if (!v->sounding || v->fade || (held ? !v->gate || blk_clock - v->born < SHED_HELD_BLOCKS : v->gate))
+        if (!v->sounding || v->fade || !v->gate || blk_clock - v->born < SHED_HELD_BLOCKS)
             continue;
         if (ok == NVOICE || v->age < vox[ok].age)
             ok = k;
@@ -1189,12 +1221,7 @@ static void budget_guard(void)
         if (vox[k].sounding && vox[k].fade && !vox[k].pend)
             pred -= pred < vox[k].cost ? pred : vox[k].cost;
     while (pred > BUDGET) {
-        uint32_t ok = NVOICE;
-        for (k = 0; k < NVOICE; k++) {
-            const voice_t *v = &vox[k];
-            if (v->sounding && !v->gate && !v->fade && !v->pend && (ok == NVOICE || v->age < vox[ok].age))
-                ok = k;
-        }
+        uint32_t ok = tail_victim();
         if (ok == NVOICE)
             return;
         vox[ok].fade = QUICK;
@@ -1234,9 +1261,9 @@ static void mix_block(int32_t *out)
     for (t = 0; t < NTRACK; t++)
         track_block(t, l_, r_, dlin, rvin, chin);
     ch_block(chin, l_, r_, dlin, rvin);
-    cp_block(l_, r_);                            /* the compressor: before the delay's and the reverb's returns */
     dl_block(dlin, l_, r_, rvin);
     rv_block(rvin, l_, r_);
+    cp_block(l_, r_);                            /* the compressor: the master's, the returns in it (a pad's tails duck) */
     met_block(l_, r_);
     for (i = 0; i < CTL; i++) {
         out[2u * i] = ceiling(mulq12(l_[i], master_q12));

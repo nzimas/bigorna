@@ -12,8 +12,8 @@
  *           Audio Eng. Soc. 45(9), 1997), its lengths scaled to 44.1 kHz and stretched a little by DEC.
  *   CHORUS  DPTH, SPD, HPF (on its input), WDTH, DEL, REV, VOL: two taps on one short line, swept by an LFO a
  *           quarter of a cycle apart.
- *   COMP    the master compressor (the Digitone II's, manual 12.5): on the mix, the chorus's return in it, before
- *           the delay's and the reverb's returns. THRESHOLD (-60 .. 0 dB), ATTACK (0.03 .. 30 ms), RELEASE (10 ms ..
+ *   COMP    the master compressor (the Digitone II's, manual 12.5): on the mix after the effects' returns, as the
+ *           original's (a pad's reverb and delay tails duck with it). THRESHOLD (-60 .. 0 dB), ATTACK (0.03 .. 30 ms), RELEASE (10 ms ..
  *           2 s), RATIO (1.5, 2, 3, 4, 6, 8, 16, 20), MAKEUP (0 .. +24 dB), SC FILTER (what it listens to through
  *           a low-pass, below the middle -- the bass: it pumps --, or a high-pass, above), SC SOURCE (the mix, or a
  *           track: the rest of the mix ducked under it -- the track itself let be, and listened to 12 dB louder, as

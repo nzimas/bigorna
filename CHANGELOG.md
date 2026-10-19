@@ -1,5 +1,21 @@
 # Changelog
 
+## Build 26
+
+Fixed
+- A kick lost its body (only its transient left) as soon as a second pad note was held. Each kick took a new voice
+  while the kicks before still rang, so a kick each beat filled all 12 voices with tails; the load rose, and the
+  voice budget's guard let go of the released voices -- a sequenced kick's gate ends early, so its body counted as a
+  tail and went. Now:
+  - an FM DRUM track chokes, as a drum machine's: its last hit fades out in ~2 ms as the next one strikes (a kick each
+    beat and a pad: 2 to 4 voices sounding, it was 12);
+  - the guard lets go of the quietest tails first, and of a voice struck in the last ~150 ms only if there is no other.
+- The compressor's sidechain still barely pumped: the compressor sat before the delay's and the reverb's returns, so
+  a pad's reverb and delay tails -- much of what is heard of a pad -- never ducked. It is now the master's, after
+  the returns, as on the Digitone II (the source track's own dry sound still left out of it). A kick each beat as the
+  source now takes a held pad, tails and all, from about -12 dBFS down to about -26 dBFS on each hit, swelling back
+  over the beat (host duck); before, the pad as heard hardly moved.
+
 ## Build 25
 
 Fixed

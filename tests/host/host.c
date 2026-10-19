@@ -1741,6 +1741,29 @@ static int cmd_projects(const char *dir)
                 }
             }
             EXPECT(gmax > (9 << 16) && gmin < (2 << 16), "a kick as the source: the rest ducked 9 dB and more, back between");
+            {   /* as heard: the pad (the kick's dry share taken out), quietest and loudest 25 ms over a beat */
+                double lo = 1e30, hi = 0;
+                uint32_t w, sounding = 0;
+                while (seq_pos[0] != 0u || seq_tacc_now[0] > SEQ_STEP8 / 2u)
+                    mix_block(out);
+                for (w = 0; w < 20u; w++) {
+                    double e = 0;
+                    uint32_t q, j;
+                    for (q = 0; q < 34u; q++) {
+                        mix_block(out);
+                        for (j = 0; j < 2u * CTL; j++) {
+                            double pd = out[j] - (double)mulq12(j & 1u ? cp_scr[j >> 1] : cp_scl[j >> 1], master_q12);
+                            e += pd * pd;
+                        }
+                    }
+                    lo = e < lo ? e : lo;
+                    hi = e > hi ? e : hi;
+                }
+                for (w = 0; w < NVOICE; w++)
+                    sounding += vox[w].sounding;
+                EXPECT(10.0 * log10(hi / (lo + 1.0)) > 8.0, "as heard: the pad, its tails too, ducked 8 dB and more each kick");
+                EXPECT(sounding <= 4u, "the kicks choke: no tails piling up");
+            }
             seq_run = 0;
             ev_post(EV_STOP, 1, 0, 0);
             for (i = 0; i < 400u; i++)
@@ -1931,6 +1954,69 @@ static int cmd_duck(const char *wav)
             printf("%4u gr %5.1f env %7d sc %6d\n", i, cp.gr / 65536.0, cp.env >> 8, cp_sc[0]);
     }
     printf("GR max %.1f min %.1f dB (threshold %d)\n", grmax / 65536.0, grmin / 65536.0, fx_cp[CP_THR]);
+    {   /* the pad's level as heard: the output with the kick's track silenced in it (its level 0), 25 ms windows
+         * over a beat, with the compressor and without */
+        uint32_t pass;
+        for (pass = 0; pass < 2u; pass++) {
+            uint32_t n, w;
+            double lv[20];
+            fx_cp[CP_MIX] = pass ? 0 : 127;
+            fx_cook_all();
+            ui.snd[0][ENG_FMD].fx[X_DEL] = ui.snd[0][ENG_FMD].fx[X_REV] = ui.snd[0][ENG_FMD].fx[X_CHR] = 0;
+            mark(0);
+            ui_publish();                        /* (the kick dry only: its share taken out of what is heard below) */
+            for (n = 0; n < 700u; n++)
+                mix_block(out);
+            while (seq_pos[0] != 0u || seq_tacc_now[0] > SEQ_STEP8 / 2u)
+                mix_block(out);
+            for (w = 0; w < 20u; w++) {
+                double e = 0;
+                uint32_t q, j;
+                for (q = 0; q < 34u; q++) {
+                    mix_block(out);
+                    for (j = 0; j < 2u * CTL; j++) {
+                        double pad = out[j] - (double)mulq12(j & 1u ? cp_scr[j >> 1] : cp_scl[j >> 1], master_q12);
+                        e += pad * pad;
+                    }
+                }
+                lv[w] = 10.0 * log10(e / (34.0 * 2 * CTL) / (32768.0 * 32768.0) + 1e-12);
+            }
+            printf("%s the pad, dBFS each 25 ms over a beat:", pass ? "dry:" : "COMP:");
+            for (w = 0; w < 20u; w++)
+                printf(" %5.1f", lv[w]);
+            printf("\n");
+        }
+        fx_cp[CP_MIX] = 127;
+        fx_cook_all();
+    }
+    {   /* the kick's track over one beat: one pad note, then two */
+        uint32_t notes;
+        for (notes = 1; notes <= 3u; notes++) {
+            uint32_t n, b0 = 0;
+            int32_t mt[8];
+            if (notes > 1u)
+                ev_post(EV_ON, 1, 60 + 4 * notes, 127);
+            for (n = 0; n < 900u; n++)
+                mix_block(out);
+            while (seq_pos[0] != 0u || seq_tacc_now[0] > SEQ_STEP8 / 2u)
+                mix_block(out);
+            for (n = 0; n < 8u; n++) {
+                uint32_t q;
+                int32_t pk = 0;
+                for (q = 0; q < 70u; q++) {
+                    mix_block(out);
+                    pk = trk[0].meter > pk ? trk[0].meter : pk;
+                }
+                mt[n] = pk;
+            }
+            printf("pad notes %u: the kick's track, peak each 50 ms:", notes);
+            for (n = 0; n < 8u; n++)
+                printf(" %5d", mt[n]);
+            for (n = 0, b0 = 0; n < NVOICE; n++)
+                b0 += vox[n].sounding;
+            printf("   voices sounding %u, GR %.1f\n", b0, cp.gr / 65536.0);
+        }
+    }
     if (wav)
         wav_write(wav, pb, fr * CTL);
     return 0;
