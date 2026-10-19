@@ -3,3 +3,5 @@ build/
 __pycache__/
 *.pyc
 .DS_Store
+# raw tables read from the Digitone II DSP image (Elektron data): kept local, never committed
+docs/dt2-curves.md
