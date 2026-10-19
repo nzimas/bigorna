@@ -532,12 +532,26 @@ static int cmd_projects(const char *dir)
     EXPECT(ui.page == PG_PRJD && pj.slot == 2u, "SAVE opens slot 3's page");
     shot(dir, "prj_page_empty");
     turn(EN_PRESET, 4);                          /* TEMPO */
-    turn(EN_SELECT, 17);                         /* 137 BPM */
-    EXPECT(ui.tempo == 137 && fx_bpm10 == 1370, "SELECT sets the tempo (and the delay follows)");
+    btn(B_SAVE, 0);                              /* the focus on its value */
+    EXPECT(pj.edit, "SAVE on TEMPO moves the focus to the value");
+    turn(EN_PRESET, 17);                         /* 137 BPM */
+    shot(dir, "prj_page_editing");
+    EXPECT(ui.tempo == 120, "the value is not set before SAVE");
+    btn(B_SAVE, 0);
+    EXPECT(!pj.edit && ui.tempo == 137 && fx_bpm10 == 1370, "SAVE sets the tempo (and the delay follows)");
     turn(EN_PRESET, 1);
-    turn(EN_SELECT, 3);                          /* ROOT D# */
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, 3);                          /* ROOT D# */
+    btn(B_SAVE, 0);
     turn(EN_PRESET, 1);
-    turn(EN_SELECT, -2);                         /* SCALE */
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, 4);                          /* SCALE: dorian, then left as it was */
+    btn(B_SAVE, 1);
+    EXPECT(!pj.edit && ui.scale == 6 && ui.page == PG_PRJD, "SHIFT + SAVE leaves the value as it was");
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, -2);
+    btn(B_SAVE, 0);
+    EXPECT(ui.root == 3 && ui.scale == 4, "ROOT and SCALE set");
     shot(dir, "prj_page_values");
     turn(EN_PRESET, -5);                         /* SAVE */
     EXPECT(pj.row == PR_SAVE, "PRESETS back to SAVE");

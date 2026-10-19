@@ -5,8 +5,9 @@
  *
  *   SAVE                the PROJECTS page: the slots PROJECT 1 .. 32, five at a time, PRESETS moves through them
  *   SAVE (on a slot)    its page: LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE, five at a time; PRESETS moves through
- *                       them, SAVE runs LOAD, SAVE, COPY or DELETE, SELECT changes TEMPO (10 .. 300 BPM), ROOT and
- *                       SCALE -- the project playing's (they are saved with it)
+ *                       them, SAVE runs LOAD, SAVE, COPY or DELETE. On TEMPO (10 .. 300 BPM), ROOT or SCALE -- the
+ *                       project playing's, saved with it -- SAVE moves the focus to the value: PRESETS changes it,
+ *                       SAVE sets it (and the focus goes back to the rows), SHIFT + SAVE leaves it as it was
  *   SHIFT + SAVE        back a page; a track's button, back to playing
  * LOAD with changes not saved, SAVE over another project, DELETE and COPY over a project ask first: NO / YES on
  * PRESETS, SAVE answers. COPY asks for the slot to copy to (PRESETS), then SAVE.
@@ -198,6 +199,8 @@ static struct {
     uint8_t row;                 /* the row chosen on its page */
     uint8_t ask, yes;            /* a question up (PQ_*), and its answer */
     uint8_t to;                  /* COPY: the slot it goes to */
+    uint8_t edit;                /* the focus on the value of the row chosen (TEMPO, ROOT, SCALE) */
+    int16_t val;                 /* .. the value as it is being set */
     int32_t shown;               /* (what was drawn, folded into one number) */
     uint32_t scrolled;           /* when the scale's row was last drawn scrolling */
 } pj;
@@ -217,9 +220,11 @@ static void prj_done(int rc, const char *what, uint32_t k)
 /* SAVE pressed on a project page */
 static void prj_press(int sh)
 {
-    if (sh) {                                    /* SHIFT + SAVE: back a page */
+    if (sh) {                                    /* SHIFT + SAVE: back a page (or a value left as it was) */
         if (ui.page == PG_PRJD) {
-            if (pj.ask)
+            if (pj.edit)
+                pj.edit = 0;
+            else if (pj.ask)
                 pj.ask = PQ_NONE;
             else
                 ui.page = PG_PRJ;
@@ -232,6 +237,21 @@ static void prj_press(int sh)
         ui.page = PG_PRJD;
         pj.row = 0;
         pj.ask = PQ_NONE;
+        pj.edit = 0;
+        ui.force = 1;
+        return;
+    }
+    if (pj.edit) {                               /* the value set: the focus back on the rows */
+        pj.edit = 0;
+        if (pj.row == PR_TEMPO) {
+            ui.tempo = pj.val;
+            fx_bpm10 = ui.tempo * 10;
+            fx_cook_all();                       /* (the delay's time follows the tempo) */
+        } else if (pj.row == PR_ROOT)
+            ui.root = (uint8_t)pj.val;
+        else
+            ui.scale = (uint8_t)pj.val;
+        prj_dirty = 1;
         ui.force = 1;
         return;
     }
@@ -318,8 +338,9 @@ static void prj_press(int sh)
         pj.ask = PQ_DELETE;
         pj.yes = 0;
         break;
-    default:
-        say("TURN SELECT", 900);                 /* (the values: SELECT turns them) */
+    default:                                     /* TEMPO, ROOT, SCALE: the focus on the value */
+        pj.edit = 1;
+        pj.val = pj.row == PR_TEMPO ? ui.tempo : pj.row == PR_ROOT ? ui.root : ui.scale;
         break;
     }
     ui.force = 1;
@@ -333,27 +354,12 @@ static void prj_preset(int32_t s)
         pj.to = (uint8_t)clampi((int32_t)pj.to + s, 0, PRJ_SLOTS - 1);
     else if (pj.ask)
         pj.yes = (uint8_t)(s > 0);
+    else if (pj.edit)                            /* the value: TEMPO a BPM a click, ROOT round the octave, SCALE */
+        pj.val = (int16_t)(pj.row == PR_TEMPO ? clampi(pj.val + s, TEMPO_MIN, TEMPO_MAX)
+                           : pj.row == PR_ROOT ? (pj.val + s % 12 + 12) % 12 : clampi(pj.val + s, 0, NSCALE - 1));
     else
         pj.row = (uint8_t)clampi((int32_t)pj.row + s, 0, PR_N - 1);
 }
-/* SELECT on a project page: the value of the row chosen (the project playing's) */
-static void prj_select(int32_t s)
-{
-    if (ui.page != PG_PRJD || pj.ask)
-        return;
-    if (pj.row == PR_TEMPO) {
-        ui.tempo = (int16_t)clampi(ui.tempo + s, TEMPO_MIN, TEMPO_MAX);
-        fx_bpm10 = ui.tempo * 10;
-        fx_cook_all();                           /* (the delay's time follows the tempo) */
-    } else if (pj.row == PR_ROOT)
-        ui.root = (uint8_t)(((int32_t)ui.root + s % 12 + 12) % 12);
-    else if (pj.row == PR_SCALE)
-        ui.scale = (uint8_t)clampi((int32_t)ui.scale + s, 0, NSCALE - 1);
-    else
-        return;
-    prj_dirty = 1;
-}
-
 /* the pages: a title; five rows, the one chosen in black on white; a question in place of the rows. A project's
  * state is its colour: loaded green (orange with changes not saved), saved white, empty grey */
 static uint16_t prj_col(uint32_t k)
@@ -385,21 +391,27 @@ static void prj_row(uint32_t r, const char *name, const char *val, uint16_t fg, 
 #define FIELD_X 138                /* (past SCALE, TEMPO and ROOT, with a gap) */
 #define FIELD_W (232 - FIELD_X)
 static int prj_scrolls(const char *val) { return text_w(&FONT_S, val) > FIELD_W; }
-static void prj_field(uint32_t r, const char *name, const char *val, uint16_t fg, int chosen)
+static void prj_field(uint32_t r, const char *name, const char *val, uint16_t fg, int chosen, int focus)
 {
     int32_t y = (37 - (int32_t)FONT_S.h) / 2, w = text_w(&FONT_S, val);
-    uint16_t bg = chosen ? C_WHITE : C_BLACK, vf = chosen ? C_BLACK : C_PRJ;
+    uint16_t bg = chosen && !focus ? C_WHITE : C_BLACK, vf = focus ? C_BLACK : chosen ? C_BLACK : C_PRJ;
     cv_begin(240, 37, bg);
+    if (focus) {                                 /* (the value being set: its field in white, the name as on the rows) */
+        cv_rect(FIELD_X - 6, 1, 240 - FIELD_X + 6, 35, C_WHITE);
+        bg = C_WHITE;
+    }
     if (val[0] && w <= FIELD_W)
         cv_text(232 - w, y, &FONT_S, val, vf);
     else if (val[0]) {                           /* (round and round: the text, a gap, the text again, 40 px a second) */
         int32_t span = w + 40, x = FIELD_X - (int32_t)((fm1_ms / 25u) % (uint32_t)span);
         cv_text(x, y, &FONT_S, val, vf);
         cv_text(x + span, y, &FONT_S, val, vf);
-        cv_rect(0, 0, FIELD_X, 37, bg);           /* (the field's left edge: what scrolled past it hidden) */
+        cv_rect(0, 0, FIELD_X, 37, focus ? C_BLACK : bg);   /* (the field's left edge: what scrolled past it hidden) */
+        if (focus)
+            cv_rect(FIELD_X - 6, 1, 6, 35, C_WHITE);
         cv_rect(234, 0, 6, 37, bg);
     }
-    cv_text(8, y, &FONT_S, name, chosen ? C_BLACK : fg);
+    cv_text(8, y, &FONT_S, name, chosen && !focus ? C_BLACK : fg);
     cv_rect(0, 36, 240, 1, RGB(50, 50, 50));
     cv_blit(0, 55 + 37 * r);
 }
@@ -446,6 +458,23 @@ static void draw_noyes_rows(const char *q1, const char *q2, uint16_t col)
         cv_blit(0, 55 + 37 * r);
     }
 }
+/* row k's value as it reads (the value being set, while the focus is on it) */
+static void prj_value(uint32_t k, char *v, uint32_t n)
+{
+    int32_t x = pj.edit && pj.row == k ? pj.val : k == PR_TEMPO ? ui.tempo : k == PR_ROOT ? ui.root : ui.scale;
+    v[0] = 0;
+    if (k == PR_TEMPO)
+        fmt_int(v, x);
+    else if (k == PR_ROOT)
+        str_cpy(v, NOTE_NAME[x % 12], n);
+    else if (k == PR_SCALE) {
+        str_cpy(v, SCALE_L1[x % NSCALE], n);
+        if (SCALE_L2[x % NSCALE][0]) {
+            str_cpy(v + str_len(v), " ", 2);
+            str_cpy(v + str_len(v), SCALE_L2[x % NSCALE], n - str_len(v));
+        }
+    }
+}
 static void draw_prj_page(void)
 {
     char t[16], v[20];
@@ -470,38 +499,25 @@ static void draw_prj_page(void)
     top = pj.row < 2u ? 0u : pj.row > PR_N - 3u ? PR_N - 5u : pj.row - 2u;
     for (r = 0; r < 5u; r++) {
         uint32_t k = top + r;
-        v[0] = 0;
-        if (k == PR_TEMPO) {
-            fmt_int(v, ui.tempo);
-        } else if (k == PR_ROOT)
-            str_cpy(v, NOTE_NAME[ui.root], sizeof v);
-        else if (k == PR_SCALE) {
-            str_cpy(v, SCALE_L1[ui.scale], sizeof v);
-            if (SCALE_L2[ui.scale][0]) {
-                str_cpy(v + str_len(v), " ", 2);
-                str_cpy(v + str_len(v), SCALE_L2[ui.scale], sizeof v - str_len(v));
-            }
-        }
-        prj_field(r, PR_NAME[k], v, k < PR_TEMPO && !prj_has[pj.slot] && k != PR_SAVE ? C_GREY : C_WHITE, k == pj.row);
+        prj_value(k, v, sizeof v);
+        prj_field(r, PR_NAME[k], v, k < PR_TEMPO && !prj_has[pj.slot] && k != PR_SAVE ? C_GREY : C_WHITE, k == pj.row,
+                  pj.edit && k == pj.row);
     }
 }
 /* the page, drawn again when what it shows has changed */
 static void prj_draw(void)
 {
     int32_t key = ui.page * 1000000 + pj.slot * 10000 + pj.row * 1000 + pj.ask * 100 + pj.yes * 50 + pj.to +
-                  ui.tempo * 7 + ui.root * 131 + ui.scale * 977 + prj_dirty * 3 + prj_cur * 13;
+                  ui.tempo * 7 + ui.root * 131 + ui.scale * 977 + prj_dirty * 3 + prj_cur * 13 +
+                  pj.edit * 5000000 + pj.val * 31;
     if (!ui.force && ui.shown_page == ui.page && key == pj.shown) {
         uint32_t top = pj.row < 2u ? 0u : pj.row > PR_N - 3u ? PR_N - 5u : pj.row - 2u;
         char v[20];
         if (ui.page != PG_PRJD || pj.ask || PR_SCALE < top || PR_SCALE >= top + 5u)
             return;
-        str_cpy(v, SCALE_L1[ui.scale], sizeof v);   /* (the scale's name scrolling: its row again, ~25 a second) */
-        if (SCALE_L2[ui.scale][0]) {
-            str_cpy(v + str_len(v), " ", 2);
-            str_cpy(v + str_len(v), SCALE_L2[ui.scale], sizeof v - str_len(v));
-        }
+        prj_value(PR_SCALE, v, sizeof v);        /* (the scale's name scrolling: its row again, ~25 a second) */
         if (prj_scrolls(v) && (uint32_t)(fm1_ms - pj.scrolled) >= 40u) {
-            prj_field(PR_SCALE - top, PR_NAME[PR_SCALE], v, C_WHITE, pj.row == PR_SCALE);
+            prj_field(PR_SCALE - top, PR_NAME[PR_SCALE], v, C_WHITE, pj.row == PR_SCALE, pj.edit && pj.row == PR_SCALE);
             pj.scrolled = fm1_ms;
         }
         return;

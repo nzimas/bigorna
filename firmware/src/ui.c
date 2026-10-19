@@ -89,7 +89,6 @@ static uint8_t prj_dirty;
 static int8_t prj_cur;
 static void prj_press(int sh);
 static void prj_preset(int32_t s);
-static void prj_select(int32_t s);
 static void prj_draw(void);
 
 static void say(const char *s, uint32_t ms)
@@ -299,11 +298,10 @@ static void ui_input(void)
                 dial(ID[sh][j], J[sh][j]);
             }
     }
-    if (ui.page == PG_PRJ || ui.page == PG_PRJD) {   /* PRESETS and SELECT are the projects' */
+    if (ui.page == PG_PRJ || ui.page == PG_PRJD) {   /* PRESETS is the projects'; SELECT does nothing there */
         if ((s = enc_take(EN_PRESET)) != 0)
             prj_preset(s);
-        if ((s = enc_take(EN_SELECT)) != 0)
-            prj_select(s);
+        (void)enc_take(EN_SELECT);
     }
     if ((s = enc_take(EN_SELECT)) != 0) {            /* the level */
         char m[12] = "VOL ";

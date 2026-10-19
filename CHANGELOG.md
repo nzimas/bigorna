@@ -1,5 +1,12 @@
 # Changelog
 
+## Build 6
+
+Changed
+- A project's page: SAVE on TEMPO, ROOT or SCALE moves the focus to the value (its field in white); PRESETS changes
+  it, SAVE sets it and puts the focus back on the rows, SHIFT + SAVE leaves it as it was. SELECT no longer changes
+  them (it does nothing on the projects' pages).
+
 ## Build 5
 
 Changed
