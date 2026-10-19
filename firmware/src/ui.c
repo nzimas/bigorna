@@ -15,7 +15,12 @@
  *                               the 1st   a new phrase for the track (phrase.c): its steps, conditions and locks
  *                               the 4th   TRIG: the knobs on the step held: KNOB 1 the note (in the scale), 2 its
  *                                         velocity, 3 its length, 4 its trig condition
- *   PLAY                      the sequencer: plays, or stops
+ *   PLAY                      the sequencer: plays, or stops (and recording ends)
+ *   REC                       recording into the chosen track's steps. Stopped: armed (REC flashes, the metronome
+ *                             counts), the first note played starts the sequencer and is step 1. Playing: recording
+ *                             at once (punch in). Each note played goes to the nearest step, its velocity and its
+ *                             length (as held) with it, over what the step held; round and round until REC again
+ *                             (it plays on). SHIFT + REC: the metronome off or on (it clicks while REC is on)
  *   the black key before it   EDIT: the parameter pages of the track's sound -- SYN 1 .. 4, FLTR 1, FLTR 2, AMP,
  *                             FX -- KNOB 1 .. 4 the page's A .. D, with SHIFT held E .. H
  *   ARP                       the patterns (projects.c)
@@ -67,6 +72,10 @@ static struct {
     uint8_t smode;               /* the step view's knobs: SM_* (the black key chosen) */
     uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
     uint8_t qk, qk_long;         /* SHIFT + ARP: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
+    uint8_t rec;                 /* REC_* */
+    uint8_t click;               /* the metronome while recording */
+    uint8_t rec_step[NKEY], rec_tr[NKEY];   /* a key held as it was recorded: its step (0xFF none) and track .. */
+    uint32_t rec_t0[NKEY];       /* .. and when it was pressed */
     uint32_t qk_t0;
     uint8_t midi_track[128];
     uint32_t keys;
@@ -293,6 +302,67 @@ static void dial(uint32_t id, uint32_t j)
     ui.dial_until = fm1_ms + 1000u;
 }
 
+/* ----------------------------------------------------------- recording --- */
+enum { REC_OFF, REC_ARMED, REC_ON };
+static void rec_set(uint32_t r)
+{
+    ui.rec = (uint8_t)r;
+    met_on = (uint8_t)(r != REC_OFF && ui.click);
+    ui.force = 1;
+}
+/* a note played while recording (k: its key, NKEY none): into the chosen track's nearest step; the step the
+ * sequencer comes to next is not played that once (the key has) */
+static void rec_note(uint32_t note, uint32_t vel, uint32_t k)
+{
+    uint32_t t = ui.sel, i, l;
+    if (ui.rec == REC_ARMED) {                   /* the first note: the sequencer starts on it, step 1 */
+        seq_skip[t][0] = 1;
+        seq_run = 1;
+        rec_set(REC_ON);
+        i = 0;
+    } else if (ui.rec != REC_ON || !seq_run)
+        return;
+    else {
+        uint32_t pos = seq_pos[t], acc = seq_acc_now, len = seq_len[t] ? seq_len[t] : NSTEP;
+        if (pos >= len) {                        /* (just started: step 1 to come) */
+            i = 0;
+            seq_skip[t][0] = 1;
+        } else if (acc < SEQ_16TH / 2u)
+            i = pos;
+        else {
+            i = (pos + 1u) % len;
+            seq_skip[t][i] = 1;
+        }
+    }
+    seq_vel[t][i] = (uint8_t)clampi((int32_t)vel, 1, 127);
+    seq_glen[t][i] = GLEN_DEF;
+    seq_cond[t][i] = CD_NONE;
+    for (l = 0; l < NLK; l++)
+        seq_lock[t][i][l] = LK_NONE;
+    seq_note[t][i] = (uint8_t)note;
+    pat_dirty = 1;
+    if (k < NKEY) {
+        ui.rec_step[k] = (uint8_t)i;
+        ui.rec_tr[k] = (uint8_t)t;
+        ui.rec_t0[k] = fm1_ms;
+    }
+}
+/* a key recorded let go: its step's length, as it was held (the nearest of the lengths, up to 16 steps) */
+static void rec_release(uint32_t k)
+{
+    uint32_t i = ui.rec_step[k], t = ui.rec_tr[k], ms = fm1_ms - ui.rec_t0[k], e, g, best = 0;
+    ui.rec_step[k] = 0xFF;
+    if (i >= NSTEP)
+        return;
+    if (ms > 60000u)
+        ms = 60000u;
+    e = ms * (uint32_t)fx_bpm10 * 8u / 150000u;  /* (eighths of a step: a step is 15000 / BPM ms) */
+    for (g = 1; g < GLEN_INF; g++)
+        if (absi((int32_t)GLEN_8TH[g] - (int32_t)e) < absi((int32_t)GLEN_8TH[best] - (int32_t)e))
+            best = g;
+    seq_glen[t][i] = (uint8_t)best;
+}
+
 static void midi_take(void)
 {
     while (mi_r != mi_w) {
@@ -305,6 +375,7 @@ static void midi_take(void)
             ui.midi_track[note] = ui.sel;
             ui.last_note[ui.sel] = (uint8_t)note;
             ev_post(EV_ON, ui.sel, note, vel);
+            rec_note(note, vel, NKEY);
         } else if ((cin == 8u || cin == 9u) && ui.midi_track[note] != 0xFFu) {
             ev_post(EV_OFF, ui.midi_track[note], note, 0);
             ui.midi_track[note] = 0xFFu;
@@ -492,9 +563,22 @@ static void ui_input(void)
                 dial(ID[sh][j], J[sh][j]);
             }
     }
-    if (btn_bit(press, B_PLAY)) {                    /* the sequencer */
+    if (btn_bit(press, B_PLAY)) {                    /* the sequencer (stopped: recording ends; armed: it plays,
+                                                      * recording) */
         seq_run = (uint8_t)!seq_run;
+        if (!seq_run && ui.rec)
+            rec_set(REC_OFF);
+        else if (seq_run && ui.rec == REC_ARMED)
+            rec_set(REC_ON);
         say(seq_run ? "PLAY" : "STOP", 700);
+    }
+    if (btn_bit(press, B_REC) && sh) {               /* SHIFT + REC: the metronome */
+        ui.click = (uint8_t)!ui.click;
+        rec_set(ui.rec);
+        say(ui.click ? "CLICK ON" : "CLICK OFF", 900);
+    } else if (btn_bit(press, B_REC)) {              /* REC: armed (playing: recording), or off */
+        rec_set(ui.rec ? REC_OFF : seq_run ? REC_ON : REC_ARMED);
+        say(ui.rec == REC_ON ? "RECORDING" : ui.rec == REC_ARMED ? "REC ARMED" : "REC OFF", 900);
     }
     if (pg_any()) {                                  /* PRESETS is the pages'; SELECT does nothing there */
         if ((s = enc_take(EN_PRESET)) != 0)
@@ -623,11 +707,14 @@ static void ui_input(void)
             ui.key_note[k] = (uint8_t)note;
             ui.last_note[ui.sel] = (uint8_t)note;
             ev_post(EV_ON, ui.sel, note, 127);
+            rec_note(note, 127, k);
         } else if (k == ui.step_key)
             step_up();
         else if (ui.key_track[k] != KEY_NONE) {
             ev_post(EV_OFF, ui.key_track[k], ui.key_note[k], 0);
             ui.key_track[k] = KEY_NONE;
+            if (ui.rec_step[k] != 0xFFu)
+                rec_release(k);
         }
     }
     ui.keys = keys;
@@ -660,7 +747,7 @@ static void ui_leds(void)
     fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD);
     fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || ui.oct[ui.sel] < 0);
     fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || ui.oct[ui.sel] > 0);
-    fm1_led_key(PANEL_BTN[B_REC], 0);
+    fm1_led_key(PANEL_BTN[B_REC], ui.rec == REC_ON || (ui.rec == REC_ARMED && (fm1_ms / 250u) & 1u));
     fm1_led_key(PANEL_BTN[B_PLAY], seq_run && (seq_pos[ui.sel] & 3u) == 0u);   /* (the beat, while it plays) */
     for (k = 0; k < NKEY; k++) {
         if (ui.quick && white_ix(k) >= 0) {          /* (SHIFT + ARP: every white key a pattern, dim; the playing one lit) */
@@ -714,6 +801,11 @@ static void draw_number(void)
             char pn[8] = "P";
             fmt_int(pn + 1, pat_cur + 1);
             cv_text(4, 2, &FONT_S, pn, pat_dirty ? RGB(255, 140, 0) : C_WHITE);
+            if (ui.rec) {                            /* (recording, right, under the octave: REC in red; armed:
+                                                      * ARM) */
+                const char *r = ui.rec == REC_ON ? "REC" : "ARM";
+                cv_text(236 - text_w(&FONT_S, r), 6 + FONT_S.h, &FONT_S, r, ui.rec == REC_ON ? C_BAD : RGB(255, 140, 0));
+            }
         }
         if (ui.oct[ui.sel]) {                         /* the octave, top right: +1, -2 */
             char o[4] = {ui.oct[ui.sel] < 0 ? '-' : '+', (char)('0' + (ui.oct[ui.sel] < 0 ? -ui.oct[ui.sel] : ui.oct[ui.sel])), 0, 0};
@@ -1112,8 +1204,8 @@ static void ui_draw(void)
         ui.force = 1;
         lcd_fill(0, 0, 240, 240, C_BLACK);           /* (the gaps between the bands, from the page before) */
     }
-    if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pat_cur * 2 + pat_dirty) {
-        ui.shown_prj = (int16_t)(pat_cur * 2 + pat_dirty);
+    if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pat_cur * 8 + pat_dirty * 4 + ui.rec) {
+        ui.shown_prj = (int16_t)(pat_cur * 8 + pat_dirty * 4 + ui.rec);
         draw_number();
         ui.shown_sel = ui.sel;
         ui.shown_eng = ui.shown_msg = ui.shown_pan = ui.shown_level = -100;
@@ -1158,6 +1250,8 @@ static void ui_init(void)
     memset(ui.midi_track, 0xFF, sizeof ui.midi_track);
     memset(ui.key_track, 0xFF, sizeof ui.key_track);
     ui.step_key = ui.qk = KEY_NONE;
+    memset(ui.rec_step, 0xFF, sizeof ui.rec_step);
+    ui.click = 1;
     ui.shown_steps = -1;
     ui.seed = fm1_ticks() ^ 0x5EEDu;
     ui.scale = 6;                                    /* minor pentatonic, from C */

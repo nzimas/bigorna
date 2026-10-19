@@ -412,6 +412,34 @@ static void cond_ab(uint32_t c, uint32_t *a, uint32_t *b)   /* (c an A:B conditi
 static volatile uint8_t seq_note[NTRACK][NSTEP];
 static volatile uint8_t seq_vel[NTRACK][NSTEP], seq_glen[NTRACK][NSTEP], seq_cond[NTRACK][NSTEP];
 static volatile uint8_t seq_lock[NTRACK][NSTEP][NLK];   /* the steps' locks (LK_NONE: none) */
+static volatile uint8_t seq_skip[NTRACK][NSTEP];   /* a step not to play when it next comes (recorded just before
+                                                    * it: the key played it already) */
+static volatile uint32_t seq_acc_now;     /* (the ISR's: how far into the step playing, of SEQ_16TH) */
+/* the metronome: a click on each beat (higher on the bar's first), while met_on; with the sequencer stopped it
+ * keeps the tempo by itself */
+static volatile uint8_t met_on;
+static uint32_t met_acc, met_n, met_ph, met_inc;
+static uint8_t met_was, met_step, seq_gstep;
+#define MET_LEN 1100u                     /* ~25 ms */
+static void met_tick(uint32_t step)
+{
+    if (!met_on || (step & 3u))
+        return;
+    met_n = MET_LEN;
+    met_ph = 0;
+    met_inc = (step ? 1000u : 2000u) * 97391u;   /* (Hz x 2^32 / FS) */
+}
+static void met_block(int32_t *l, int32_t *r)
+{
+    uint32_t i;
+    for (i = 0; i < CTL && met_n; i++) {
+        int32_t x = mulq15(sin_ph(met_ph), (int32_t)(met_n * (uint32_t)(Q15 / 5) / MET_LEN));
+        met_ph += met_inc;
+        met_n--;
+        l[i] += x;
+        r[i] += x;
+    }
+}
 static volatile uint8_t seq_len[NTRACK];  /* (0: 16) */
 static volatile uint8_t seq_run;          /* PLAY */
 static volatile uint8_t seq_pos[NTRACK];  /* the step playing (the ISR's; the screen and the LEDs read it) */
@@ -458,6 +486,10 @@ static int seq_cond_ok(uint32_t t, uint32_t c)
 static void seq_trig(uint32_t t, uint32_t p)
 {
     uint32_t n = seq_note[t][p], g = seq_glen[t][p], i, k = SEQ_HOLD;
+    if (seq_skip[t][p]) {
+        seq_skip[t][p] = 0;
+        return;
+    }
     if (!n || !seq_cond_ok(t, seq_cond[t][p]))
         return;
     for (i = 0; i < SEQ_HOLD; i++)               /* (the same note sounding: let go first, its slot taken) */
@@ -494,8 +526,22 @@ static void seq_block(void)
                 memset(trk[t].tlk, LK_NONE, sizeof trk[t].tlk);
         }
         seq_was = 0;
+        if (met_on && !met_was) {                /* (the metronome alone: a bar's first beat now) */
+            met_acc = SEQ_16TH;
+            met_step = 15;
+        }
+        met_was = met_on;
+        if (met_on) {
+            if (met_acc >= SEQ_16TH) {
+                met_acc -= SEQ_16TH;
+                met_step = (uint8_t)((met_step + 1u) & 15u);
+                met_tick(met_step);
+            }
+            met_acc += CTL * (uint32_t)fx_bpm10;
+        }
         return;
     }
+    met_was = 0;
     if (!seq_was) {                              /* started: step 1 now */
         seq_was = 1;
         seq_acc = SEQ_16TH;
@@ -504,6 +550,7 @@ static void seq_block(void)
             seq_loop[t] = 0;
             seq_pre[t] = 0;
         }
+        seq_gstep = 15;
     }
     for (t = 0; t < NTRACK; t++)                 /* the lengths run out */
         for (i = 0; i < SEQ_HOLD; i++)
@@ -513,6 +560,8 @@ static void seq_block(void)
             }
     if (seq_acc >= SEQ_16TH) {
         seq_acc -= SEQ_16TH;
+        seq_gstep = (uint8_t)((seq_gstep + 1u) & 15u);
+        met_tick(seq_gstep);
         for (t = 0; t < NTRACK; t++) {
             uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_pos[t] + 1u;
             if (p >= len) {
@@ -525,6 +574,7 @@ static void seq_block(void)
         }
     }
     seq_acc += CTL * (uint32_t)fx_bpm10;
+    seq_acc_now = seq_acc;
 }
 
 /* ------------------------------------------------------------- the mix --- */
@@ -756,6 +806,7 @@ static void mix_block(int32_t *out)
     ch_block(chin, l_, r_, dlin, rvin);
     dl_block(dlin, l_, r_, rvin);
     rv_block(rvin, l_, r_);
+    met_block(l_, r_);
     for (i = 0; i < CTL; i++) {
         out[2u * i] = ceiling(mulq12(l_[i], master_q12));
         out[2u * i + 1u] = ceiling(mulq12(r_[i], master_q12));

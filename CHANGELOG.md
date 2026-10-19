@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 12
+
+Added
+- Live recording into the chosen track's 16 steps, with REC.
+  - Stopped: REC arms (REC flashes, ARM at the top right) and the metronome counts the tempo. The first note
+    played starts the sequencer, and that note is step 1.
+  - Playing: REC records at once, over what the track already holds (punch in).
+  - Each note played goes to the nearest step (the second half of a step goes to the next one), with its velocity
+    and its length as held (the nearest length, up to 16 steps); a note on a step that held one replaces it, its
+    condition and locks cleared. The note sounds as it is played; the step it went to is not played again that
+    time round.
+  - Recording goes round the 16 steps until REC is pressed again (REC at the top right, in red, while it is on);
+    the sequencer plays on. PLAY stops both.
+  - Notes from USB MIDI are recorded too (at the default length).
+- A metronome: it clicks each beat, higher on the bar's first, while REC is armed or on. SHIFT + REC turns it off
+  or on.
+
 ## Build 11
 
 Added

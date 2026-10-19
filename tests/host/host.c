@@ -859,6 +859,58 @@ static int cmd_projects(const char *dir)
             EXPECT(trk[0].tlk[LK_REV - NVLK] == LK_NONE, "stopped: the track's locks gone");
         }
     }
+    {   /* REC: armed (the metronome counts), the first note starts it on step 1; each note to the nearest step */
+        int32_t out[2 * CTL];
+        uint32_t kw[16], k, i, clicks = 0, n;
+        for (k = 0; k < NKEY; k++)
+            if (white_ix(k) >= 0)
+                kw[white_ix(k)] = k;
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        memset((void *)seq_note, 0, sizeof seq_note);
+        ui.sel = 0;
+        btn(B_REC, 0);
+        EXPECT(ui.rec == REC_ARMED && met_on && !seq_run, "REC, stopped: armed, the metronome on");
+        for (i = 0; i < 1300u; i++) {
+            mix_block(out);
+            clicks += met_n == MET_LEN - CTL;
+        }
+        EXPECT(clicks >= 2u, "armed: the metronome clicks the beats");
+        ui_draw();
+        shot(dir, "rec_armed");
+        fm1_in.notes |= 1u << kw[2];
+        ui_input();
+        n = key_note(kw[2], ui.oct[0]);
+        EXPECT(seq_run && ui.rec == REC_ON && seq_note[0][0] == n && seq_skip[0][0], "the first note: it plays, step 1");
+        fm1_ms += 15000u * 10u / (uint32_t)fx_bpm10 * 2u;   /* (held two steps) */
+        fm1_in.notes &= ~(1u << kw[2]);
+        ui_input();
+        EXPECT(seq_glen[0][0] == 7u, "held two steps: LEN 2");
+        mix_block(out);
+        EXPECT(!seq_skip[0][0] && seq_pos[0] == 0u, "step 1 not played again (the key did)");
+        while (!(seq_pos[0] == 4u && seq_acc_now > SEQ_16TH * 3u / 5u))   /* late in step 5: to step 6 */
+            mix_block(out);
+        tap(kw[4]);
+        EXPECT(seq_note[0][5] == key_note(kw[4], ui.oct[0]) && seq_skip[0][5], "late in a step: the next one");
+        while (!(seq_pos[0] == 9u && seq_acc_now < SEQ_16TH / 3u))         /* early in step 10: there */
+            mix_block(out);
+        tap(kw[6]);
+        EXPECT(seq_note[0][9] == key_note(kw[6], ui.oct[0]) && !seq_skip[0][9], "early in a step: that one");
+        ui_draw();
+        shot(dir, "rec_on");
+        btn(B_REC, 0);
+        EXPECT(ui.rec == REC_OFF && seq_run && !met_on, "REC again: off, it plays on");
+        btn(B_REC, 0);
+        EXPECT(ui.rec == REC_ON && met_on, "REC playing: recording at once (punch in)");
+        btn(B_REC, 1);
+        EXPECT(!ui.click && !met_on, "SHIFT + REC: the metronome off");
+        btn(B_REC, 1);
+        btn(B_PLAY, 0);
+        EXPECT(!seq_run && ui.rec == REC_OFF, "PLAY: stopped, recording off");
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+    }
     /* the long presses: ARP held saves the pattern playing, HOME held the project */
     pat_tempo = 77;
     pat_dirty = 1;
