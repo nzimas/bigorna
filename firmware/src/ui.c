@@ -15,13 +15,11 @@
  *                             view the black keys, lit dimly:
  *                               the 1st   a new phrase for the track (phrase.c): its steps, conditions and locks;
  *                                         SHIFT and it: new locks on the steps the track holds, nothing else changed
- *                               the 4th   TRIG: the knobs on the step held: KNOB 1 the note (in the scale), 2 its
- *                                         velocity, 3 its length, 4 its trig condition (a page of four rows)
- *                               the 5th   FX: KNOB 1 its sample rate reduction, 2 bit reduction, 3 overdrive, 4 the
- *                                         amp's decay, locked (a page of four rows)
- *                             With neither chosen, the knobs lock what they set on the track's view, on the step held:
- *                             KNOB 1 .. 4 FREQ, RESO, the delay and reverb sends (SHIFT: KNOB 3 chorus, 4 overdrive),
- *                             as a dial. With any, SELECT locks the step's level and ALGORITHM its pan
+ *                             A step held: KNOB 1 its note (in the scale), 2 its velocity, 3 its length, 4 its trig
+ *                             condition (a page of four rows); SELECT locks its level, ALGORITHM its pan (a dial). With
+ *                             the EDIT pages up, the knobs lock what they turn on the step held instead -- any
+ *                             parameter of the sound, eight locks a step (the page shows the step's values: locked
+ *                             in the track's colour, the sound's own grey)
  *   PLAY                      the sequencer: plays, or stops (and recording ends, a loop being recorded is dropped)
  *   SHIFT + PLAY              the metronome off or on (it clicks while REC or the looper is armed or recording)
  *   REC                       recording into the chosen track's steps. Stopped: armed (REC flashes, the metronome
@@ -88,7 +86,6 @@ static struct {
     uint32_t step_t0;            /* .. pressed at */
     uint8_t sv;                  /* the step view on (STEP) */
     uint32_t gen_until;          /* the phrase key lit fully until */
-    uint8_t smode;               /* the step view's knobs: SM_* (the black key chosen) */
     uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
     uint8_t qk, qk_long;         /* the PATTERNS grid: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
     uint8_t rec;                 /* REC_* */
@@ -119,7 +116,7 @@ static struct {
     int8_t touched;              /* the row just turned (-1 none), until touch_until */
     uint32_t touch_until;
     uint8_t dial_pg, dial_j;     /* the dial: the parameter it shows (page id, index) */
-    uint8_t dial_lk, dial_step;  /* .. or a step's lock (LK_* + 1, 0 none) and the step */
+    uint8_t dial_lk, dial_step;  /* .. or a step's lock (its id + 1, 0 none) and the step */
     uint32_t dial_until, dial_drawn_at;
     int32_t shown_dial;
     uint32_t flash_t0;
@@ -131,6 +128,7 @@ static struct {
     char shown_text[16];
     int32_t shown_rows[4];
     uint8_t rfit, shown_rfit;    /* the rows' sizes (RF_*) the page takes, and as drawn */
+    uint8_t shown_step;          /* (the EDIT page: the step held it showed, 0xFF none) */
     int8_t shown_touch;
     uint8_t shown_page, shown_half, shown_sub;
     int16_t shown_prj;           /* (the pattern shown at the top left, and its changes) */
@@ -237,46 +235,61 @@ static int32_t scale_move(int32_t n, int32_t d)
     }
     return n;
 }
-/* the step view's black keys, from the fourth on: what each makes the knobs do to the step held */
-enum { SM_NONE, SM_TRIG, SM_FX, NSM };
-static const uint8_t SM_KEY[NSM] = {KEY_NONE, 8, 10};   /* (the fourth and fifth black keys from the left: C#, D#) */
-static const char *const SM_NAME[NSM] = {"LOCKS", "TRIG", "FX"};
-static uint32_t sm_of(uint32_t k)
-{
-    uint32_t m;
-    for (m = 1; m < NSM; m++)
-        if (SM_KEY[m] == k)
-            return m;
-    return SM_NONE;
-}
 static int step_view(void) { return ui.sv; }
-static int step_page(void) { return ui.smode && ui.step_key != KEY_NONE; }   /* (the step's knobs on the screen) */
-/* a lock's name, and the sound's own value of it (what a step without the lock plays) */
-static const char *const LK_NAME[NLK] = {"FREQ", "RESO", "ENV", "DECAY", "VOL", "DRIVE", "BITS", "SRR", "DELAY",
-                                         "REVERB", "CHORUS", "PAN"};
-static int32_t lk_base(const sound_t *s, uint32_t lk)
+static int step_held(void) { return ui.sv && ui.step_key != KEY_NONE; }
+/* the step's own page (NOTE, VEL, LEN, COND), while a step is held and the EDIT pages are not up */
+static int step_page(void) { return step_held() && ui.page != PG_EDIT; }
+
+/* the steps' locks (the sequencer's, tracks.c): a lock is a parameter (page x 8 + knob; PL_PAN) and its value */
+static int pl_find(uint32_t t, uint32_t i, uint32_t id)
 {
-    switch (lk) {
-    case LK_FREQ: return s->flt[F_FREQ];
-    case LK_RESO: return s->flt[F_RESO];
-    case LK_FENV: return s->flt[F_ENV];
-    case LK_ADEC: return s->amp[A_DEC];
-    case LK_VOL: return s->amp[A_VOL];
-    case LK_OD: return s->fx[X_OD];
-    case LK_BR: return s->fx[X_BR];
-    case LK_SRR: return s->fx[X_SRR];
-    case LK_DEL: return s->fx[X_DEL];
-    case LK_REV: return s->fx[X_REV];
-    case LK_CHR: return s->fx[X_CHR];
-    default: return 64;                          /* (the pan: the centre) */
-    }
+    uint32_t j;
+    for (j = 0; j < NPL; j++)
+        if (seq_lid[t][i][j] == id)
+            return (int)j;
+    return -1;
 }
-static int32_t lk_max(uint32_t lk) { return lk == LK_OD ? 100 : 127; }   /* (OVERDRIVE is 0 .. 100) */
-static int32_t lk_val(uint32_t t, uint32_t i, uint32_t lk)   /* step i's value of lock lk: locked, or the sound's */
+static int pl_set(uint32_t t, uint32_t i, uint32_t id, int32_t v)   /* 0; -1 the step's eight places taken */
 {
-    uint32_t v = seq_lock[t][i][lk];
-    return v != LK_NONE ? (int32_t)v : lk_base(&ui.snd[t][ui.eng[t]], lk);
+    int j = pl_find(t, i, id);
+    if (j < 0)
+        j = pl_find(t, i, PL_NONE);
+    if (j < 0)
+        return -1;
+    seq_lv[t][i][j] = (int16_t)v;
+    RING_PUBLISH();
+    seq_lid[t][i][j] = (uint8_t)id;
+    return 0;
 }
+static void pl_clear(uint32_t t, uint32_t i)
+{
+    uint32_t j;
+    for (j = 0; j < NPL; j++)
+        seq_lid[t][i][j] = PL_NONE;
+}
+/* a parameter's definition (the pan's, as a bipolar 0 .. 127), and the sound's own value of it */
+static void pl_par(const sound_t *s, uint32_t id, par_t *p)
+{
+    static const par_t PAN = {"PAN", 0, 127, 64, PK_BIP, 0};
+    if (id == PL_PAN)
+        *p = PAN;
+    else
+        par_get(s, id >> 3, id & 7u, p);
+}
+static int32_t pl_base(const sound_t *s, uint32_t id) { return id == PL_PAN ? 64 : par_val(s, id >> 3, id & 7u); }
+static int32_t pl_val(uint32_t t, uint32_t i, uint32_t id)   /* step i's value of a parameter: locked, or the sound's */
+{
+    int j = pl_find(t, i, id);
+    return j >= 0 ? seq_lv[t][i][j] : pl_base(&ui.snd[t][ui.eng[t]], id);
+}
+
+/* the phrase generator's targets (phrase.c), as the parameters they lock */
+enum { LK_FREQ, LK_RESO, LK_FENV, LK_ADEC, LK_VOL, LK_OD, LK_BR, LK_SRR, LK_DEL, LK_REV, LK_CHR, LK_PAN, LK_DST, LK_SLICE,
+       NLK };
+static const uint8_t LK_PID[NLK] = {PG_FLT1 * 8 + 4, PG_FLT1 * 8 + 5, PG_FLT1 * 8 + 7, PG_AMP * 8 + 2, PG_AMP * 8 + 7,
+                                    PG_FX * 8 + 1, PG_FX * 8 + 0, PG_FX * 8 + 2, PL_DEL, PL_REV, PL_CHR, PL_PAN,
+                                    PG_MNG * 8 + M_DST, PG_MNG * 8 + M_SLICE};
+static int32_t lk_base(const sound_t *s, uint32_t lk) { return pl_base(s, LK_PID[lk]); }
 static void note_text(char *b, uint32_t n)     /* C#3 */
 {
     str_cpy(b, NOTE_NAME[n % 12u], 4);
@@ -485,7 +498,7 @@ static uint32_t loops_n(uint32_t t)
  * sequencer comes to next is not played that once (the key has) */
 static void rec_note(uint32_t note, uint32_t vel, uint32_t k)
 {
-    uint32_t t = ui.sel, i, l;
+    uint32_t t = ui.sel, i;
     if (ui.rec == REC_ARMED) {                   /* the first note: the sequencer starts on it, step 1 */
         seq_skip[t][0] = 1;
         seq_run = 1;
@@ -508,8 +521,7 @@ static void rec_note(uint32_t note, uint32_t vel, uint32_t k)
     seq_vel[t][i] = (uint8_t)clampi((int32_t)vel, 1, 127);
     seq_glen[t][i] = GLEN_DEF;
     seq_cond[t][i] = CD_NONE;
-    for (l = 0; l < NLK; l++)
-        seq_lock[t][i][l] = LK_NONE;
+    pl_clear(t, i);
     seq_note[t][i] = (uint8_t)note;
     pat_dirty = 1;
     if (k < NKEY) {
@@ -591,32 +603,35 @@ static void step_down(uint32_t k)
         seq_note[ui.sel][i] = (uint8_t)n;
         pat_dirty = 1;
     }
-    if (!ui.smode)
-        step_say(i, n);
+    step_say(i, n);
     ui.force = 1;
     step_hear(n);
 }
-/* a lock of the step held turned (from the sound's value, if it had none) */
-static void lk_turn(uint32_t lk, int32_t s, int show)
+/* a parameter of the step held turned: locked (from the sound's value, if it had none) */
+static void pl_turn(uint32_t id, int32_t s, int show)
 {
     uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key);
-    seq_lock[t][i][lk] = (uint8_t)clampi(lk_val(t, i, lk) + s, 0, lk_max(lk));
+    par_t p;
+    pl_par(cur(), id, &p);
+    if (p.kind == PK_NONE)
+        return;
+    if (pl_set(t, i, id, clampi(pl_val(t, i, id) + s, p.lo, p.hi))) {
+        say("8 LOCKS", 900);                     /* (the step's places all taken) */
+        return;
+    }
     ui.step_edit = 1;
     pat_dirty = 1;
     if (show) {                                  /* (as a dial) */
-        ui.dial_lk = (uint8_t)(lk + 1u);
+        ui.dial_lk = (uint8_t)(id + 1u);
         ui.dial_step = (uint8_t)i;
         ui.dial_until = fm1_ms + 1000u;
     }
 }
-/* the step view's knobs on the step held: TRIG: the note, the velocity, the length, the condition; FX: locks */
+/* the knobs on the step held (EDIT not up): the note, the velocity, the length, the condition */
 static void step_knob(uint32_t j, int32_t s)
 {
-    static const uint8_t FXL[4] = {LK_SRR, LK_BR, LK_OD, LK_ADEC};
     uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key);
-    if (ui.smode == SM_FX)
-        lk_turn(FXL[j], s, 0);
-    else if (j == 0u) {
+    if (j == 0u) {
         seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], s);
         step_hear(seq_note[t][i]);
     } else if (j == 1u)
@@ -717,11 +732,14 @@ static void ui_input(void)
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0)
                 step_knob(j, s);
-    } else if (step_view() && ui.step_key != KEY_NONE) {   /* .. no black key chosen: the knobs' own, locked */
-        static const uint8_t LKK[2][4] = {{LK_FREQ, LK_RESO, LK_DEL, LK_REV}, {LK_FREQ, LK_RESO, LK_CHR, LK_OD}};
+    } else if (step_held() && ui.page == PG_EDIT) {  /* .. with the EDIT pages up: what they turn, locked on it */
+        uint32_t id = page_id(cur(), ui.edit_pg);
         for (j = 0; j < 4u; j++)
-            if ((s = enc_take(KNOB[j])) != 0)
-                lk_turn(LKK[sh][j], s, 1);
+            if ((s = enc_take(KNOB[j])) != 0) {
+                pl_turn(id * 8u + j + 4u * ui.half, s, 0);
+                ui.touched = (int8_t)j;
+                ui.touch_until = fm1_ms + 1500u;
+            }
     } else if (ui.page == PG_EDIT) {                        /* the page's parameters */
         uint32_t id = page_id(cur(), ui.edit_pg);
         for (j = 0; j < 4u; j++)
@@ -815,9 +833,9 @@ static void ui_input(void)
     }
     if (step_view() && ui.step_key != KEY_NONE) {   /* a step held: SELECT its level, ALGORITHM its pan, locked */
         if (e_sel)
-            lk_turn(LK_VOL, e_sel, 1);
+            pl_turn(PG_AMP * 8u + 7u, e_sel, 1);   /* (VOLUME) */
         if (e_alg)
-            lk_turn(LK_PAN, e_alg, 1);
+            pl_turn(PL_PAN, e_alg, 1);
         e_sel = e_alg = 0;
     }
     if ((s = e_sel) != 0) {                          /* the level */
@@ -995,13 +1013,6 @@ static void ui_input(void)
             flash("NEW", sh ? "LOCKS" : "PHRASE", TRACK_COL[ui.sel]);
             continue;
         }
-        if (((ch & keys) >> k & 1u) && step_view() && sm_of(k)) {   /* the step view: a black key, its knobs (again:
-                                                                      * none) */
-            ui.smode = (uint8_t)(ui.smode == sm_of(k) ? SM_NONE : sm_of(k));
-            say(SM_NAME[ui.smode], 700);
-            ui.force = 1;
-            continue;
-        }
         if (!((ch >> k) & 1u) || !key_plays(k))
             continue;
         if ((keys >> k) & 1u) {
@@ -1078,11 +1089,6 @@ static void ui_leds(void)
         }
         if (step_view() && k == KEY_GEN) {           /* (the phrase key: dim, lit as it makes one) */
             fm1_led_key(14u + k, (int32_t)(ui.gen_until - fm1_ms) > 0);
-            led_dim_key(14u + k, 1);
-            continue;
-        }
-        if (step_view() && sm_of(k)) {               /* (the step view's black keys: dim, the one chosen lit) */
-            fm1_led_key(14u + k, ui.smode == sm_of(k));
             led_dim_key(14u + k, 1);
             continue;
         }
@@ -1200,7 +1206,10 @@ static void draw_pan(void)
 static void draw_rows_title(const char *t1, const char *t2, uint16_t col)
 {
     cv_begin(240, 52, C_BLACK);
-    cv_text(4, 4, &FONT_M, t1, col);                  /* the page, large; where it is (2/8, A-D), small, right */
+    if (text_w(&FONT_M, t1) + text_w(&FONT_S, t2) + 16 <= 232)   /* the page, large; where it is (2/8, A-D), right */
+        cv_text(4, 4, &FONT_M, t1, col);
+    else                                              /* (both not fitting: the page smaller) */
+        cv_text(4, 4 + ((int32_t)FONT_M.h - (int32_t)FONT_S.h) / 2, &FONT_S, t1, col);
     cv_text(236 - text_w(&FONT_S, t2), 4 + ((int32_t)FONT_M.h - (int32_t)FONT_S.h) / 2, &FONT_S, t2, C_WHITE);
     cv_rect(4, 46, 232, 2, RGB(60, 60, 60));
     cv_rect(ui.half ? 120 : 4, 46, 116, 4, col);      /* (which half: A .. D left, E .. H right) */
@@ -1239,7 +1248,7 @@ static void draw_row(uint32_t r, const char *name, const char *val, int32_t frac
 static void draw_edit_page(void)
 {
     const sound_t *s = cur();
-    uint32_t id = page_id(s, ui.edit_pg), j;
+    uint32_t id = page_id(s, ui.edit_pg), j, st = step_held() ? (uint32_t)white_ix(ui.step_key) : 0xFFu;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
     int full;
     ui.rfit = 1;                                     /* (the names never larger than the S size) */
@@ -1255,12 +1264,19 @@ static void draw_edit_page(void)
         ui.rfit = (uint8_t)(f > ui.rfit ? f : ui.rfit);
     }
     full = ui.force || ui.shown_page != PG_EDIT || ui.shown_half != ui.half || ui.shown_sub != ui.edit_pg ||
-           ui.shown_rfit != ui.rfit;
+           ui.shown_rfit != ui.rfit || ui.shown_step != st;
+    ui.shown_step = (uint8_t)st;
     ui.shown_rfit = ui.rfit;
     if (full) {
         char t1[16], t2[16];
         page_title(s, id, t1);
-        fmt_int(t2, ui.edit_pg + 1);                  /* 3/8 */
+        t2[0] = 0;
+        if (st < NSTEP) {                            /* (a step held: S5 3/8, its values) */
+            str_cpy(t2, "S", 2);
+            fmt_int(t2 + 1, (int32_t)st + 1);
+            str_cpy(t2 + str_len(t2), " ", 2);
+        }
+        fmt_int(t2 + str_len(t2), ui.edit_pg + 1);  /* 3/8 */
         str_cpy(t2 + str_len(t2), "/", 2);
         fmt_int(t2 + str_len(t2), (int32_t)pages_n(s));
         draw_rows_title(t1, t2, TRACK_COL[ui.sel]);
@@ -1269,14 +1285,16 @@ static void draw_edit_page(void)
         par_t p;
         int32_t v;
         char b[16];
+        uint32_t pid = id * 8u + j + 4u * ui.half;
+        int locked = st < NSTEP && pl_find(ui.sel, st, pid) >= 0;
         par_get(s, id, j + 4u * ui.half, &p);
-        v = par_val(s, id, j + 4u * ui.half);
-        if (!full && ui.shown_rows[j] == v && ((int32_t)j == t) == ((int32_t)j == ui.shown_touch))
+        v = st < NSTEP ? pl_val(ui.sel, st, pid) : par_val(s, id, j + 4u * ui.half);
+        if (!full && ui.shown_rows[j] == v + locked * 100000 && ((int32_t)j == t) == ((int32_t)j == ui.shown_touch))
             continue;
         par_text(&p, v, b);
         draw_row(j, p.kind == PK_NONE ? "" : p.name, b, p.hi > p.lo ? (v - p.lo) * 1000 / (p.hi - p.lo) : 0,
-                 p.kind == PK_BIP, (int32_t)j == t, TRACK_COL[ui.sel]);
-        ui.shown_rows[j] = v;
+                 p.kind == PK_BIP, (int32_t)j == t, st < NSTEP && !locked ? C_GREY : TRACK_COL[ui.sel]);
+        ui.shown_rows[j] = v + locked * 100000;   /* (a step held: its bar grey where it plays the sound's own) */
     }
     ui.shown_touch = (int8_t)t;
     ui.shown_half = ui.half;
@@ -1364,39 +1382,30 @@ static void cond_text(char *b, uint32_t c)
 static void draw_step_page(void)
 {
     static const char *const NAME[4] = {"NOTE", "VEL", "LEN", "COND"};
-    static const uint8_t FXL[4] = {LK_SRR, LK_BR, LK_OD, LK_ADEC};
-    uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key), j, fx = ui.smode == SM_FX;
+    uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key), j;
     int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
     int full;
     ui.rfit = 1;                                     /* (the step's rows: names small, values large) */
-    full = ui.force || ui.shown_page != 20u || ui.shown_sub != i + 16u * ui.smode || ui.shown_rfit != ui.rfit;
+    full = ui.force || ui.shown_page != 20u || ui.shown_sub != i || ui.shown_rfit != ui.rfit;
     ui.shown_rfit = ui.rfit;
     if (full) {
         char t1[12] = "STEP ";
         uint8_t h = ui.half;
         fmt_int(t1 + 5, (int32_t)i + 1);
         ui.half = 0;                             /* (no halves here: the line under the title as A .. D's) */
-        draw_rows_title(t1, SM_NAME[ui.smode], TRACK_COL[t]);
+        draw_rows_title(t1, "TRIG", TRACK_COL[t]);
         ui.half = h;
     }
     for (j = 0; j < 4u; j++) {
         int32_t v, fr, key;
         char b[16];
-        if (fx) {                                /* (the locks: the sound's value where none, its bar grey) */
-            v = lk_val(t, i, FXL[j]);
-            fr = v * 1000 / 127;
-            key = v + (seq_lock[t][i][FXL[j]] != LK_NONE) * 1000;
-        } else {
-            v = j == 0u ? seq_note[t][i] : j == 1u ? seq_vel[t][i] : j == 2u ? seq_glen[t][i] : seq_cond[t][i];
-            fr = j == 0u ? (v - 12) * 1000 / 108 : j == 1u ? v * 1000 / 127 : j == 2u ? v * 1000 / (NGLEN - 1)
-                 : v * 1000 / (NCOND - 1);
-            key = v;
-        }
+        v = j == 0u ? seq_note[t][i] : j == 1u ? seq_vel[t][i] : j == 2u ? seq_glen[t][i] : seq_cond[t][i];
+        fr = j == 0u ? (v - 12) * 1000 / 108 : j == 1u ? v * 1000 / 127 : j == 2u ? v * 1000 / (NGLEN - 1)
+             : v * 1000 / (NCOND - 1);
+        key = v;
         if (!full && ui.shown_rows[j] == key && ((int32_t)j == tc) == ((int32_t)j == ui.shown_touch))
             continue;
-        if (fx)
-            fmt_int(b, v);
-        else if (j == 0u)
+        if (j == 0u)
             note_text(b, (uint32_t)v);
         else if (j == 1u)
             fmt_int(b, v);
@@ -1404,12 +1413,11 @@ static void draw_step_page(void)
             str_cpy(b, GLEN_NAME[v], sizeof b);
         else
             cond_text(b, (uint32_t)v);
-        draw_row(j, fx ? LK_NAME[FXL[j]] : NAME[j], b, fr, 0, (int32_t)j == tc,
-                 fx && seq_lock[t][i][FXL[j]] == LK_NONE ? C_GREY : TRACK_COL[t]);
+        draw_row(j, NAME[j], b, fr, 0, (int32_t)j == tc, TRACK_COL[t]);
         ui.shown_rows[j] = key;
     }
     ui.shown_touch = (int8_t)tc;
-    ui.shown_sub = (uint8_t)(i + 16u * ui.smode);
+    ui.shown_sub = (uint8_t)i;
 }
 
 /* a knob's parameter as a dial over the whole screen: its name and the track; a dial from 7 o'clock to 5 (bipolar
@@ -1426,7 +1434,7 @@ static void dial_at(uint32_t a, int32_t r, int32_t *x, int32_t *y)
 static int32_t dial_key(void)                    /* (what the dial shows, folded into one number) */
 {
     if (ui.dial_lk)
-        return lk_val(ui.sel, ui.dial_step, ui.dial_lk - 1u) + ui.dial_lk * 1024 + ui.dial_step * 65536 + (1 << 24);
+        return pl_val(ui.sel, ui.dial_step, ui.dial_lk - 1u) + ui.dial_lk * 1024 + ui.dial_step * 131072 + (1 << 24);
     return par_val(cur(), ui.dial_pg, ui.dial_j) + ui.dial_pg * 1024 + ui.dial_j * 8192;
 }
 static void draw_dial(void)
@@ -1440,14 +1448,9 @@ static void draw_dial(void)
     uint16_t col = TRACK_COL[ui.sel];
     const font_t *tf;
     if (ui.dial_lk) {                                /* a step's lock: REVERB S5 */
-        uint32_t lk = ui.dial_lk - 1u;
-        p.name = LK_NAME[lk];
-        p.lo = 0;
-        p.hi = (int16_t)lk_max(lk);
-        p.mid = 64;
-        p.kind = lk == LK_PAN ? PK_BIP : PK_NUM;
-        p.list = 0;
-        v = lk_val(ui.sel, ui.dial_step, lk);
+        uint32_t id = ui.dial_lk - 1u;
+        pl_par(s, id, &p);
+        v = pl_val(ui.sel, ui.dial_step, id);
         str_cpy(t, p.name, sizeof t - 4);
         str_cpy(t + str_len(t), " S", 3);
         fmt_int(t + str_len(t), ui.dial_step + 1);

@@ -84,7 +84,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 #include "fmd.c"
 #include "wav.c"
 #include "fx.c"
-#include "grain.c"
+#include "mangle.c"
 #define MQ 64u
 static uint32_t midi_in_q[MQ];
 static volatile uint32_t mi_w, mi_r;
@@ -503,6 +503,7 @@ static int cmd_cost(void)
 /* the sessions: save, change, load (back as saved), copy, delete, another firmware's data, the questions; the steps,
  * the patterns */
 static int fails;
+#define PG_FD_SYN_TEST 0u
 #define EXPECT(c, what) do { if (!(c)) { printf("FAIL projects: %s\n", what); fails++; } } while (0)
 static void btn(uint32_t b, int sh)
 {
@@ -646,12 +647,7 @@ static int cmd_projects(const char *dir)
         ui_input();
         EXPECT(seq_note[5][0] == n0 && pat_dirty, "the step view and an empty step: the last note there");
         EXPECT(seq_vel[5][0] == VEL_DEF && seq_glen[5][0] == GLEN_DEF && !seq_cond[5][0], "a new step: the defaults");
-        fm1_in.notes |= 1u << 8;                 /* the 4th black key: TRIG */
-        ui_input();
-        fm1_in.notes &= ~(1u << 8);
-        ui_input();
-        EXPECT(ui.smode == SM_TRIG, "the 4th black key: TRIG");
-        turn(EN_K1, 1);
+        turn(EN_K1, 1);                          /* (a step held, EDIT not up: the knobs its note, velocity ..) */
         n1 = seq_note[5][0];
         EXPECT(n1 > n0 && in_scale((int32_t)n1), "TRIG, KNOB 1: the note up the scale");
         turn(EN_K2, -20);
@@ -677,11 +673,6 @@ static int cmd_projects(const char *dir)
         fm1_in.notes &= ~(1u << kw[0]);
         ui_input();
         EXPECT(seq_note[5][0] == n1, "held long, let go: the step kept");
-        fm1_in.notes |= 1u << 8;                 /* TRIG off again */
-        ui_input();
-        fm1_in.notes &= ~(1u << 8);
-        ui_input();
-        EXPECT(!ui.smode, "the black key again: TRIG off");
         for (i = 0; i < 3u; i++) {               /* 5 on, 5 off again, 9 on */
             k = kw[i == 2u ? 8 : 4];
             fm1_in.notes |= 1u << k;
@@ -729,7 +720,7 @@ static int cmd_projects(const char *dir)
         fm1_in.buttons = 0;
         ui_input();
         fm1_ms += 2000;
-        EXPECT(pat_cur == 0u && pat_store[0].used && !pat_dirty && pat_store[0].seq[SEQ_FMT] == SEQ_V2 &&
+        EXPECT(pat_cur == 0u && pat_store[0].used && !pat_dirty && pat_store[0].seq[SEQ_FMT] == SEQ_V3 &&
                pat_store[0].seq[SEQ_NREC] == 2u && pat_store[0].seq[SEQ_REC + 6u + 1u] == n0,
                "ARP held saves the pattern playing, its steps");
         {   /* (written into session 3's flash) */
@@ -794,45 +785,61 @@ static int cmd_projects(const char *dir)
         ui_draw();
         shot(dir, "phrase_new");
         fm1_ms += 2000;
-        {   /* no black key chosen, a step held: the knobs lock FREQ, RESO, the sends; SELECT the level, ALGORITHM
-             * the pan; FX: SRR, BITS, DRIVE, DECAY; SHIFT + the phrase key: new locks, the steps kept */
-            uint32_t st = 0, kk;
+        {   /* a step held, the EDIT pages up: what the knobs turn is locked on it; SELECT the level, ALGORITHM the
+             * pan; SHIFT + the phrase key: new locks, the steps kept */
+            uint32_t st = 0, kk, f1 = SYN_PAGES[ui.eng[5]];   /* (FLTR 1's page) */
             uint8_t nn[NSTEP], vv[NSTEP], cc[NSTEP], gg[NSTEP];
-            int32_t f0;
+            int32_t f0, fsnd = cur()->flt[F_FREQ];
             while (!seq_note[5][st])
                 st++;
             for (kk = 0; white_ix(kk) != (int32_t)st; kk++)
                 ;
-            memset((void *)seq_lock[5][st], LK_NONE, NLK);
-            f0 = lk_val(5, st, LK_FREQ);
+            pl_clear(5, st);
+            f0 = pl_val(5, st, PG_FLT1 * 8u + 4u);
+            tap(KEY_EDIT);
+            ui.edit_pg = (uint8_t)f1;
             fm1_in.notes |= 1u << kk;
             ui_input();
-            turn(EN_K1, -5);
-            turn(EN_K4, 10);
+            turn(EN_PRESET, -1);                 /* (A .. D) */
+            ui_input();
+            turn(EN_K1, -5);                     /* FLTR 1, knob A: ATTACK */
+            ui.ehalf = 1;
+            ui_input();
+            turn(EN_K1, -5);                     /* knob E: FREQ */
             turn(EN_SELECT, -7);
             turn(EN_ALGO, 9);
-            EXPECT(seq_lock[5][st][LK_FREQ] == (uint8_t)clampi(f0 - 5, 0, 127) && seq_lock[5][st][LK_REV] != LK_NONE &&
-                   seq_lock[5][st][LK_VOL] != LK_NONE && seq_lock[5][st][LK_PAN] == 73u, "a step held: the knobs lock");
-            turn(EN_K1, 1);
+            EXPECT(pl_val(5, st, PG_FLT1 * 8u + 4u) == clampi(f0 - 5, 0, 127) && pl_find(5, st, PG_FLT1 * 8u + 0u) >= 0 &&
+                   pl_find(5, st, PG_AMP * 8u + 7u) >= 0 && pl_val(5, st, PL_PAN) == 73 && cur()->flt[F_FREQ] == fsnd,
+                   "a step held, EDIT up: the knobs lock (the sound kept)");
+            ui.dial_until = 0;
+            ui_draw();
+            shot(dir, "lock_edit");
+            turn(EN_SELECT, 1);
             ui_draw();
             shot(dir, "lock_dial");
-            EXPECT(ui.shown_page == 4u && ui.dial_lk == LK_FREQ + 1u, "the lock shown as a dial");
+            EXPECT(ui.shown_page == 4u && ui.dial_lk == PG_AMP * 8u + 7u + 1u, "the level's lock shown as a dial");
             fm1_in.notes &= ~(1u << kk);
             ui_input();
             EXPECT(seq_note[5][st] != 0, "let go after a lock: the step kept");
             fm1_ms += 2000;
-            tap(10);                             /* the 5th black key: FX */
-            EXPECT(ui.smode == SM_FX, "the 5th black key: FX");
+            ui.edit_pg = (uint8_t)(f1 + 4u);     /* MANGLE: a track's lock */
+            ui.ehalf = 0;
             fm1_in.notes |= 1u << kk;
             ui_input();
-            turn(EN_K1, 30);
-            turn(EN_K2, 40);
-            EXPECT(seq_lock[5][st][LK_SRR] != LK_NONE && seq_lock[5][st][LK_BR] != LK_NONE, "FX: SRR, BITS locked");
-            ui_draw();
-            shot(dir, "step_fx");
+            turn(EN_K3, 3);
+            EXPECT(pl_val(5, st, PG_MNG * 8u + M_SLICE) == 3, "MANGLE's SLICE locked");
+            for (kk = 0; kk < 7u; kk++)          /* (eight a step: the ninth refused) */
+                (void)pl_set(5, st, (PG_FLT1 + (kk & 1u)) * 8u + 1u + kk / 2u, 10);
+            {
+                int32_t before = pl_val(5, st, PG_MNG * 8u + M_DST);
+                turn(EN_K1, 5);
+                EXPECT(pl_val(5, st, PG_MNG * 8u + M_DST) == before && str_eq(ui.msg, "8 LOCKS"), "the ninth lock refused");
+            }
+            for (kk = 0; white_ix(kk) != (int32_t)st; kk++)
+                ;
             fm1_in.notes &= ~(1u << kk);
             ui_input();
-            tap(10);
+            tap(KEY_EDIT);
             fm1_ms += 2000;
             memcpy(nn, (const void *)seq_note[5], NSTEP);
             memcpy(vv, (const void *)seq_vel[5], NSTEP);
@@ -848,8 +855,8 @@ static int cmd_projects(const char *dir)
             {
                 uint32_t on = 0, off = 0, i2, l2;
                 for (i2 = 0; i2 < NSTEP; i2++)
-                    for (l2 = 0; l2 < NLK; l2++) {
-                        if (seq_lock[5][i2][l2] == LK_NONE)
+                    for (l2 = 0; l2 < NPL; l2++) {
+                        if (seq_lid[5][i2][l2] == PL_NONE)
                             continue;
                         if (seq_note[5][i2])
                             on++;
@@ -876,8 +883,8 @@ static int cmd_projects(const char *dir)
                 for (i = 0; i < NSTEP; i++) {
                     if (seq_note[t][i] && !in_scale(seq_note[t][i]))
                         bad++;
-                    for (l = 0; l < NLK; l++)
-                        locks += seq_lock[t][i][l] != LK_NONE;
+                    for (l = 0; l < NPL; l++)
+                        locks += seq_lid[t][i][l] != PL_NONE;
                 }
                 if (pat_bytes() > PAT_SEQ_ROOM)
                     bad++;
@@ -887,38 +894,54 @@ static int cmd_projects(const char *dir)
         for (i = 0; i < NRO; i++)
             EXPECT(roles[i] > 0u, "every role made");
         {
-            uint8_t n0[NTRACK][NSTEP], l0[NTRACK][NSTEP][NLK], c0[NTRACK][NSTEP];
+            static uint8_t n0[NTRACK][NSTEP], i0[NTRACK][NSTEP][NPL], c0[NTRACK][NSTEP];
+            static int16_t v0[NTRACK][NSTEP][NPL];
+            uint32_t same = 1, j;
             memcpy(n0, (const void *)seq_note, sizeof n0);
-            memcpy(l0, (const void *)seq_lock, sizeof l0);
+            memcpy(i0, (const void *)seq_lid, sizeof i0);
+            memcpy(v0, (const void *)seq_lv, sizeof v0);
             memcpy(c0, (const void *)seq_cond, sizeof c0);
             pat_take(&pp);
             pat_store[15] = pp;
             pat_give(15);
-            EXPECT(!memcmp(n0, (const void *)seq_note, sizeof n0) && !memcmp(l0, (const void *)seq_lock, sizeof l0) &&
-                   !memcmp(c0, (const void *)seq_cond, sizeof c0), "a pattern gives the phrases back as they were");
+            for (t = 0; t < NTRACK; t++)         /* (each lock back, wherever its place) */
+                for (i = 0; i < NSTEP; i++)
+                    for (j = 0; j < NPL; j++)
+                        if (i0[t][i][j] != PL_NONE && (pl_find(t, i, i0[t][i][j]) < 0 || pl_val(t, i, i0[t][i][j]) != v0[t][i][j]))
+                            same = 0;
+            EXPECT(same && !memcmp(n0, (const void *)seq_note, sizeof n0) && !memcmp(c0, (const void *)seq_cond, sizeof c0),
+                   "a pattern gives the phrases back as they were");
         }
         {   /* locks reach the voice: a step's FREQ lock cooks the voice's own chain */
             int32_t out[2 * CTL];
             memset((void *)seq_note, 0, sizeof seq_note);
-            memset((void *)seq_lock, LK_NONE, sizeof seq_lock);
+            memset((void *)seq_lid, PL_NONE, sizeof seq_lid);
             seq_note[0][0] = 48;
             seq_vel[0][0] = 100;
             seq_glen[0][0] = GLEN_DEF;
             seq_cond[0][0] = CD_NONE;
-            seq_lock[0][0][LK_FREQ] = 3;
-            seq_lock[0][0][LK_REV] = 127;
+            (void)pl_set(0, 0, LK_PID[LK_FREQ], 3);
+            (void)pl_set(0, 0, LK_PID[LK_REV], 127);
+            (void)pl_set(0, 0, PG_FD_SYN_TEST, 0);   /* (a machine's own: FM DRUM's TUNE, SYN 1 knob A) */
             seq_run = 1;
             for (i = 0; i < 4u; i++)
                 mix_block(out);
             for (i = 0, t = NVOICE; i < NVOICE; i++)
                 if (vox[i].track == 0u && vox[i].sounding && vox[i].note == 48u)
                     t = i;
-            EXPECT(t < NVOICE && vox[t].own && vmem[t].lck.f_v == 3 && trk[0].tlk[LK_REV - NVLK] == 127,
+            EXPECT(t < NVOICE && vox[t].own && vmem[t].lck.f_v == 3 && pl_find(0, 0, PL_REV) >= 0 &&
+                   (trk[0].tid[0] == PL_REV || trk[0].tid[1] == PL_REV || trk[0].tid[2] == PL_REV),
                    "a step's locks: the voice's own FREQ, the track's reverb send");
+            {
+                int k2, found = 0;
+                for (k2 = 0; k2 < (int)NPL; k2++)
+                    found |= vox[t].lid[k2] == PG_FD_SYN_TEST;
+                EXPECT(found, "a machine's parameter locked: the voice's own");
+            }
             seq_run = 0;
             for (i = 0; i < 4u; i++)
                 mix_block(out);
-            EXPECT(trk[0].tlk[LK_REV - NVLK] == LK_NONE, "stopped: the track's locks gone");
+            EXPECT(trk[0].tid[0] == PL_NONE && trk[0].tid[1] == PL_NONE, "stopped: the track's locks gone");
         }
     }
     {   /* REC: armed (the metronome counts), the first note starts it on step 1; each note to the nearest step */
@@ -1118,38 +1141,45 @@ static int cmd_projects(const char *dir)
         EXPECT(ui.page == PG_FXP && ui.fx_pg == 1u && ui.half == 1u && ui.eng[ui.sel] == k,
                "the effects: OCT the next, PRESETS the half");
         btn(B_GLO, 0);
-        {   /* GRAIN: the track's voices granulated, dark (left) and scattered (right); ringing on after them */
+        {   /* MANGLE: SLICE gates the track in time; DESTROY breaks its samples; off, the track as it was */
             int32_t out[2 * CTL];
-            uint32_t i, side;
-            for (side = 0; side < 2u; side++) {
-                double e_on = 0, e_tail = 0;
-                ui.snd[0][ui.eng[0]].fx[X_GRAIN] = (uint8_t)(int8_t)(side ? 50 : -50);
+            uint32_t i, kind;
+            double e[3];
+            for (kind = 0; kind < 3u; kind++) {
+                sound_t *sn = &ui.snd[0][ui.eng[0]];
+                int32_t gmin = Q15, gmax = 0;
+                memset(sn->mg, 0, NM);
+                if (kind == 1u) {
+                    sn->mg[M_SLICE] = 1;             /* (every other 1/16) */
+                    sn->mg[M_SRATE] = 1;
+                    sn->mg[M_SDEPTH] = 127;
+                } else if (kind == 2u) {
+                    sn->mg[M_DST] = 90;
+                    sn->mg[M_DMODE] = 0;
+                }
                 ui.dirty[0] = 1;
-                for (i = 0; i < 8u && ui.dirty[0]; i++) {   /* (published as a knob's turn is) */
+                for (i = 0; i < 8u && ui.dirty[0]; i++) {
                     ui_publish();
                     mix_block(out);
                 }
                 ev_post(EV_ON, 0, 48, 127);
+                e[kind] = 0;
                 for (i = 0; i < 1500u; i++) {
                     uint32_t j;
                     mix_block(out);
                     for (j = 0; j < 2u * CTL; j++)
-                        e_on += (double)out[j] * out[j];
+                        e[kind] += (double)out[j] * out[j];
+                    gmin = mangle[0].g < gmin ? mangle[0].g : gmin;
+                    gmax = mangle[0].g > gmax ? mangle[0].g : gmax;
                 }
                 ev_post(EV_STOP, 0, 0, 0);
                 for (i = 0; i < 400u; i++)
                     mix_block(out);
-                EXPECT(gran[0].amt > 0 && gran[0].tail > 0u, side ? "GRAIN right: on, ringing on" : "GRAIN left: on, ringing on");
-                for (i = 0; i < 4000u; i++) {
-                    uint32_t j;
-                    mix_block(out);
-                    for (j = 0; j < 2u * CTL; j++)
-                        e_tail += (double)out[j] * out[j];
-                }
-                EXPECT(e_on > 0 && e_on == e_on && gran[0].tail == 0u, "GRAIN: sound, and an end to its tail");
-                (void)e_tail;
+                if (kind == 1u)
+                    EXPECT(gmin < 1000 && gmax > 32000, "SLICE: the gate shut and open, in time");
             }
-            ui.snd[0][ui.eng[0]].fx[X_GRAIN] = 0;
+            EXPECT(e[1] < e[0] * 0.8 && e[2] != e[0], "SLICE cuts, DESTROY changes the sound");
+            memset(ui.snd[0][ui.eng[0]].mg, 0, NM);
             ui.dirty[0] = 1;
             for (i = 0; i < 8u && ui.dirty[0]; i++) {
                 ui_publish();
@@ -1159,9 +1189,10 @@ static int cmd_projects(const char *dir)
         {
             par_t pp;
             sound_t sn = *cur();
-            par_put(&sn, PG_FX, 3, -20);
-            par_get(&sn, PG_FX, 3, &pp);
-            EXPECT(str_eq(pp.name, "GRAIN") && par_val(&sn, PG_FX, 3) == -20, "GRAIN on FX knob D, signed");
+            par_put(&sn, PG_MNG, M_SLICE, 5);
+            par_get(&sn, PG_MNG, M_SLICE, &pp);
+            EXPECT(str_eq(pp.name, "SLICE") && par_val(&sn, PG_MNG, M_SLICE) == 5 && pages_n(&sn) == SYN_PAGES[sn.mach] + 5u,
+                   "MANGLE: its own page, SLICE on knob C");
         }
         {
             vck_t c;
@@ -1170,6 +1201,46 @@ static int cmd_projects(const char *dir)
             vck_cook(&c, &sn);
             EXPECT(c.od_g == 100 * 256, "OVERDRIVE: 0 .. 100 (more read as 100)");
         }
+    }
+    {   /* a session saved before build 18 (its sounds without MANGLE): found, loaded, the sounds as they were */
+        static uint8_t sec[PRJ_SECT];
+        prj_head_t *h = (prj_head_t *)(void *)sec;
+        prj_body17_t *b = (prj_body17_t *)(void *)(sec + sizeof(prj_head_t));
+        uint32_t t, e, same = 1;
+        memset(sec, 0xFF, sizeof sec);
+        memset(b, 0, sizeof *b);
+        b->tempo = 111;
+        for (t = 0; t < NTRACK; t++)
+            for (e = 0; e < NENG; e++) {
+                const sound_t *u = &ui.snd[t][e];
+                sound17_t *o = &b->snd[t][e];
+                o->mach = u->mach;
+                o->fmach = u->fmach;
+                memcpy(o->syn, u->syn, sizeof o->syn);
+                memcpy(o->flt, u->flt, NF);
+                memcpy(o->amp, u->amp, NA);
+                memcpy(o->fx, u->fx, NX);
+                o->family = u->family;
+                o->seed = u->seed;
+                b->eng[t] = ui.eng[t];
+            }
+        h->magic = PRJ_MAGIC;
+        h->format = PRJ_FORMAT;
+        h->what = 9u * 16u;
+        h->len = sizeof(prj_body17_t);
+        h->body_crc = prj_crc((const uint8_t *)b, sizeof *b);
+        h->head_crc = prj_crc(sec, __builtin_offsetof(prj_head_t, head_crc));
+        memcpy(host_flash + prj_sector(9, 0), sec, sizeof sec);
+        prj_scan(1);
+        EXPECT(prj_has[9], "a session from before build 18: found");
+        EXPECT(!prj_load(9) && ui.tempo == 111, "and loaded");
+        for (t = 0; t < NTRACK; t++)
+            for (e = 0; e < NENG; e++)
+                same &= !memcmp(ui.snd[t][e].syn, b->snd[t][e].syn, sizeof b->snd[t][e].syn) &&
+                        !memcmp(ui.snd[t][e].flt, b->snd[t][e].flt, NF) && ui.snd[t][e].family == b->snd[t][e].family &&
+                        ui.snd[t][e].mg[M_SLICE] == 0;
+        EXPECT(same, "its sounds as they were, MANGLE off");
+        EXPECT(!prj_load(2), "(session 3 back)");
     }
     /* the long presses: ARP held saves the pattern playing, HOME held the project */
     pat_tempo = 77;
@@ -1295,6 +1366,12 @@ int main(int argc, char **argv)
         return cmd_projects(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "phrases"))
         return cmd_phrases(argv[2], argc >= 4 ? atoi(argv[3]) : 4);
+    if (argc >= 2 && !strcmp(argv[1], "sizes")) {
+        printf("sound_t %zu ck_t %zu vck_t %zu ftck %zu fdck %zu wtck %zu swck %zu vmem %zu voice %zu prj_body %zu\n",
+               sizeof(sound_t), sizeof(ck_t), sizeof(vck_t), sizeof(ftck_t), sizeof(fdck_t), sizeof(wtck_t),
+               sizeof(swck_t), sizeof(vmem_t), sizeof(voice_t), sizeof(prj_body_t));
+        return 0;
+    }
     if (argc >= 2 && !strcmp(argv[1], "od"))
         return cmd_od();
     if (argc >= 2 && !strcmp(argv[1], "cost"))

@@ -64,7 +64,12 @@ static void ph_step(uint32_t i, int32_t deg, int32_t vel, uint32_t glen, uint32_
     seq_cond[ph_t][i] = (uint8_t)(cond < NCOND ? cond : CD_NONE);
     seq_note[ph_t][i] = (uint8_t)scale_move(ph_ref, deg);
 }
-static void ph_lock(uint32_t i, uint32_t lk, int32_t v) { seq_lock[ph_t][i & (NSTEP - 1u)][lk] = (uint8_t)clampi(v, 0, lk_max(lk)); }
+static void ph_lock(uint32_t i, uint32_t lk, int32_t v)   /* (within the parameter's range; a step's eight full: not) */
+{
+    par_t p;
+    pl_par(ph_s, LK_PID[lk], &p);
+    (void)pl_set(ph_t, i & (NSTEP - 1u), LK_PID[lk], clampi(v, p.lo, p.hi));
+}
 static int ph_on(uint32_t i) { return seq_note[ph_t][i & (NSTEP - 1u)] != 0; }
 
 /* the sound's own value of a lock (a move from it is what is locked) */
@@ -318,18 +323,19 @@ static void ph_drone(void)
 }
 
 /* SHIFT and the phrase key: new locks on the steps the track holds, as its role locks (each lock's chance a step,
- * in LK_* order: FREQ RESO ENV DECAY VOL DRIVE BITS SRR DELAY REVERB CHORUS PAN); the notes, velocities, lengths
+ * in LK_* order: FREQ RESO ENV DECAY VOL DRIVE BITS SRR DELAY REVERB CHORUS PAN DESTROY SLICE); the notes, velocities,
+ * lengths
  * and conditions as they were */
 static const uint8_t RL_P[NRO][NLK] = {
-    {25, 0, 10, 30, 0, 35, 20, 10, 0, 10, 0, 0},        /* KICK */
-    {25, 10, 10, 25, 10, 20, 25, 30, 20, 25, 0, 30},    /* SNARE */
-    {35, 10, 0, 35, 15, 0, 12, 10, 10, 5, 0, 60},       /* HAT */
-    {50, 20, 10, 20, 15, 15, 25, 30, 30, 15, 10, 90},   /* PERC */
-    {70, 40, 20, 20, 20, 40, 45, 50, 25, 15, 10, 90},   /* NOISE */
-    {90, 40, 25, 15, 0, 35, 10, 5, 5, 5, 0, 0},         /* BASS */
-    {40, 15, 15, 10, 0, 10, 10, 5, 35, 20, 15, 30},     /* LEAD */
-    {40, 10, 10, 15, 0, 15, 20, 10, 35, 20, 10, 25},    /* STAB */
-    {30, 10, 10, 0, 0, 5, 5, 5, 10, 50, 40, 20},        /* DRONE */
+    {25, 0, 10, 30, 0, 35, 20, 10, 0, 10, 0, 0, 10, 0},        /* KICK */
+    {25, 10, 10, 25, 10, 20, 25, 30, 20, 25, 0, 30, 15, 5},    /* SNARE */
+    {35, 10, 0, 35, 15, 0, 12, 10, 10, 5, 0, 60, 15, 10},       /* HAT */
+    {50, 20, 10, 20, 15, 15, 25, 30, 30, 15, 10, 90, 25, 10},   /* PERC */
+    {70, 40, 20, 20, 20, 40, 45, 50, 25, 15, 10, 90, 45, 25},   /* NOISE */
+    {90, 40, 25, 15, 0, 35, 10, 5, 5, 5, 0, 0, 10, 15},         /* BASS */
+    {40, 15, 15, 10, 0, 10, 10, 5, 35, 20, 15, 30, 10, 15},     /* LEAD */
+    {40, 10, 10, 15, 0, 15, 20, 10, 35, 20, 10, 25, 15, 20},    /* STAB */
+    {30, 10, 10, 0, 0, 5, 5, 5, 10, 50, 40, 20, 5, 40},        /* DRONE */
 };
 static void phrase_relock(uint32_t t)
 {
@@ -341,7 +347,7 @@ static void phrase_relock(uint32_t t)
     role = phrase_role(ph_s);
     for (i = 0; i < NSTEP; i++) {
         int acc = (i & 3u) == 0u;
-        memset((void *)seq_lock[t][i], LK_NONE, NLK);
+        pl_clear(t, i);
         if (!seq_note[t][i])
             continue;
         for (l = 0; l < NLK; l++) {
@@ -359,6 +365,8 @@ static void phrase_relock(uint32_t t)
             case LK_DEL: ph_lock(i, l, ph_ri(45, 127)); break;
             case LK_REV: ph_lock(i, l, ph_ri(40, 127)); break;
             case LK_CHR: ph_lock(i, l, ph_ri(40, 120)); break;
+            case LK_DST: ph_lock(i, l, ph_ri(20, 110)); break;
+            case LK_SLICE: ph_lock(i, l, ph_ri(1, 16)); break;
             default:                             /* (the pan: hard sides now and then, else a walk) */
                 pan = ph_ch(25) ? (ph_ch(50) ? 0 : 127) : clampi(pan + ph_ri(-30, 30), 0, 127);
                 ph_lock(i, l, pan);
@@ -368,7 +376,7 @@ static void phrase_relock(uint32_t t)
     }
     while (pat_bytes() > PAT_SEQ_ROOM) {
         uint32_t j = ph_rnd(NSTEP), k = ph_rnd(NLK);
-        seq_lock[t][j][k] = LK_NONE;
+        seq_lid[t][j][k % NPL] = PL_NONE;
     }
     pat_dirty = 1;
 }
@@ -388,7 +396,7 @@ static void phrase_new(uint32_t t)
         seq_vel[t][i] = VEL_DEF;
         seq_glen[t][i] = GLEN_DEF;
         seq_cond[t][i] = CD_NONE;
-        memset((void *)seq_lock[t][i], LK_NONE, NLK);
+        pl_clear(t, i);
     }
     switch (role) {
     case RO_KICK: ph_kick(); break;
@@ -403,10 +411,10 @@ static void phrase_new(uint32_t t)
     }
     for (i = 0; i < NSTEP; i++)                  /* (no locks left on a step that holds no note) */
         if (!seq_note[t][i])
-            memset((void *)seq_lock[t][i], LK_NONE, NLK);
+            pl_clear(t, i);
     while (pat_bytes() > PAT_SEQ_ROOM) {         /* (over the pattern's room: locks go, at random) */
-        uint32_t j = ph_rnd(NSTEP), l = ph_rnd(NLK);
-        seq_lock[t][j][l] = LK_NONE;
+        uint32_t j = ph_rnd(NSTEP), l = ph_rnd(NPL);
+        seq_lid[t][j][l] = PL_NONE;
     }
     pat_dirty = 1;
 }

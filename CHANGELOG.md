@@ -1,5 +1,35 @@
 # Changelog
 
+## Build 18
+
+Added
+- MANGLE, a page of its own after FX (in place of GRAIN), working on the track's voices together:
+  - DESTROY: digital destruction on the samples as 16-bit words, its amount (0 off) and kind: WRAP (driven up to
+    x 16 and left to overflow, wrapping round), XOR (the low bits XORed with a pattern, more of them as it goes up),
+    FLIP (one bit flipped, a higher one as it goes up), DROP (samples dropped and held, more often and longer).
+  - SLICE: a gate in time with the tempo (the sequencer's steps; stopped, its own clock at the tempo): pattern OFF
+    or 1 to 16, SLICE RATE 1/8, 1/16, 1/32 or 1/16T, SLC DEPTH (127: cut to silence), SLC EDGE (0: a click, about
+    0.3 ms; 127: about 30 ms), SLC SHIFT (the pattern turned by slices).
+  Both cost a few operations a sample and no buffer.
+- Parameter locks on any parameter of the sound. In the step view, hold a step and bring up the EDIT pages: what
+  the knobs turn there is locked on that step instead of changing the sound. The page shows the step's values (S5
+  next to the page number): a row's bar in the track's colour is locked, grey is the sound's own. Up to eight locks a
+  step (8 LOCKS shows when a ninth is refused). Machine, filter, amp and FX parameters belong to the note; the sends,
+  MANGLE and the pan hold on the track from the step until the track's next step plays.
+- The phrase generator's SHIFT + phrase key (new locks) also locks DESTROY and SLICE now, by role (slices on drones
+  and noise most).
+
+Changed
+- With a step held and the EDIT pages not up, KNOB 1 to 4 set its note, velocity, length and trig condition (the
+  page of four rows shows); SELECT and ALGORITHM still lock its level and pan.
+- The fourth and fifth black keys no longer choose TRIG and FX pages: they are free.
+- A pattern keeps its locks as parameter and value pairs (patterns saved with builds 9 to 17 still load).
+- A session keeps MANGLE with each sound; sessions saved before build 18 still load (MANGLE off).
+- A title that does not fit beside its page number shows in the smaller size.
+
+Removed
+- GRAIN (build 17's granulator), and its 24 KB of buffers.
+
 ## Build 17
 
 Added

@@ -55,13 +55,16 @@ typedef struct {
     uint16_t tempo;              /* 0: GLOBAL (the project's) */
     uint8_t seq[676];            /* the steps (below) */
 } pat_t;
-/* the steps, from build 11: seq[t] track t's length (0: 16); seq[6] SEQ_V2; seq[7] the records; then a record for
- * each step that holds a note: its place (16 t + i), its note, velocity, its length (low 4 bits) and the top 4 bits of
- * its lock mask, its condition, the mask's low 8 bits, then a byte for each lock in the mask (LK_FREQ first).
- * (Builds 9 and 10 kept every step at a fixed place: SEQ_OLD_*) */
+/* the steps, from build 18: seq[t] track t's length (0: 16); seq[6] SEQ_V3; seq[7] the records; then a record for
+ * each step that holds a note: its place (16 t + i), its note, velocity, length, condition, the number of its locks,
+ * then each lock: its parameter (tracks.c's ids) and its value, low byte first.
+ * (Builds 11 .. 17, SEQ_V2: the record's length shared a byte with the top of a mask of 12 locks -- the phrase
+ * generator's, LK_* -- its low byte where the count is now, then a byte for each lock. Builds 9 and 10 kept every
+ * step at a fixed place: SEQ_OLD_*) */
 #define SEQ_LEN 0u
 #define SEQ_FMT 6u
 #define SEQ_V2 2u
+#define SEQ_V3 3u
 #define SEQ_NREC 7u
 #define SEQ_REC 8u
 #define PAT_SEQ_ROOM 676u
@@ -70,6 +73,23 @@ typedef struct {
 #define SEQ_OLD_GLEN 200u        /* .. its length + 1 (0: GLEN_DEF) */
 #define SEQ_OLD_COND 296u        /* .. its trig condition */
 typedef char prj_fits[sizeof(prj_head_t) + sizeof(prj_body_t) <= PRJ_SECT ? 1 : -1];
+/* a session as builds 7 .. 17 saved it: the sound without MANGLE (read, and made a session of now, by prj_read) */
+typedef struct {
+    uint8_t mach, fmach;
+    int16_t syn[32];
+    uint8_t flt[NF], amp[NA], fx[NX], family;
+    uint32_t seed;
+} sound17_t;
+typedef struct {
+    uint16_t tempo;
+    uint8_t root, scale;
+    uint8_t eng[NTRACK];
+    int8_t oct[NTRACK], level[NTRACK], pan[NTRACK];
+    uint8_t dl[NDL], rv[NRV], ch[NCH];
+    uint8_t pat;
+    sound17_t snd[NTRACK][NENG];
+} prj_body17_t;
+typedef char prj17_head[__builtin_offsetof(prj_body17_t, snd) == __builtin_offsetof(prj_body_t, snd) ? 1 : -1];
 typedef char pat_fits[sizeof(prj_head_t) + PAT_PER * sizeof(pat_t) <= PRJ_SECT ? 1 : -1];
 
 static int prj_flash_read(uint32_t off, void *p, uint32_t n);    /* (main.c: the area's own, bounded) */
@@ -113,12 +133,40 @@ static void prj_head_fill(uint32_t magic, uint32_t what, uint32_t len)
     h->head_crc = prj_crc(prj_buf, __builtin_offsetof(prj_head_t, head_crc));
 }
 /* sector s of project k into prj_buf; 0 if it is whole */
+/* a session saved before build 18, in prj_buf, made one of now in place: each sound moved up to its new place, the
+ * last first (each lands at or after where it was), MANGLE all off; its head as if saved so */
+static void prj_from17(void)
+{
+    prj_body_t *b = (prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t));
+    const sound17_t *o = (const sound17_t *)(const void *)((const uint8_t *)b + __builtin_offsetof(prj_body_t, snd));
+    int32_t n;
+    for (n = NTRACK * NENG - 1; n >= 0; n--) {
+        sound17_t a = o[n];
+        sound_t *d = &b->snd[0][0] + n;
+        memset(d, 0, sizeof *d);
+        d->mach = a.mach;
+        d->fmach = a.fmach;
+        memcpy(d->syn, a.syn, sizeof d->syn);
+        memcpy(d->flt, a.flt, NF);
+        memcpy(d->amp, a.amp, NA);
+        memcpy(d->fx, a.fx, NX);
+        d->fx[X_SPARE] = 0;
+        d->family = a.family;
+        d->seed = a.seed;
+    }
+    prj_head_fill(PRJ_MAGIC, ((prj_head_t *)(void *)prj_buf)->what, sizeof(prj_body_t));
+}
 static int prj_read(uint32_t k, uint32_t s)
 {
     uint32_t magic = s ? PAT_MAGIC : PRJ_MAGIC, len = s ? PAT_PER * sizeof(pat_t) : sizeof(prj_body_t);
     const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
     if (!prj_ok || k >= PRJ_SLOTS || prj_flash_read(prj_sector(k, s), prj_buf, sizeof(prj_head_t) + len))
         return -1;
+    if (!s && prj_head_ok(h, magic, k * 16u, sizeof(prj_body17_t)) &&
+        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), sizeof(prj_body17_t))) {
+        prj_from17();                            /* (saved before build 18) */
+        return 0;
+    }
     if (!prj_head_ok(h, magic, k * 16u + s, len) || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
         return -2;
     return 0;
@@ -146,7 +194,8 @@ static void prj_scan(int flash_ok)
         prj_head_t h;
         prj_has[k] = 0;
         if (prj_ok && !prj_flash_read(prj_sector(k, 0), &h, sizeof h))
-            prj_has[k] = (uint8_t)prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
+            prj_has[k] = (uint8_t)(prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body17_t)));
     }
 }
 
@@ -157,19 +206,11 @@ static void tempo_apply(void)
     fx_bpm10 = (pat_tempo ? pat_tempo : ui.tempo) * 10;
     fx_cook_all();
 }
-static uint32_t lk_mask(uint32_t t, uint32_t i)   /* step i of track t: its locks as a mask */
+static uint32_t pl_n(uint32_t t, uint32_t i)    /* step i of track t: its locks */
 {
-    uint32_t m = 0, l;
-    for (l = 0; l < NLK; l++)
-        if (seq_lock[t][i][l] != LK_NONE)
-            m |= 1u << l;
-    return m;
-}
-static uint32_t bits_n(uint32_t m)
-{
-    uint32_t n = 0;
-    for (; m; m &= m - 1u)
-        n++;
+    uint32_t n = 0, j;
+    for (j = 0; j < NPL; j++)
+        n += seq_lid[t][i][j] != PL_NONE;
     return n;
 }
 /* the bytes the steps playing take in a pattern */
@@ -179,7 +220,7 @@ static uint32_t pat_bytes(void)
     for (t = 0; t < NTRACK; t++)
         for (i = 0; i < NSTEP; i++)
             if (seq_note[t][i])
-                n += 6u + bits_n(lk_mask(t, i));
+                n += 6u + 3u * pl_n(t, i);
     return n;
 }
 static void pat_take(pat_t *p)               /* the pattern playing, into a slot of the store (what will not fit:
@@ -189,24 +230,32 @@ static void pat_take(pat_t *p)               /* the pattern playing, into a slot
     memset(p, 0, sizeof *p);
     p->used = 1;
     p->tempo = pat_tempo;
-    p->seq[SEQ_FMT] = SEQ_V2;
+    p->seq[SEQ_FMT] = SEQ_V3;
     for (t = 0; t < NTRACK; t++) {
         p->seq[SEQ_LEN + t] = seq_len[t];
         for (i = 0; i < NSTEP; i++) {
-            uint32_t m = lk_mask(t, i), l;
+            uint32_t j, nl = pl_n(t, i), at;
             if (!seq_note[t][i] || o + 6u > PAT_SEQ_ROOM)
                 continue;
-            while (o + 6u + bits_n(m) > PAT_SEQ_ROOM)
-                m &= m - 1u;
+            while (nl && o + 6u + 3u * nl > PAT_SEQ_ROOM)
+                nl--;
             p->seq[o++] = (uint8_t)(t * NSTEP + i);
             p->seq[o++] = seq_note[t][i];
             p->seq[o++] = seq_vel[t][i];
-            p->seq[o++] = (uint8_t)(seq_glen[t][i] | (m >> 8) << 4);
+            p->seq[o++] = seq_glen[t][i];
             p->seq[o++] = seq_cond[t][i];
-            p->seq[o++] = (uint8_t)m;
-            for (l = 0; l < NLK; l++)
-                if (m >> l & 1u)
-                    p->seq[o++] = seq_lock[t][i][l];
+            at = o++;
+            p->seq[at] = 0;
+            for (j = 0; j < NPL && p->seq[at] < nl; j++) {
+                uint32_t id = seq_lid[t][i][j];
+                int32_t v = seq_lv[t][i][j];
+                if (id == PL_NONE)
+                    continue;
+                p->seq[o++] = (uint8_t)id;
+                p->seq[o++] = (uint8_t)v;
+                p->seq[o++] = (uint8_t)((uint32_t)v >> 8);
+                p->seq[at]++;
+            }
             n++;
         }
     }
@@ -222,13 +271,32 @@ static void pat_give(uint32_t k)             /* slot k of the store, as the patt
     memset((void *)seq_vel, VEL_DEF, sizeof seq_vel);
     memset((void *)seq_glen, GLEN_DEF, sizeof seq_glen);
     memset((void *)seq_cond, CD_NONE, sizeof seq_cond);
-    memset((void *)seq_lock, LK_NONE, sizeof seq_lock);
+    memset((void *)seq_lid, PL_NONE, sizeof seq_lid);
     for (t = 0; t < NTRACK; t++)
         seq_len[t] = p->used && p->seq[SEQ_LEN + t] <= NSTEP ? p->seq[SEQ_LEN + t] : 0;
-    if (p->used && p->seq[SEQ_FMT] == SEQ_V2) {
+    if (p->used && p->seq[SEQ_FMT] == SEQ_V3) {
         uint32_t o = SEQ_REC, r;
         for (r = 0; r < p->seq[SEQ_NREC] && o + 6u <= PAT_SEQ_ROOM; r++) {
-            uint32_t id = p->seq[o], m = (uint32_t)(p->seq[o + 3u] >> 4) << 8 | p->seq[o + 5u], l;
+            uint32_t id = p->seq[o], nl = p->seq[o + 5u], l;
+            if (id >= NTRACK * NSTEP)
+                break;
+            t = id / NSTEP;
+            i = id % NSTEP;
+            seq_vel[t][i] = (uint8_t)clampi(p->seq[o + 2u], 1, 127);
+            seq_glen[t][i] = (uint8_t)(p->seq[o + 3u] < NGLEN ? p->seq[o + 3u] : GLEN_DEF);
+            seq_cond[t][i] = (uint8_t)(p->seq[o + 4u] < NCOND ? p->seq[o + 4u] : CD_NONE);
+            seq_note[t][i] = p->seq[o + 1u];
+            o += 6u;
+            for (l = 0; l < nl && o + 3u <= PAT_SEQ_ROOM; l++, o += 3u)
+                if (p->seq[o] <= PL_PAN && l < NPL) {
+                    seq_lv[t][i][l] = (int16_t)(uint16_t)(p->seq[o + 1u] | p->seq[o + 2u] << 8);
+                    seq_lid[t][i][l] = p->seq[o];
+                }
+        }
+    } else if (p->used && p->seq[SEQ_FMT] == SEQ_V2) {   /* (builds 11 .. 17) */
+        uint32_t o = SEQ_REC, r;
+        for (r = 0; r < p->seq[SEQ_NREC] && o + 6u <= PAT_SEQ_ROOM; r++) {
+            uint32_t id = p->seq[o], m = (uint32_t)(p->seq[o + 3u] >> 4) << 8 | p->seq[o + 5u], l, j = 0;
             if (id >= NTRACK * NSTEP)
                 break;
             t = id / NSTEP;
@@ -238,9 +306,14 @@ static void pat_give(uint32_t k)             /* slot k of the store, as the patt
             seq_cond[t][i] = (uint8_t)(p->seq[o + 4u] < NCOND ? p->seq[o + 4u] : CD_NONE);
             seq_note[t][i] = p->seq[o + 1u];
             o += 6u;
-            for (l = 0; l < NLK && o < PAT_SEQ_ROOM; l++)
-                if (m >> l & 1u)
-                    seq_lock[t][i][l] = (uint8_t)(p->seq[o++] & 127u);
+            for (l = 0; l < 12u && o < PAT_SEQ_ROOM; l++)
+                if (m >> l & 1u) {
+                    int32_t v = p->seq[o++] & 127u;
+                    if (j < NPL) {               /* (the 12 then: LK_FREQ .. LK_PAN, in the order they still have) */
+                        seq_lv[t][i][j] = (int16_t)v;
+                        seq_lid[t][i][j++] = LK_PID[l];
+                    }
+                }
         }
     } else if (p->used)                          /* (as builds 9 and 10 kept them) */
         for (t = 0; t < NTRACK; t++)

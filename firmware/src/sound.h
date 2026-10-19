@@ -14,8 +14,11 @@ enum { F_ATK, F_DEC, F_SUS, F_REL, F_FREQ, F_RESO, F_TYPE, F_ENV, F_DEL, F_KEYT,
 /* AMP page */
 enum { A_ATK, A_HOLD, A_DEC, A_SUS, A_REL, A_RSET, A_MODE, A_PAN, A_VOL, NA };
 /* FX page (the routing values: 0 PRE, 1 POST) */
-enum { X_BR, X_OD, X_SRR, X_GRAIN, X_ODRT, X_DEL, X_REV, X_CHR, NX };   /* (X_GRAIN: signed, -63 .. 63; it was SRR's
-                                                                      * route, 0 PRE / 1 POST, until build 17) */
+enum { X_BR, X_OD, X_SRR, X_SPARE, X_ODRT, X_DEL, X_REV, X_CHR, NX };   /* (X_SPARE: unused -- SRR's route until
+                                                                      * build 16, GRAIN in build 17) */
+/* MANGLE page: DESTROY (digital destruction: its amount and its kind) and SLICE (a gate in time with the tempo: its
+ * pattern, OFF or 1 .. 16; its rate; how deep it cuts; its edges; the pattern turned by steps) */
+enum { M_DST, M_DMODE, M_SLICE, M_SRATE, M_SDEPTH, M_SEDGE, M_SSHIFT, M_SPARE, NM };
 
 /* SYN parameters, by machine (page-major: page 1 knob A = 0 .. page 4 knob H = 31) */
 enum {   /* FM TONE */
@@ -47,6 +50,7 @@ typedef struct {
     uint8_t amp[NA];
     uint8_t fx[NX];
     uint8_t family;              /* the recipe it was drawn from (gen.c), for SHIFT + HOME */
+    uint8_t mg[NM];              /* MANGLE (from build 18; sessions saved before load with it all 0: off) */
     uint32_t seed;
 } sound_t;
 

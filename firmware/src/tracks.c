@@ -16,62 +16,72 @@
  * chain, voice.c) summed, its level and pan, its sends; the chorus, the delay, the reverb; the master. */
 
 #define NTRACK 6
-typedef char gr_fits[GR_TRACKS == NTRACK ? 1 : -1];
+typedef char mg_fits[MG_TRACKS == NTRACK ? 1 : -1];
 #define NVOICE 12
 static const char *const ENG_NAME[NENG] = {"FM TONE", "FM DRUM", "WAVETONE", "SWARMER"};
 static const char *const FLT_NAME[NFLT] = {"MULTI-MODE", "LOWPASS 4", "LEGACY", "COMB-", "COMB+", "EQUALIZER"};
 
+typedef union { ftck_t ft; fdck_t fd; wtck_t wt; swck_t sw; } mck_t;   /* a machine's, cooked */
 typedef struct {
     uint8_t mach;
     vck_t ch;
-    union { ftck_t ft; fdck_t fd; wtck_t wt; swck_t sw; } m;
+    mck_t m;
     int32_t sd_del, sd_rev, sd_chr;      /* the sends, Q15 */
-    uint8_t fmach, flt[NF], amp[NA], fx[NX];   /* (the sound's own: a voice's locks cooked from them) */
-    int8_t grain;                        /* GRAIN (grain.c), -63 .. 63 */
+    sound_t snd;                         /* (the sound itself: a voice's locks cooked from it; MANGLE's values) */
 } ck_t;
 static ck_t ck_buf[NTRACK][2];
 static volatile uint8_t ck_pub[NTRACK], ck_use[NTRACK];
 
+static void mck_cook(mck_t *m, const sound_t *s)
+{
+    switch (s->mach) {
+    case ENG_FMT:
+        ft_cook(&m->ft, s);
+        break;
+    case ENG_FMD:
+        fd_cook(&m->fd, s);
+        break;
+    case ENG_WAV:
+        wt_cook(&m->wt, s);
+        break;
+    default:
+        sw_cook(&m->sw, s);
+        break;
+    }
+}
 static void ck_cook(ck_t *c, const sound_t *s)
 {
     memset(c, 0, sizeof *c);
     c->mach = s->mach;
     vck_cook(&c->ch, s);
-    switch (s->mach) {
-    case ENG_FMT:
-        ft_cook(&c->m.ft, s);
-        break;
-    case ENG_FMD:
-        fd_cook(&c->m.fd, s);
-        break;
-    case ENG_WAV:
-        wt_cook(&c->m.wt, s);
-        break;
-    default:
-        sw_cook(&c->m.sw, s);
-        break;
-    }
+    mck_cook(&c->m, s);
     c->sd_del = s->fx[X_DEL] * s->fx[X_DEL] * Q15 / 16129;   /* (the sends: v^2, as the original) */
     c->sd_rev = s->fx[X_REV] * s->fx[X_REV] * Q15 / 16129;
     c->sd_chr = s->fx[X_CHR] * s->fx[X_CHR] * Q15 / 16129;
-    c->fmach = s->fmach;
-    c->grain = (int8_t)clampi((int8_t)s->fx[X_GRAIN], -GR_MAX, GR_MAX);
-    memcpy(c->flt, s->flt, NF);
-    memcpy(c->amp, s->amp, NA);
-    memcpy(c->fx, s->fx, NX);
+    c->snd = *s;
 }
 static int32_t send_q15(int32_t v) { return v * v * Q15 / 16129; }
 
-/* a step's parameter locks (the sequencer's): the voice's own, cooked as its note starts (FREQ .. SRR), then the
- * track's, held from the step until the track's next step plays (the sends, the pan). LK_NONE: the sound's */
-enum { LK_FREQ, LK_RESO, LK_FENV, LK_ADEC, LK_VOL, LK_OD, LK_BR, LK_SRR, NVLK, LK_DEL = NVLK, LK_REV, LK_CHR, LK_PAN, NLK };
-#define LK_NONE 0xFFu
+/* a step's parameter locks (the sequencer's): up to NPL a step, each a parameter of the sound -- its id, page x 8 +
+ * knob (params.c: SYN 1 .. 4, FLTR 1, FLTR 2, AMP, FX, MANGLE), or PL_PAN -- and its value. The note's own (the
+ * machine, the filter, the amp, the drive ..) are cooked into the voice as its note starts; the track's (the sends,
+ * MANGLE, the pan) hold from the step until the track's next step plays. PL_NONE: a free place */
+#define NPL 8u
+#define PL_NONE 0xFFu
+#define PL_PAN 72u
+#define PL_DEL (7u * 8u + 4u)                    /* (FX: DELAY, REVERB, CHORUS SEND) */
+#define PL_REV (7u * 8u + 5u)
+#define PL_CHR (7u * 8u + 6u)
+#define PL_MNG (8u * 8u)                         /* (MANGLE: 64 .. 71) */
+static int pl_track(uint32_t id) { return id == PL_DEL || id == PL_REV || id == PL_CHR || id >= PL_MNG; }
+static void par_put(sound_t *s, uint32_t id, uint32_t j, int32_t v);   /* (params.c) */
 
 /* a voice's own memory: the chain (its comb line) and the machine's state */
 typedef struct {
     vchain_t ch;
     union { ftv_t ft; fdv_t fd; wtv_t wt; swv_t sw; } m;
-    vck_t lck;                   /* the chain cooked with its note's locks (voice_t own) */
+    vck_t lck;                   /* the chain and .. */
+    mck_t lm;                    /* .. the machine, cooked with its note's locks (voice_t own) */
 } vmem_t;
 static vmem_t vmem[NVOICE] POOL;
 
@@ -88,8 +98,9 @@ typedef struct {
     uint8_t vel;                 /* its note's level, 1 .. 127 */
     uint32_t age, born;
     uint16_t cost;
-    uint8_t lk[NVLK];            /* its note's locks (the pending note's, while it fades for it) */
-    uint8_t own;                 /* .. cooked into its vmem's lck: the chain plays that */
+    uint8_t lid[NPL];            /* its note's own locks (the pending note's, while it fades for it): ids .. */
+    int16_t lv[NPL];             /* .. and values */
+    uint8_t own;                 /* .. cooked into its vmem's lck and lm: the voice plays them */
 } voice_t;
 static voice_t vox[NVOICE];
 static uint32_t vox_owner(const voice_t *v) { return v->pend ? v->pend_track : v->track; }
@@ -101,7 +112,8 @@ typedef struct {
     int32_t g, pl, pr;           /* the level and pan as the last block ended (they glide) */
     int32_t sd, sr, sc;          /* .. the sends */
     int32_t dc;                  /* the DC blocker's low-pass (x 256) */
-    uint8_t tlk[NLK - NVLK];     /* the sends' and the pan's locks, from the step last played (LK_NONE: none) */
+    uint8_t tid[NPL];            /* the track's locks from the step last played (the sends, MANGLE, the pan): ids .. */
+    int16_t tv[NPL];             /* .. and values */
 } track_t;
 static track_t trk[NTRACK];
 /* each track's level (Q14) and equal-power pan (Q15), set by the main loop */
@@ -142,36 +154,24 @@ static void ev_post(uint32_t type, uint32_t t, uint32_t note, uint32_t val)   /*
 /* ---------------------------------------------------------------- voices --- */
 static uint32_t vox_age;
 static const vck_t *vck_of(uint32_t k, const ck_t *c) { return vox[k].own ? &vmem[k].lck : &c->ch; }
-/* the voice's chain, cooked with its note's locks (none: the track's own) */
+static const mck_t *mck_of(uint32_t k, const ck_t *c) { return vox[k].own ? &vmem[k].lm : &c->m; }
+/* the voice cooked with its note's locks: the track's sound, the locked parameters set (none: the track's own) */
 static void voice_locks(uint32_t k, const ck_t *c)
 {
-    static const uint8_t F[] = {F_FREQ, F_RESO, F_ENV};
     voice_t *v = &vox[k];
     sound_t s;
     uint32_t j;
-    for (j = 0; j < NVLK && v->lk[j] == LK_NONE; j++)
+    for (j = 0; j < NPL && v->lid[j] == PL_NONE; j++)
         ;
-    v->own = (uint8_t)(j < NVLK);
+    v->own = (uint8_t)(j < NPL);
     if (!v->own)
         return;
-    s.fmach = c->fmach;
-    memcpy(s.flt, c->flt, NF);
-    memcpy(s.amp, c->amp, NA);
-    memcpy(s.fx, c->fx, NX);
-    for (j = 0; j < 3u; j++)
-        if (v->lk[j] != LK_NONE)
-            s.flt[F[j]] = v->lk[j];
-    if (v->lk[LK_ADEC] != LK_NONE)
-        s.amp[A_DEC] = s.amp[A_REL] = v->lk[LK_ADEC];
-    if (v->lk[LK_VOL] != LK_NONE)
-        s.amp[A_VOL] = v->lk[LK_VOL];
-    if (v->lk[LK_OD] != LK_NONE)
-        s.fx[X_OD] = v->lk[LK_OD];
-    if (v->lk[LK_BR] != LK_NONE)
-        s.fx[X_BR] = v->lk[LK_BR];
-    if (v->lk[LK_SRR] != LK_NONE)
-        s.fx[X_SRR] = v->lk[LK_SRR];
+    s = c->snd;
+    for (j = 0; j < NPL; j++)
+        if (v->lid[j] < PL_MNG)
+            par_put(&s, v->lid[j] >> 3, v->lid[j] & 7u, v->lv[j]);
     vck_cook(&vmem[k].lck, &s);
+    mck_cook(&vmem[k].lm, &s);
 }
 static void voice_on(uint32_t t, uint32_t k, int fresh)
 {
@@ -190,13 +190,13 @@ static void voice_on(uint32_t t, uint32_t k, int fresh)
     voice_locks(k, c);
     switch (c->mach) {
     case ENG_FMT:
-        ft_on(&m->m.ft, &c->m.ft, fresh);
+        ft_on(&m->m.ft, &mck_of(k, c)->ft, fresh);
         break;
     case ENG_FMD:
-        fd_on(&m->m.fd, &c->m.fd, fresh, seed);
+        fd_on(&m->m.fd, &mck_of(k, c)->fd, fresh, seed);
         break;
     case ENG_WAV:
-        wt_on(&m->m.wt, &c->m.wt, fresh, seed);
+        wt_on(&m->m.wt, &mck_of(k, c)->wt, fresh, seed);
         break;
     default:
         sw_on(&m->m.sw, fresh, seed);
@@ -212,7 +212,7 @@ static void voice_off(uint32_t t, uint32_t k)
     if (vox[k].eng == ENG_FMT)
         ft_off(&m->m.ft);
     else if (vox[k].eng == ENG_WAV)
-        wt_off(&m->m.wt, &c->m.wt);
+        wt_off(&m->m.wt, &mck_of(k, c)->wt);
     vc_off(&m->ch, vck_of(k, c));
 }
 static void voice_silence(uint32_t k)
@@ -240,7 +240,8 @@ static uint32_t voice_pick(uint32_t t, int own)
     return best;
 }
 static uint8_t note_vel = 127;
-static const volatile uint8_t *note_lk;          /* the note's locks (the sequencer's step), 0 none */
+static const volatile uint8_t *note_lid;         /* the note's locks (the sequencer's step): ids, 0 none .. */
+static const volatile int16_t *note_lv;          /* .. values */
 static void note_on(uint32_t t, uint32_t note, uint32_t src)
 {
     track_t *y = &trk[t];
@@ -255,8 +256,11 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
     v->vel = note_vel;
     {
         uint32_t j;
-        for (j = 0; j < NVLK; j++)
-            v->lk[j] = note_lk ? note_lk[j] : (uint8_t)LK_NONE;
+        for (j = 0; j < NPL; j++) {              /* (the note's own: not the track's) */
+            uint32_t id = note_lid ? note_lid[j] : PL_NONE;
+            v->lid[j] = (uint8_t)(id != PL_NONE && !pl_track(id) ? id : PL_NONE);
+            v->lv[j] = note_lid ? note_lv[j] : 0;
+        }
     }
     v->age = ++vox_age;
     if (y->xfade) {                              /* played when the track's change is made */
@@ -414,7 +418,9 @@ static void cond_ab(uint32_t c, uint32_t *a, uint32_t *b)   /* (c an A:B conditi
 }
 static volatile uint8_t seq_note[NTRACK][NSTEP];
 static volatile uint8_t seq_vel[NTRACK][NSTEP], seq_glen[NTRACK][NSTEP], seq_cond[NTRACK][NSTEP];
-static volatile uint8_t seq_lock[NTRACK][NSTEP][NLK];   /* the steps' locks (LK_NONE: none) */
+static volatile uint8_t seq_lid[NTRACK][NSTEP][NPL];    /* the steps' locks: ids (PL_NONE: a free place) .. */
+static volatile int16_t seq_lv[NTRACK][NSTEP][NPL];     /* .. and values (written before the id: the ISR reads a
+                                                         * lock whole) */
 static volatile uint8_t seq_skip[NTRACK][NSTEP];   /* a step not to play when it next comes (recorded just before
                                                     * it: the key played it already) */
 static volatile uint32_t seq_acc_now;     /* (the ISR's: how far into the step playing, of SEQ_16TH) */
@@ -488,7 +494,8 @@ static int seq_cond_ok(uint32_t t, uint32_t c)
 }
 /* a note of the sequencer's (a step's, a loop's) on track t, for len8 eighths of a step (0: until it plays again or
  * the sequencer stops), with the locks lk (0 none) */
-static void seq_sound(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, const volatile uint8_t *lk)
+static void seq_sound(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, const volatile uint8_t *lid,
+                      const volatile int16_t *lv)
 {
     uint32_t i, k = SEQ_HOLD;
     for (i = 0; i < SEQ_HOLD; i++)               /* (the same note sounding: let go first, its slot taken) */
@@ -501,9 +508,10 @@ static void seq_sound(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, const
     if (sq_note[t][k])
         note_off(t, sq_note[t][k], SRC_SEQ);
     note_vel = (uint8_t)(vel ? vel : VEL_DEF);
-    note_lk = lk;
+    note_lid = lid;
+    note_lv = lv;
     note_on(t, n, SRC_SEQ);
-    note_lk = 0;
+    note_lid = 0;
     note_vel = 127;
     sq_note[t][k] = (uint8_t)n;
     if (!len8)
@@ -522,9 +530,12 @@ static void seq_trig(uint32_t t, uint32_t p)
     }
     if (!n || !seq_cond_ok(t, seq_cond[t][p]))
         return;
-    seq_sound(t, n, seq_vel[t][p], g >= GLEN_INF ? 0u : GLEN_8TH[g], seq_lock[t][p]);
-    for (i = 0; i < NLK - NVLK; i++)             /* (the track's: until its next step plays) */
-        trk[t].tlk[i] = seq_lock[t][p][NVLK + i];
+    seq_sound(t, n, seq_vel[t][p], g >= GLEN_INF ? 0u : GLEN_8TH[g], seq_lid[t][p], seq_lv[t][p]);
+    for (i = 0; i < NPL; i++) {                  /* (the track's: until its next step plays) */
+        uint32_t id = seq_lid[t][p][i];
+        trk[t].tv[i] = seq_lv[t][p][i];
+        trk[t].tid[i] = (uint8_t)(id != PL_NONE && pl_track(id) ? id : PL_NONE);
+    }
 }
 
 /* ---------------------------------------------------------------- the looper --- */
@@ -556,7 +567,7 @@ static void loop_kick(void)                      /* (each block: a loop's first 
                 continue;
             for (p->cur = 0; p->cur < p->n && p->ev[p->cur].step == 0u; p->cur++)
                 if (!p->mute)
-                    seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0);
+                    seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
             p->kick = 0;
         }
 }
@@ -576,7 +587,7 @@ static void loop_step(void)
                 p->cur++;
             for (; p->cur < p->n && p->ev[p->cur].step == ph; p->cur++)
                 if (!p->mute)
-                    seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0);
+                    seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
         }
 }
 static void seq_block(void)
@@ -586,7 +597,7 @@ static void seq_block(void)
         if (seq_was) {
             seq_release();
             for (t = 0; t < NTRACK; t++)
-                memset(trk[t].tlk, LK_NONE, sizeof trk[t].tlk);
+                memset(trk[t].tid, PL_NONE, sizeof trk[t].tid);
         }
         seq_was = 0;
         if (met_on && !met_was) {                /* (the metronome alone: a bar's first beat now) */
@@ -675,6 +686,7 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
 {
     track_t *y = &trk[t];
     int32_t buf[CTL], vb[CTL], pk = 0, sd1, sr1, sc1, pl1, pr1;
+    uint8_t mg[NM];
     uint32_t i, k, any = 0;
     const ck_t *c;
     if (!y->xfade && ck_pub[t] != ck_use[t]) {
@@ -699,16 +711,16 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         c0 = COST_NOW();
         switch (v->eng) {
         case ENG_FMT:
-            ft_render(&m->m.ft, &c->m.ft, note_inc(note16), note16, vb);
+            ft_render(&m->m.ft, &mck_of(k, c)->ft, note_inc(note16), note16, vb);
             break;
         case ENG_FMD:
-            fd_render(&m->m.fd, &c->m.fd, note16, vb);
+            fd_render(&m->m.fd, &mck_of(k, c)->fd, note16, vb);
             break;
         case ENG_WAV:
-            wt_render(&m->m.wt, &c->m.wt, note16, vb);
+            wt_render(&m->m.wt, &mck_of(k, c)->wt, note16, vb);
             break;
         default:
-            sw_render(&m->m.sw, &c->m.sw, note16, vb);
+            sw_render(&m->m.sw, &mck_of(k, c)->sw, note16, vb);
             break;
         }
         alive = vc_block(&m->ch, vck_of(k, c), vb, note16, v->vel);
@@ -749,11 +761,29 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         }
     }
     {   /* the sends and the pan: the step's locks over the sound's and the track's */
-        sd1 = y->tlk[0] != LK_NONE ? send_q15(y->tlk[0]) : c->sd_del;
-        sr1 = y->tlk[1] != LK_NONE ? send_q15(y->tlk[1]) : c->sd_rev;
-        sc1 = y->tlk[2] != LK_NONE ? send_q15(y->tlk[2]) : c->sd_chr;
-        if (y->tlk[3] != LK_NONE) {
-            uint32_t ph = y->tlk[3] * (0x40000000u / 127u);
+        int32_t pan = -1;
+        memcpy(mg, c->snd.mg, NM);
+        sd1 = c->sd_del;
+        sr1 = c->sd_rev;
+        sc1 = c->sd_chr;
+        for (i = 0; i < NPL; i++) {
+            uint32_t id = y->tid[i];
+            int32_t v = clampi(y->tv[i], 0, 127);
+            if (id == PL_NONE)
+                continue;
+            if (id == PL_DEL)
+                sd1 = send_q15(v);
+            else if (id == PL_REV)
+                sr1 = send_q15(v);
+            else if (id == PL_CHR)
+                sc1 = send_q15(v);
+            else if (id == PL_PAN)
+                pan = v;
+            else if (id >= PL_MNG && id < PL_MNG + NM)
+                mg[id - PL_MNG] = (uint8_t)v;
+        }
+        if (pan >= 0) {
+            uint32_t ph = (uint32_t)pan * (0x40000000u / 127u);
             pl1 = sin_ph(ph + 0x40000000u);
             pr1 = sin_ph(ph);
         } else {
@@ -761,7 +791,7 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
             pr1 = trk_pr[t];
         }
     }
-    if (!any && !(gran[t].tail && (c->grain || gran[t].amt))) {   /* (grains ring on a while after the voices) */
+    if (!any) {
         y->meter -= y->meter >> 4;
         y->g = trk_gain[t];
         y->pl = pl1;
@@ -771,7 +801,7 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         y->sc = sc1;
         return;
     }
-    gran_block(t, buf, c->grain, (int)any);      /* GRAIN */
+    mangle_block(t, buf, mg);                    /* MANGLE */
     for (i = 0; i < CTL; i++) {                  /* (a DC blocker, ~10 Hz: FM with feedback can sit off centre) */
         int32_t xg = mulq12(buf[i], TRACK_GAIN);
         buf[i] = xg - lp8(&y->dc, xg, 47);
@@ -864,6 +894,16 @@ static void mix_block(int32_t *out)
     uint32_t i, t, c0 = COST_NOW();
     events_take();
     seq_block();
+    {   /* MANGLE's clock: where in the bar this block starts (the sequencer's, playing; else its own at the tempo) */
+        uint32_t bpm = (uint32_t)clampi(fx_bpm10, 100, 3000);
+        mg_dpos = bpm * 16777u / 6615u;          /* (steps Q24 a sample: 2^24 / (SEQ_16TH / bpm10)) */
+        if (seq_run && seq_was && seq_gstep < 16u) {
+            uint32_t a0 = seq_acc_now - CTL * bpm;
+            mg_pos = ((uint32_t)seq_gstep << 24) + (a0 / 6615u) * 16777u + (a0 % 6615u) * 16777u / 6615u;
+            mg_pos &= (16u << 24) - 1u;
+        } else
+            mg_pos = (mg_pos + CTL * mg_dpos) & ((16u << 24) - 1u);
+    }
     budget_guard();
     if (shed_req) {
         if (!shed_voice(0) && shed_req > 1u)
@@ -899,12 +939,12 @@ static void tracks_init(void)
     blk_last = blk_new = 0;
     for (t = 0; t < NTRACK; t++) {
         trk[t].lim_g = Q15;
-        memset(trk[t].tlk, LK_NONE, sizeof trk[t].tlk);
+        memset(trk[t].tid, PL_NONE, sizeof trk[t].tid);
     }
-    memset((void *)seq_lock, LK_NONE, sizeof seq_lock);
+    memset((void *)seq_lid, PL_NONE, sizeof seq_lid);
     wt_init();
     fx_init();
-    gran_init();
+    mangle_init();
 }
 /* the sound s cooked for track t and published; 0 if the ISR has not yet taken the last one (try again) */
 static int track_publish(uint32_t t, const sound_t *s)

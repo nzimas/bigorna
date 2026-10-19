@@ -50,7 +50,7 @@ static void sends(sound_t *s, int32_t d, int32_t r, int32_t c) { s->fx[X_DEL] = 
 static void dirt(sound_t *s, int32_t drive, int32_t bits, int32_t rate, int dpost, int rpost)
 {
     s->fx[X_OD] = (uint8_t)drive; s->fx[X_ODRT] = (uint8_t)dpost; s->fx[X_BR] = (uint8_t)bits;
-    s->fx[X_SRR] = (uint8_t)rate; s->fx[X_GRAIN] = 0;   /* (rpost: SRR is before the filter now) */
+    s->fx[X_SRR] = (uint8_t)rate; s->fx[X_SPARE] = 0;   /* (rpost: SRR is before the filter now) */
     (void)rpost;
 }
 static void level(sound_t *s, int32_t lv)   /* the recipe's volume, less for drive and high resonance */
