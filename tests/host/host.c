@@ -1708,6 +1708,44 @@ static int cmd_projects(const char *dir)
         for (i = 0; i < 600u; i++)
             mix_block(out);
         EXPECT(cp.gr < gr_lo / 4, "a silent track as the sidechain: the mix let be");
+        {   /* a kick on track 1 each beat as the source, a pad held on track 2: the pad ducked deep, the kick let be */
+            int32_t gmax = 0, gmin = 1 << 30;
+            uint32_t b;
+            for (i = 0; i < 4u; i++)
+                ev_post(EV_STOP, i, 0, 0);
+            gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 1, -1, 99u);
+            ui.eng[0] = ENG_FMD;
+            gen_sound(&ui.snd[1][ENG_WAV], ENG_WAV, 43, -1, 7u);
+            ui.eng[1] = ENG_WAV;
+            mark(0);
+            mark(1);
+            for (i = 0; i < 8u; i++) {
+                ui_publish();
+                mix_block(out);
+            }
+            memset((void *)seq_note, 0, sizeof seq_note);
+            memset((void *)seq_len, 0, sizeof seq_len);
+            memset((void *)seq_div, SEQ_DIV1, sizeof seq_div);
+            memset((void *)seq_dir, DIR_FWD, sizeof seq_dir);
+            seq_note[0][0] = seq_note[0][4] = seq_note[0][8] = seq_note[0][12] = 36;
+            memcpy(fx_cp, CP0, NCP);
+            fx_cp[CP_SCS] = 1;
+            fx_cook_all();
+            ev_post(EV_ON, 1, 60, 127);
+            seq_run = 1;
+            for (b = 0; b < 3000u; b++) {
+                mix_block(out);
+                if (b > 600u) {
+                    gmax = cp.gr > gmax ? cp.gr : gmax;
+                    gmin = cp.gr < gmin ? cp.gr : gmin;
+                }
+            }
+            EXPECT(gmax > (9 << 16) && gmin < (2 << 16), "a kick as the source: the rest ducked 9 dB and more, back between");
+            seq_run = 0;
+            ev_post(EV_STOP, 1, 0, 0);
+            for (i = 0; i < 400u; i++)
+                mix_block(out);
+        }
         for (i = 0; i < 4u; i++)
             ev_post(EV_STOP, i, 0, 0);
         for (i = 0; i < 400u; i++)
@@ -1844,6 +1882,60 @@ static int cmd_od(void)
     return 0;
 }
 
+/* host duck [CP]: a kick on track 1 each beat, a pad held on track 2, SC SOURCE T1: the gain taken off as it goes
+ * (CP=..: the compressor by hand, as phrases), and the pad's level between the kicks */
+static int cmd_duck(const char *wav)
+{
+    static int16_t pb[44100 * 4 * 2];
+    int32_t out[2 * CTL];
+    uint32_t i, fr = 44100u * 4u / CTL;
+    int32_t grmax = 0, grmin = 1 << 30;
+    tracks_init();
+    ui_init();
+    gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 1, -1, 99u);    /* DEEP KICK */
+    ui.eng[0] = ENG_FMD;
+    gen_sound(&ui.snd[1][ENG_WAV], ENG_WAV, 43, -1, 7u);    /* WAVE PAD */
+    ui.eng[1] = ENG_WAV;
+    for (i = 2; i < NTRACK; i++)
+        ui.level[i] = 0, level_pan_apply(i);
+    for (i = 0; i < NTRACK; i++)
+        mark(i);
+    for (i = 0; i < 8u; i++) {
+        ui_publish();
+        mix_block(out);
+    }
+    memset((void *)seq_note, 0, sizeof seq_note);
+    seq_note[0][0] = seq_note[0][4] = seq_note[0][8] = seq_note[0][12] = 36;
+    for (i = 0; i < NSTEP; i++)
+        seq_vel[0][i] = 127;
+    fx_cp[CP_SCS] = 1;
+    if (getenv("CP")) {
+        int v[8];
+        sscanf(getenv("CP"), "%d,%d,%d,%d,%d,%d,%d,%d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7]);
+        for (i = 0; i < 8u; i++)
+            fx_cp[i] = (uint8_t)v[i];
+    }
+    fx_cook_all();
+    ev_post(EV_ON, 1, 60, 127);
+    seq_run = 1;
+    for (i = 0; i < fr; i++) {
+        uint32_t j;
+        mix_block(out);
+        for (j = 0; j < 2u * CTL; j++)
+            pb[i * 2u * CTL + j] = (int16_t)clampi(out[j], -32768, 32767);
+        if (i > fr / 4u) {
+            grmax = cp.gr > grmax ? cp.gr : grmax;
+            grmin = cp.gr < grmin ? cp.gr : grmin;
+        }
+        if (i % 40u == 0u && i < 1300u)
+            printf("%4u gr %5.1f env %7d sc %6d\n", i, cp.gr / 65536.0, cp.env >> 8, cp_sc[0]);
+    }
+    printf("GR max %.1f min %.1f dB (threshold %d)\n", grmax / 65536.0, grmin / 65536.0, fx_cp[CP_THR]);
+    if (wav)
+        wav_write(wav, pb, fr * CTL);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -1861,6 +1953,8 @@ int main(int argc, char **argv)
                sizeof(swck_t), sizeof(vmem_t), sizeof(voice_t), sizeof(prj_body_t));
         return 0;
     }
+    if (argc >= 2 && !strcmp(argv[1], "duck"))
+        return cmd_duck(argc >= 3 ? argv[2] : 0);
     if (argc >= 2 && !strcmp(argv[1], "od"))
         return cmd_od();
     if (argc >= 2 && !strcmp(argv[1], "cost"))

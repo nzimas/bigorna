@@ -1,5 +1,17 @@
 # Changelog
 
+## Build 25
+
+Fixed
+- The compressor's sidechain hardly pumped: with a kick on a track as SC SOURCE it took 4 dB off at most, and only
+  ~90 ms after the hit, while MAKEUP lifted the rest back up. Now:
+  - the level is caught at its peaks at once (falling at RELEASE), and ATTACK sets how fast the gain comes down;
+  - a track as SC SOURCE is listened to 12 dB louder (one track is quieter than the whole mix), and that track is
+    left out of the compression: the rest of the mix ducks under it, the kick itself keeps its punch.
+  A kick on track 1 each beat now ducks a pad by about 12 dB, back between the beats (host duck).
+- The compressor's start THRESHOLD is -9 dB (it was -12): with the peaks caught at once, the whole mix as the source
+  takes 1 to 3 dB off on the whole, 5 to 6 dB on the hits. Sessions keep the values they were saved with.
+
 ## Build 24
 
 Added
