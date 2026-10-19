@@ -1,37 +1,41 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Projects and their patterns, in the FM-1's flash (the user data area TONITOR kept its sessions in).
  *
- * 8 projects, nine 4 KB sectors each: the project (every track's machine, its sound on each machine, octave, level
- * and pan; the send effects; the tempo, root and scale; the pattern last loaded), then its 32 patterns, four a sector
- * (a pattern: its tempo -- or GLOBAL, the project's -- and room for its sequence, to come).
- * The project playing is kept in RAM whole, its 32 patterns with it; the pattern playing is one of them.
+ * 16 projects, four 4 KB sectors each: the project (every track's machine, its sound on each machine, octave, level
+ * and pan; the send effects; the tempo, root and scale; the pattern last loaded), then its 16 patterns, six a sector
+ * (a pattern, 680 bytes: its tempo -- or GLOBAL, the project's -- and room for its sequence, to come, kept as the steps
+ * that hold something rather than every step).
+ * The project playing is kept in RAM whole, its 16 patterns with it; the pattern playing is one of them.
  *
- *   SAVE              the PROJECTS page: PROJECT 1 .. 8; PRESETS moves through them, SAVE opens one's page
- *   ARP               the PATTERNS page: 1 .. 32, sixteen a page in rows of four; PRESETS moves through them, SAVE
- *                     opens one's page
- *   a page            LOAD, SAVE, COPY, DELETE; then TEMPO (and, a project's, ROOT and SCALE). PRESETS moves through
- *                     them; SAVE runs LOAD, SAVE, COPY or DELETE, or moves the focus to a value: PRESETS changes it,
- *                     SAVE sets it, SHIFT + SAVE leaves it as it was
- *   SHIFT + SAVE      back a page; a track's button, back to playing
+ *   SAVE              the PROJECTS page: PROJECT 1 .. 16; PRESETS moves through them, SAVE opens one's page. On the
+ *                     page SAVE runs LOAD, SAVE, COPY or DELETE, or moves the focus to a value: PRESETS changes it,
+ *                     SAVE sets it, SHIFT + SAVE leaves it as it was; SHIFT + SAVE goes back a page
+ *   ARP               the PATTERNS page, 1 .. 16 in four rows of four, and ARP is to it what SAVE is to the projects:
+ *                     ARP on a slot opens its page, ARP runs LOAD, SAVE, COPY or DELETE there, or sets TEMPO
+ *   SHIFT + ARP held  the PATTERNS page shown and the white keys lit dimly (the pattern playing's brighter): a white
+ *                     key loads its pattern; let go, back to what was shown
  *   HOME held         the project playing saved, into its slot
  *   ARP held          the pattern playing saved, into its slot of the project (and into the flash if the project has a
  *                     slot)
+ *   a track's button  back to playing
  * LOAD with changes not saved, SAVE over another, DELETE, and COPY over another ask first: NO / YES on PRESETS, SAVE
- * answers. COPY asks for the slot to copy to (PRESETS), then SAVE.
- * A project's SAVE stores the pattern playing into its slot too, then the whole project.
+ * (ARP, a pattern's) answers. COPY asks for the slot to copy to (PRESETS), then SAVE (ARP).
+ * A project's SAVE stores the pattern playing into its slot too, then the whole project. A pattern's SAVE makes it the
+ * pattern playing.
  *
  * Each sector begins with a head: magic, format, what it is (the project, or which four patterns), the body's length
  * and CRC, the head's own CRC. A sector whose head does not check (empty, erased, another firmware's) is empty. */
 
 #define PRJ_LO 0x00097000u
 #define PRJ_SECT 4096u
-#define PRJ_SLOTS 8u
-#define PRJ_SECTS 9u             /* a project's sectors: itself, then its patterns four a sector */
-#define PAT_SLOTS 32u
-#define PAT_PER 4u
-#define PRJ_MAGIC 0x324E4742u   /* "BGN2" */
-#define PAT_MAGIC 0x32504742u   /* "BGP2" */
-#define PRJ_FORMAT 2u
+#define PRJ_SLOTS 16u
+#define PRJ_SECTS 4u             /* a project's sectors: itself, then its patterns six a sector */
+#define PAT_SLOTS 16u
+#define PAT_PER 6u
+#define PAT_SECTS 3u             /* (the last holds four: the store is two longer, 18) */
+#define PRJ_MAGIC 0x334E4742u   /* "BGN3" */
+#define PAT_MAGIC 0x33504742u   /* "BGP3" */
+#define PRJ_FORMAT 3u
 #define TEMPO_MIN 10
 #define TEMPO_MAX 300
 
@@ -49,7 +53,7 @@ typedef struct {
     uint8_t used;                /* saved */
     uint8_t pad;
     uint16_t tempo;              /* 0: GLOBAL (the project's) */
-    uint8_t seq[1016];           /* (the sequence, to come) */
+    uint8_t seq[676];            /* (the sequence, to come) */
 } pat_t;
 typedef char prj_fits[sizeof(prj_head_t) + sizeof(prj_body_t) <= PRJ_SECT ? 1 : -1];
 typedef char pat_fits[sizeof(prj_head_t) + PAT_PER * sizeof(pat_t) <= PRJ_SECT ? 1 : -1];
@@ -63,7 +67,7 @@ static uint8_t prj_has[PRJ_SLOTS];      /* a project in the slot */
 static int8_t prj_cur = -1;             /* the slot of the project playing, -1 none (never saved) */
 static uint8_t prj_dirty;               /* changes since it was loaded or saved */
 static uint8_t prj_ok;                  /* the flash answered */
-static pat_t pat_store[PAT_SLOTS];      /* the project playing's patterns */
+static pat_t pat_store[PAT_SECTS * PAT_PER];   /* the project playing's patterns (16, and two never used) */
 static uint8_t pat_cur;                 /* the pattern playing */
 static uint16_t pat_tempo;              /* .. its tempo as it plays (0: GLOBAL) */
 static uint8_t pat_dirty;               /* .. changed since it was loaded or saved */
@@ -231,7 +235,7 @@ static int prj_save(uint32_t k)              /* the pattern playing into its slo
     prj_take((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
     if ((rc = prj_write(k, 0)) != 0)
         return rc;
-    for (s = 0; s < PAT_SLOTS / PAT_PER; s++) {
+    for (s = 0; s < PAT_SECTS; s++) {
         memcpy(prj_buf + sizeof(prj_head_t), &pat_store[s * PAT_PER], PAT_PER * sizeof(pat_t));
         if ((rc = prj_write(k, 1u + s)) != 0)
             return rc;
@@ -249,7 +253,7 @@ static int prj_load(uint32_t k)
     if (rc)
         return rc;
     memcpy(&b, prj_buf + sizeof(prj_head_t), sizeof b);
-    for (s = 0; s < PAT_SLOTS / PAT_PER; s++) {   /* (a pattern sector that does not check: its four empty) */
+    for (s = 0; s < PAT_SECTS; s++) {            /* (a pattern sector that does not check: its six empty) */
         if (prj_read(k, 1u + s))
             memset(&pat_store[s * PAT_PER], 0, PAT_PER * sizeof(pat_t));
         else
@@ -497,6 +501,14 @@ static void prj_preset(int32_t s)
         pj.row = (uint8_t)clampi((int32_t)pj.row + s, 0, (int32_t)pg_rows() - 1);
 }
 
+/* SHIFT + ARP and a white key: pattern k playing (an empty one too: GLOBAL, nothing in it) */
+static void pat_switch(uint32_t k)
+{
+    if (k >= PAT_SLOTS)
+        return;
+    pat_give(k);
+    pj.slot[1] = (uint8_t)k;
+}
 /* HOME held: the project playing saved into its slot; ARP held: the pattern playing into its slot */
 static void prj_quick_save(void)
 {
@@ -542,18 +554,18 @@ static void draw_prj_list(void)
         str_cpy(n, "PROJECT ", 12);
         fmt_int(n + 8, (int32_t)k + 1);
         cv_begin(240, 37, k == sel ? C_WHITE : C_BLACK);
-        cv_text(8, (37 - (int32_t)FONT_M.h) / 2, &FONT_M, n, k == sel ? C_BLACK : c);
+        cv_text(8, (37 - (int32_t)FONT_S.h) / 2, &FONT_S, n, k == sel ? C_BLACK : c);   /* (the pages' size) */
         if (pg_cur(k))
             cv_rect(212, 7, 22, 22, c);
         cv_rect(0, 36, 240, 1, RGB(50, 50, 50));
         cv_blit(0, 55 + 37 * r);
     }
 }
-/* the PATTERNS grid: sixteen a page in four rows of four, the page the chosen one is on */
+/* the PATTERNS grid: the sixteen in four rows of four */
 static void draw_pat_grid(void)
 {
-    uint32_t sel = pj.slot[1], page = sel / 16u, r, c;
-    prj_title("PATTERNS", (int)page + 1, C_PAT, C_PAT);
+    uint32_t sel = pj.slot[1], page = 0, r, c;
+    prj_title("PATTERNS", 0, C_PAT, C_PAT);
     for (r = 0; r < 4u; r++) {
         cv_begin(240, 46, C_BLACK);
         for (c = 0; c < 4u; c++) {

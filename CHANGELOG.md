@@ -1,5 +1,21 @@
 # Changelog
 
+## Build 8
+
+Changed
+- ARP is to the patterns what SAVE is to the projects: ARP opens the PATTERNS page, ARP on a slot opens its page,
+  and on that page ARP runs LOAD, SAVE, COPY or DELETE, or moves the focus to TEMPO and sets it. SAVE is for the
+  projects only (on a pattern's page it opens the PROJECTS page).
+- A pattern's SAVE makes it the pattern playing.
+- 16 projects (was 8), each with 16 patterns (was 32), on one PATTERNS page of four rows of four. A project takes
+  four sectors: itself and its patterns, six a sector (680 bytes a pattern). Projects saved with build 7 are not
+  read.
+- The PROJECTS list in the pages' size (PROJECT 16 fits).
+
+Added
+- SHIFT + ARP held: the PATTERNS page shown and the white keys lit dimly, the pattern playing's key bright; a white
+  key loads its pattern (an empty one too: GLOBAL, nothing in it). Let go, back to what was shown.
+
 ## Build 7
 
 Added

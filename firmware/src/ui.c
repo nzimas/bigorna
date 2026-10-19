@@ -56,6 +56,7 @@ static struct {
     uint32_t msg_until, home_until;
     uint32_t home_t0, arp_t0;    /* HOME, ARP pressed at (held 0.8 s: a save; let go sooner: a press) */
     uint8_t home_down, home_long, arp_down, arp_long;
+    uint8_t quick, quick_prev;   /* SHIFT + ARP held: the patterns on the white keys; the page shown before */
     uint32_t seed;
     uint8_t scale, root;
     int16_t tempo;               /* the project's, BPM */
@@ -95,6 +96,7 @@ static void prj_preset(int32_t s);
 static void prj_draw(void);
 static void prj_quick_save(void);
 static void pat_quick_save(void);
+static void pat_switch(uint32_t k);
 static int pg_any(void) { return ui.page >= PG_PRJ; }   /* a projects' or patterns' page */
 
 static void say(const char *s, uint32_t ms)
@@ -270,7 +272,7 @@ static void ui_input(void)
         ui.force = 1;
     }
     if (btn_bit(press, B_SAVE)) {                    /* the projects (projects.c) */
-        if (pg_any())
+        if (ui.page == PG_PRJ || ui.page == PG_PRJD)
             prj_press(sh);
         else if (!sh) {
             ui.page = PG_PRJ;
@@ -294,16 +296,29 @@ static void ui_input(void)
             prj_quick_save();
         }
     }
-    if (btn_bit(press, B_ARP)) {
+    if (btn_bit(press, B_ARP) && sh) {               /* SHIFT + ARP: the patterns on the white keys, while held */
+        ui.quick = 1;
+        ui.quick_prev = ui.page;
+        ui.page = PG_PAT;
+        ui.force = 1;
+    } else if (btn_bit(press, B_ARP)) {
         ui.arp_down = 1;
         ui.arp_long = 0;
         ui.arp_t0 = fm1_ms;
     }
+    if (ui.quick && (!btn_bit(fm1_in.buttons, B_ARP) || !sh)) {   /* let go: back to what was shown */
+        ui.quick = 0;
+        ui.page = ui.quick_prev;
+        ui.force = 1;
+    }
     if (ui.arp_down) {
         if (!btn_bit(fm1_in.buttons, B_ARP)) {
             ui.arp_down = 0;
-            if (!ui.arp_long) {
-                ui.page = ui.page == PG_PAT || ui.page == PG_PATD ? PG_MAIN : PG_PAT;
+            if (!ui.arp_long) {                      /* (ARP is to the patterns what SAVE is to the projects) */
+                if (ui.page == PG_PAT || ui.page == PG_PATD)
+                    prj_press(0);
+                else
+                    ui.page = PG_PAT;
                 ui.force = 1;
             }
         } else if (!ui.arp_long && (uint32_t)(fm1_ms - ui.arp_t0) >= 800u) {
@@ -405,6 +420,16 @@ static void ui_input(void)
             ui.edit_pg = 0;
         ui.force = 1;
     }
+    if (ui.quick) {                                  /* SHIFT + ARP held: a white key, its pattern */
+        for (k = 0; k < NKEY; k++)
+            if (((ch & keys) >> k & 1u) && white_ix(k) >= 0) {
+                pat_switch((uint32_t)white_ix(k));
+                ui.key_track[k] = KEY_NONE;
+            }
+        ui.keys = keys;
+        midi_take();
+        return;
+    }
     if ((ch & keys) >> KEY_SHIFT & 1u)               /* SHIFT pressed: the keys held latch */
         for (k = 0; k < NKEY; k++)
             if (((ui.keys & keys) >> k & 1u) && key_plays(k) && ui.key_track[k] != KEY_NONE) {
@@ -466,9 +491,16 @@ static void ui_leds(void)
     fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || ui.oct[ui.sel] > 0);
     fm1_led_key(PANEL_BTN[B_REC], 0);
     fm1_led_key(PANEL_BTN[B_PLAY], 0);
-    for (k = 0; k < NKEY; k++)
+    for (k = 0; k < NKEY; k++) {
+        if (ui.quick && white_ix(k) >= 0) {          /* (SHIFT + ARP: every white key a pattern, dim; the playing one lit) */
+            fm1_led_key(14u + k, white_ix(k) == (int32_t)pat_cur);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        led_dim_key(14u + k, 0);
         fm1_led_key(14u + k, key_plays(k) && ((((ui.keys >> k) & 1u) && ui.key_track[k] == ui.sel) ||
                                              ((ui.latch[ui.sel] >> k) & 1u)));
+    }
     fm1_led_key(14u + KEY_SHIFT, (ui.keys >> KEY_SHIFT) & 1u);
     fm1_led_key(14u + KEY_EDIT, ui.page == PG_EDIT);
     led_dim_key(14u + KEY_EDIT, 1);

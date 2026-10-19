@@ -612,16 +612,17 @@ static int cmd_projects(const char *dir)
     EXPECT(prj_has[2] && !prj_has[5] && !prj_has[6], "a scan after: as it was");
     btn(B_SAVE, 1);
     shot(dir, "prj_list_after");
-    /* the patterns */
+    /* the patterns: ARP opens them, ARP on a slot its page, ARP runs there */
     btn(B_GLO, 0);
     btn(B_ARP, 0);
     EXPECT(ui.page == PG_PAT, "ARP opens the patterns");
-    turn(EN_PRESET, 19);                         /* PATTERN 20: the second page */
+    turn(EN_PRESET, 11);                         /* PATTERN 12 */
     shot(dir, "pat_grid");
-    btn(B_SAVE, 0);
-    EXPECT(ui.page == PG_PATD && pj.slot[1] == 19u, "SAVE opens pattern 20's page");
+    btn(B_ARP, 0);
+    EXPECT(ui.page == PG_PATD && pj.slot[1] == 11u, "ARP opens pattern 12's page");
     turn(EN_PRESET, 4);                          /* TEMPO: GLOBAL, then 10, 15 .. 40, 41 .. */
-    btn(B_SAVE, 0);
+    btn(B_ARP, 0);
+    EXPECT(pj.edit, "ARP on TEMPO moves the focus to the value");
     turn(EN_PRESET, 1);
     EXPECT(pj.val == 10, "one click from GLOBAL: 10 BPM");
     turn(EN_PRESET, 6);
@@ -631,37 +632,67 @@ static int cmd_projects(const char *dir)
     turn(EN_PRESET, -4);
     EXPECT(pj.val == 35, "and back down");
     shot(dir, "pat_tempo_edit");
-    btn(B_SAVE, 0);
+    btn(B_ARP, 0);
     EXPECT(pat_tempo == 35 && fx_bpm10 == 350 && pat_dirty, "the pattern's tempo plays, over the project's");
     turn(EN_PRESET, -3);                         /* SAVE */
-    btn(B_SAVE, 0);
-    EXPECT(pat_store[19].used && pat_store[19].tempo == 35 && pat_cur == 19u && !pat_dirty, "SAVE into pattern 20");
+    btn(B_ARP, 0);
+    EXPECT(pat_store[11].used && pat_store[11].tempo == 35 && pat_cur == 11u && !pat_dirty, "ARP on SAVE: pattern 12 saved, playing");
     shot(dir, "pat_page");
     {   /* (written into project 3's flash: its pattern sector read back) */
-        int rc = prj_read(2, 1u + 19u / PAT_PER);
+        int rc = prj_read(2, 1u + 11u / PAT_PER);
         const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
-        EXPECT(!rc && pp[19 % PAT_PER].used && pp[19 % PAT_PER].tempo == 35, "the pattern is in the project's flash");
+        EXPECT(!rc && pp[11 % PAT_PER].used && pp[11 % PAT_PER].tempo == 35, "the pattern is in the project's flash");
     }
-    btn(B_SAVE, 1);
+    btn(B_SAVE, 0);
+    EXPECT(ui.page == PG_PRJ, "SAVE on a pattern's page: the projects");
+    btn(B_GLO, 0);
     EXPECT(pat_store[0].used, "the project's SAVE stored the pattern playing (1) too");
-    turn(EN_PRESET, -18);                        /* PATTERN 2, empty: LOAD does nothing */
-    btn(B_SAVE, 0);
-    btn(B_SAVE, 0);
-    EXPECT(pj.ask == PQ_NONE && ui.page == PG_PATD && pat_cur == 19u, "LOAD of an empty pattern: nothing");
-    btn(B_SAVE, 1);
-    turn(EN_PRESET, 18);
-    btn(B_SAVE, 0);
-    turn(EN_PRESET, 2);                          /* COPY to 21 */
-    btn(B_SAVE, 0);
-    btn(B_SAVE, 0);
-    EXPECT(pat_store[20].used && pat_store[20].tempo == 35, "COPY a pattern");
-    turn(EN_PRESET, 1);                          /* DELETE 20 */
-    btn(B_SAVE, 0);
+    btn(B_ARP, 0);
+    turn(EN_PRESET, -10);                        /* PATTERN 2, empty: LOAD does nothing */
+    btn(B_ARP, 0);
+    btn(B_ARP, 0);
+    EXPECT(pj.ask == PQ_NONE && ui.page == PG_PATD && pat_cur == 11u, "LOAD of an empty pattern: nothing");
+    btn(B_GLO, 0);
+    btn(B_ARP, 0);
+    turn(EN_PRESET, 10);                         /* 12: COPY to 13 */
+    btn(B_ARP, 0);
+    turn(EN_PRESET, 2);
+    btn(B_ARP, 0);
+    btn(B_ARP, 0);
+    EXPECT(pat_store[12].used && pat_store[12].tempo == 35, "COPY a pattern");
+    turn(EN_PRESET, 1);                          /* DELETE 12 */
+    btn(B_ARP, 0);
     shot(dir, "pat_ask_delete");
     turn(EN_PRESET, 1);
-    btn(B_SAVE, 0);
-    EXPECT(!pat_store[19].used && pat_store[20].used, "DELETE a pattern");
+    btn(B_ARP, 0);
+    EXPECT(!pat_store[11].used && pat_store[12].used, "DELETE a pattern");
     btn(B_GLO, 0);
+    /* SHIFT + ARP held: the patterns on the white keys */
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    ui_input();
+    fm1_in.buttons |= 1u << PANEL_BTN[B_ARP];
+    host_press = 1u << PANEL_BTN[B_ARP];
+    ui_input();
+    EXPECT(ui.quick && ui.page == PG_PAT, "SHIFT + ARP held shows the patterns");
+    ui_leds();
+    {
+        uint32_t k13 = 0;
+        while (white_ix(k13) != 12)              /* (the 13th white key) */
+            k13++;
+        fm1_in.notes |= 1u << k13;
+        ui_input();
+        fm1_in.notes &= ~(1u << k13);
+        ui_input();
+        ui_leds();
+        EXPECT(pat_cur == 12u && pat_tempo == 35 && fx_bpm10 == 350, "a white key loads its pattern");
+        EXPECT(host_led[14u + k13], "its key lit");
+    }
+    shot(dir, "pat_quick");
+    fm1_in.buttons = 0;
+    ui_input();
+    fm1_in.notes = 0;
+    ui_input();
+    EXPECT(!ui.quick && ui.page == PG_MAIN, "let go: back to what was shown");
     /* the long presses: ARP held saves the pattern playing, HOME held the project */
     pat_tempo = 77;
     pat_dirty = 1;
@@ -673,7 +704,8 @@ static int cmd_projects(const char *dir)
     fm1_in.buttons = 0;
     ui_input();
     fm1_ms += 2000;
-    EXPECT(ui.page == PG_MAIN && pat_store[pat_cur].tempo == 77 && !pat_dirty, "ARP held saves the pattern playing");
+    EXPECT(ui.page == PG_MAIN && pat_store[pat_cur].tempo == 77 && pat_store[pat_cur].used && !pat_dirty,
+           "ARP held saves the pattern playing");
     ui.tempo = 99;
     prj_dirty = 1;
     fm1_in.buttons |= 1u << PANEL_BTN[B_HOME];
