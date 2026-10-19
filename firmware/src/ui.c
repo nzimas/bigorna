@@ -3,7 +3,8 @@
  *
  *   FX SEL ENV LFO EDIT GLO   the top row: tracks 1 to 6 (lit: the chosen one; the others glow while they sound)
  *   PRESETS (knob)            the track's machine: FM TONE, FM DRUM, WAVETONE, SWARMER (each track keeps a sound of
- *                             each, so turning back finds it)
+ *                             each, so turning back finds it) -- on the track's view only: on the EDIT pages it moves
+ *                             through them, on the effects' pages through REVERB, DELAY, CHORUS
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
@@ -127,6 +128,7 @@ static struct {
     int32_t shown_sel, shown_eng, shown_msg, shown_meter, shown_level, shown_pan;
     char shown_text[16];
     int32_t shown_rows[4];
+    uint8_t rfit, shown_rfit;    /* the rows' sizes (RF_*) the page takes, and as drawn */
     int8_t shown_touch;
     uint8_t shown_page, shown_half, shown_sub;
     int16_t shown_prj;           /* (the pattern shown at the top left, and its changes) */
@@ -267,6 +269,7 @@ static int32_t lk_base(const sound_t *s, uint32_t lk)
     default: return 64;                          /* (the pan: the centre) */
     }
 }
+static int32_t lk_max(uint32_t lk) { return lk == LK_OD ? 100 : 127; }   /* (OVERDRIVE is 0 .. 100) */
 static int32_t lk_val(uint32_t t, uint32_t i, uint32_t lk)   /* step i's value of lock lk: locked, or the sound's */
 {
     uint32_t v = seq_lock[t][i][lk];
@@ -595,7 +598,7 @@ static void step_down(uint32_t k)
 static void lk_turn(uint32_t lk, int32_t s, int show)
 {
     uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key);
-    seq_lock[t][i][lk] = (uint8_t)clampi(lk_val(t, i, lk) + s, 0, 127);
+    seq_lock[t][i][lk] = (uint8_t)clampi(lk_val(t, i, lk) + s, 0, lk_max(lk));
     ui.step_edit = 1;
     pat_dirty = 1;
     if (show) {                                  /* (as a dial) */
@@ -860,7 +863,17 @@ static void ui_input(void)
             say(m, 1200);
         }
     }
-    if ((s = e_pre) != 0 && sh) {                    /* SHIFT + PRESETS: the family before / after, a new sound */
+    if ((s = e_pre) != 0 && ui.page == PG_EDIT) {    /* EDIT: PRESETS the page before / after (never the machine) */
+        uint32_t n = pages_n(cur());
+        ui.edit_pg = (uint8_t)clampi((int32_t)ui.edit_pg + s, 0, (int32_t)n - 1);
+        ui.force = 1;
+    } else if (s && ui.page == PG_FXP) {             /* the effects: REVERB, DELAY, CHORUS */
+        ui.fx_pg = (uint8_t)clampi((int32_t)ui.fx_pg + s, 0, 2);
+        ui.force = 1;
+    } else if (s && ui.page != PG_MAIN) {
+        ;                                            /* (elsewhere PRESETS does nothing: only the track's view picks the
+                                                      * machine or the family) */
+    } else if (s && sh) {                            /* SHIFT + PRESETS: the family before / after, a new sound */
         sound_t *sn = cur();
         uint32_t m = ui.eng[ui.sel];
         int32_t f = sn->family, n = (int32_t)NRECIPE, d = s > 0 ? 1 : -1, i;
@@ -878,7 +891,7 @@ static void ui_input(void)
             mark(ui.sel);
             ui.home_until = fm1_ms + 300u;
         }
-    } else if ((s = e_pre) != 0) {                   /* the machine */
+    } else if (s) {                                  /* the machine */
         int32_t e = clampi((int32_t)ui.eng[ui.sel] + (s > 0 ? 1 : -1), 0, NENG - 1);
         if (e != ui.eng[ui.sel]) {
             ui.eng[ui.sel] = (uint8_t)e;
@@ -1181,26 +1194,30 @@ static void draw_rows_title(const char *t1, const char *t2, uint16_t col)
 {
     cv_begin(240, 52, C_BLACK);
     cv_text(4, 4, &FONT_M, t1, col);                  /* the page, large; where it is (2/8, A-D), small, right */
-    cv_text(236 - text_w(&FONT_XS, t2), 12, &FONT_XS, t2, C_GREY);
+    cv_text(236 - text_w(&FONT_S, t2), 4 + ((int32_t)FONT_M.h - (int32_t)FONT_S.h) / 2, &FONT_S, t2, C_WHITE);
     cv_rect(4, 46, 232, 2, RGB(60, 60, 60));
     cv_rect(ui.half ? 120 : 4, 46, 116, 4, col);      /* (which half: A .. D left, E .. H right) */
     cv_blit(0, 0);
 }
-/* a row: the name left, the value right, each in the largest size that leaves them apart */
+/* the rows' sizes: a page's names in one size and its values in one, the largest pair that leaves every row's name
+ * and value apart (row_fit: a row's; the page takes the smallest of its rows', both halves) */
+static const font_t *const RF_N[5] = {&FONT_M, &FONT_S, &FONT_S, &FONT_XS, &FONT_XS};
+static const font_t *const RF_V[5] = {&FONT_M, &FONT_M, &FONT_S, &FONT_S, &FONT_XS};
+static uint32_t row_fit(const char *name, const char *val)
+{
+    uint32_t i;
+    for (i = 0; i < 4u; i++)
+        if (text_w(RF_N[i], name) + text_w(RF_V[i], val) + 12 <= 228)
+            break;
+    return i;
+}
+/* a row: the name left, the value right, in the page's sizes (ui.rfit) */
 static void draw_row(uint32_t r, const char *name, const char *val, int32_t frac, int bip, int touched, uint16_t col)
 {
-    static const font_t *const F[3] = {&FONT_M, &FONT_S, &FONT_XS};
     uint16_t bg = touched ? C_WHITE : C_BLACK, fg = touched ? C_BLACK : C_WHITE;
-    const font_t *fn = &FONT_M, *fv = &FONT_M;
-    uint32_t i;
+    const font_t *fn = RF_N[ui.rfit], *fv = RF_V[ui.rfit];
     cv_begin(240, 47, bg);
     if (name[0]) {
-        for (i = 0; i < 6u; i++) {                    /* (the name smaller first, then the value) */
-            fn = F[i < 3u ? i : 2u];
-            fv = F[i < 3u ? 0u : i - 2u > 2u ? 2u : i - 2u];
-            if (text_w(fn, name) + text_w(fv, val) + 12 <= 228)
-                break;
-        }
         cv_text(6, 1 + (FONT_M.h - fn->h) / 2, fn, name, touched ? C_BLACK : RGB(200, 200, 200));
         cv_text(234 - text_w(fv, val), 1 + (FONT_M.h - fv->h) / 2, fv, val, fg);
         cv_rect(6, 38, 228, 6, touched ? C_GREY : RGB(60, 60, 60));
@@ -1217,7 +1234,22 @@ static void draw_edit_page(void)
     const sound_t *s = cur();
     uint32_t id = page_id(s, ui.edit_pg), j;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
-    int full = ui.force || ui.shown_page != PG_EDIT || ui.shown_half != ui.half || ui.shown_sub != ui.edit_pg;
+    int full;
+    ui.rfit = 0;
+    for (j = 0; j < 8u; j++) {                       /* (the sizes: every row of the page's, both halves) */
+        par_t p;
+        char b[16];
+        uint32_t f;
+        par_get(s, id, j, &p);
+        if (p.kind == PK_NONE)
+            continue;
+        par_text(&p, par_val(s, id, j), b);
+        f = row_fit(p.name, b);
+        ui.rfit = (uint8_t)(f > ui.rfit ? f : ui.rfit);
+    }
+    full = ui.force || ui.shown_page != PG_EDIT || ui.shown_half != ui.half || ui.shown_sub != ui.edit_pg ||
+           ui.shown_rfit != ui.rfit;
+    ui.shown_rfit = ui.rfit;
     if (full) {
         char t1[16], t2[16];
         page_title(s, id, t1);
@@ -1247,38 +1279,54 @@ static void dl_time_text(char *b, int32_t v)   /* TIME as 128th notes: 1 .. 128 
 {
     fmt_int(b, v + 1);
 }
+static void fx_text(uint32_t k, int32_t x, char *b)   /* an effect's parameter k, as it reads */
+{
+    if (ui.fx_pg == 1 && k == DL_TIME)
+        dl_time_text(b, x);
+    else if (ui.fx_pg == 1 && k == DL_X)
+        str_cpy(b, x ? "ON" : "OFF", 4);
+    else if (ui.fx_pg == 1 && k == DL_FDBK) {
+        fmt_int(b, x * 100 / 64);
+        str_cpy(b + str_len(b), "%", 2);
+    } else if ((ui.fx_pg == 0 && k == RV_DEC && x >= 127))
+        str_cpy(b, "INF", 4);
+    else if (ui.fx_pg == 1 && k == DL_WID) {
+        if (x > 64)
+            str_cpy(b, "+", 2);
+        else
+            b[0] = 0;
+        fmt_int(b + str_len(b), x - 64);
+    } else
+        fmt_int(b, x);
+}
+static const char *fx_name(uint32_t k) { return ui.fx_pg == 0 ? RVN[k] : ui.fx_pg == 1 ? DLN[k] : CHN[k]; }
 static void draw_fx_page(void)
 {
     const uint8_t *v = fx_vals();
     uint32_t j;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
-    int full = ui.force || ui.shown_page != PG_FXP || ui.shown_half != ui.half || ui.shown_sub != ui.fx_pg + 100u;
+    int full;
+    ui.rfit = 0;
+    for (j = 0; j < fx_n(); j++) {
+        char b[16];
+        uint32_t f;
+        fx_text(j, v[j], b);
+        f = row_fit(fx_name(j), b);
+        ui.rfit = (uint8_t)(f > ui.rfit ? f : ui.rfit);
+    }
+    full = ui.force || ui.shown_page != PG_FXP || ui.shown_half != ui.half || ui.shown_sub != ui.fx_pg + 100u ||
+           ui.shown_rfit != ui.rfit;
+    ui.shown_rfit = ui.rfit;
     if (full)
         draw_rows_title(FXT[ui.fx_pg], ui.half ? "E-H" : "A-D", C_SEND);
     for (j = 0; j < 4u; j++) {
         uint32_t k = j + 4u * ui.half;
         char b[16];
-        const char *name = k < fx_n() ? (ui.fx_pg == 0 ? RVN[k] : ui.fx_pg == 1 ? DLN[k] : CHN[k]) : "";
+        const char *name = k < fx_n() ? fx_name(k) : "";
         int32_t x = k < fx_n() ? v[k] : 0;
         if (!full && ui.shown_rows[j] == x && ((int32_t)j == t) == ((int32_t)j == ui.shown_touch))
             continue;
-        if (ui.fx_pg == 1 && k == DL_TIME)
-            dl_time_text(b, x);
-        else if (ui.fx_pg == 1 && k == DL_X)
-            str_cpy(b, x ? "ON" : "OFF", 4);
-        else if (ui.fx_pg == 1 && k == DL_FDBK) {
-            fmt_int(b, x * 100 / 64);
-            str_cpy(b + str_len(b), "%", 2);
-        } else if ((ui.fx_pg == 0 && k == RV_DEC && x >= 127))
-            str_cpy(b, "INF", 4);
-        else if (ui.fx_pg == 1 && k == DL_WID) {
-            if (x > 64)
-                str_cpy(b, "+", 2);
-            else
-                b[0] = 0;
-            fmt_int(b + str_len(b), x - 64);
-        } else
-            fmt_int(b, x);
+        fx_text(k, x, b);
         draw_row(j, name, b, (ui.fx_pg == 1 && k == DL_X ? x * 127 : x) * 1000 / 127, ui.fx_pg == 1 && k == DL_WID,
                  (int32_t)j == t, C_SEND);
         ui.shown_rows[j] = x;
@@ -1312,7 +1360,10 @@ static void draw_step_page(void)
     static const uint8_t FXL[4] = {LK_SRR, LK_BR, LK_OD, LK_ADEC};
     uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key), j, fx = ui.smode == SM_FX;
     int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
-    int full = ui.force || ui.shown_page != 20u || ui.shown_sub != i + 16u * ui.smode;
+    int full;
+    ui.rfit = 1;                                     /* (the step's rows: names small, values large) */
+    full = ui.force || ui.shown_page != 20u || ui.shown_sub != i + 16u * ui.smode || ui.shown_rfit != ui.rfit;
+    ui.shown_rfit = ui.rfit;
     if (full) {
         char t1[12] = "STEP ";
         uint8_t h = ui.half;
@@ -1385,7 +1436,7 @@ static void draw_dial(void)
         uint32_t lk = ui.dial_lk - 1u;
         p.name = LK_NAME[lk];
         p.lo = 0;
-        p.hi = 127;
+        p.hi = (int16_t)lk_max(lk);
         p.mid = 64;
         p.kind = lk == LK_PAN ? PK_BIP : PK_NUM;
         p.list = 0;

@@ -1090,6 +1090,24 @@ static int cmd_projects(const char *dir)
         EXPECT(ui.eng[ui.sel] == k, "PRESETS on the sessions' pages leaves the machine");
         btn(B_SAVE, 1);
         btn(B_GLO, 0);
+        tap(KEY_EDIT);                           /* the EDIT pages: PRESETS through them, never the machine */
+        ui.edit_pg = 0;
+        turn(EN_PRESET, 2);
+        EXPECT(ui.page == PG_EDIT && ui.edit_pg == 2u && ui.eng[ui.sel] == k, "EDIT: PRESETS the pages, not the machine");
+        turn(EN_PRESET, 50);
+        EXPECT(ui.edit_pg == pages_n(cur()) - 1u && ui.eng[ui.sel] == k, "to the last page, there it stays");
+        tap(KEY_EDIT);
+        btn(B_SEQ, 0);
+        turn(EN_PRESET, 1);
+        EXPECT(ui.page == PG_FXP && ui.fx_pg == 1u && ui.eng[ui.sel] == k, "the effects: PRESETS REVERB, DELAY, CHORUS");
+        btn(B_GLO, 0);
+        {
+            vck_t c;
+            sound_t sn = *cur();
+            sn.fx[X_OD] = 127;
+            vck_cook(&c, &sn);
+            EXPECT(c.od_g == 100 * 256, "OVERDRIVE: 0 .. 100 (more read as 100)");
+        }
     }
     /* the long presses: ARP held saves the pattern playing, HOME held the project */
     pat_tempo = 77;
@@ -1166,6 +1184,48 @@ static int cmd_phrases(const char *dir, int n)
     return fails_ ? 1 : 0;
 }
 
+/* host od: OVERDRIVE's level, out over in (RMS), at 0, 10 .. 100, on a few signals (OD_MK, voice.c, from it) */
+static int cmd_od(void)
+{
+    static int32_t sig[3][44100];
+    uint32_t i, k, a;
+    uint32_t r = 1;
+    for (i = 0; i < 44100u; i++) {
+        r = r * 1664525u + 1013904223u;
+        sig[0][i] = mulq15(sin_ph(i * 110u * 97391u), 16384);                                   /* a sine, -6 dB */
+        sig[1][i] = mulq15(sin_ph(i * 55u * 97391u + (uint32_t)sin_ph(i * 165u * 97391u) * 40000u), 20000);   /* FM */
+        sig[2][i] = ((int32_t)(r >> 16) - 32768) >> 2;                                          /* noise, -12 dB */
+    }
+    for (a = 0; a <= 100u; a += 10u) {
+        printf("%3u", a);
+        for (k = 0; k < 3u; k++) {
+            vck_t c;
+            vchain_t v;
+            int32_t b[CTL];
+            double si = 0, so = 0;
+            memset(&c, 0, sizeof c);
+            memset(&v, 0, sizeof v);
+            od_cook(&c, (int32_t)a);
+            if (getenv("RAW"))
+                c.od_mk = 4096;
+            for (i = 0; i + CTL <= 44100u; i += CTL) {
+                uint32_t j;
+                for (j = 0; j < CTL; j++)
+                    b[j] = sig[k][i + j];
+                if (a)
+                    vc_od(&v, &c, b);
+                for (j = 0; j < CTL; j++) {
+                    si += (double)sig[k][i + j] * sig[k][i + j];
+                    so += (double)b[j] * b[j];
+                }
+            }
+            printf("  %6.3f", sqrt(so / si));
+        }
+        printf("\n");
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -1173,6 +1233,8 @@ int main(int argc, char **argv)
         return cmd_projects(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "phrases"))
         return cmd_phrases(argv[2], argc >= 4 ? atoi(argv[3]) : 4);
+    if (argc >= 2 && !strcmp(argv[1], "od"))
+        return cmd_od();
     if (argc >= 2 && !strcmp(argv[1], "cost"))
         return cmd_cost();
     if (argc >= 4 && !strcmp(argv[1], "chord"))

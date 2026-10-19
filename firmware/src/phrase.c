@@ -64,7 +64,7 @@ static void ph_step(uint32_t i, int32_t deg, int32_t vel, uint32_t glen, uint32_
     seq_cond[ph_t][i] = (uint8_t)(cond < NCOND ? cond : CD_NONE);
     seq_note[ph_t][i] = (uint8_t)scale_move(ph_ref, deg);
 }
-static void ph_lock(uint32_t i, uint32_t lk, int32_t v) { seq_lock[ph_t][i & (NSTEP - 1u)][lk] = (uint8_t)clampi(v, 0, 127); }
+static void ph_lock(uint32_t i, uint32_t lk, int32_t v) { seq_lock[ph_t][i & (NSTEP - 1u)][lk] = (uint8_t)clampi(v, 0, lk_max(lk)); }
 static int ph_on(uint32_t i) { return seq_note[ph_t][i & (NSTEP - 1u)] != 0; }
 
 /* the sound's own value of a lock (a move from it is what is locked) */

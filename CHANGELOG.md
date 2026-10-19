@@ -1,5 +1,23 @@
 # Changelog
 
+## Build 16
+
+Changed
+- OVERDRIVE rebuilt after TONITOR's distortion: two gain stages as in a valve preamp (the first symmetric, the
+  second clipping sooner on one side, for even harmonics), at twice the sample rate; the highs lifted before them
+  and lowered after, so the mids and highs distort more than the bass; the first stage's bias follows the input's
+  peak, so the wave stays lopsided however hard it is driven; a low-pass that closes from 16 kHz to 6.5 kHz as the
+  amount goes up. The level is brought back by a curve measured on test signals (within about 1 dB from 10 to 100),
+  so turning it up adds grit, not loudness. It is still per voice, before or after the filter (ROUTE), and lockable
+  per step. It costs more processing than the old one.
+- OVERDRIVE runs 0 to 100 (it ran 0 to 127). Sounds and locks with more read as 100; the generated sounds' drive is
+  scaled down in proportion.
+- PRESETS on the EDIT pages moves through the pages, and on the effects' pages through REVERB, DELAY and CHORUS; it
+  changes the machine only on the track's view (it changed it on every page).
+- The EDIT, effects and step pages show their names in one size and their values in one size, the largest that fits
+  every row of the page (both halves).
+- The page indicator at the top right (3/8, A-D) is larger and white.
+
 ## Build 15
 
 Added

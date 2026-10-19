@@ -149,6 +149,10 @@ static int32_t env_step(env_t *e, const envck_t *c, int gate)
 }
 
 /* ------------------------------------------------------ the cooked page --- */
+AINL int32_t od_asym(int32_t u)  /* OVERDRIVE's second stage: tanh, clipping at 5/8 below */
+{
+    return u >= 0 ? tanh_q15(u) : (tanh_q15((u * 8) / 5) * 5) / 8;
+}
 #define COMB_N 1024u             /* a voice's comb line: down to ~43 Hz */
 typedef struct {
     uint8_t fmach, bw_on, bw_pre, srr_post, od_post, frst, arst, leg_hp;
@@ -164,11 +168,37 @@ typedef struct {
     bwc_t bw;                    /* the base-width filter */
     envck_t fe, ae;              /* the FLTR and AMP envelopes */
     int32_t br_bits;             /* BIT REDUCTION: the bits x 256, 0 off */
-    int32_t od_g;                /* OVERDRIVE: the drive, Q12, 0 off */
+    int32_t od_g;                /* OVERDRIVE: the amount, 0 .. 100 (x 256), 0 off; then its stages' (vc_od) */
+    int32_t od_g1, od_b, od_fb, od_g2, od_beta, od_tone, od_w, od_mk;
     uint32_t srr_inc;            /* SRR: the hold's phase step a sample, 0 off */
     int32_t vol;                 /* VOL, Q15 */
 } vck_t;
 
+/* OVERDRIVE, after TONITOR's distortion (its layers.c): two gain stages in series as in a valve preamp, the first
+ * symmetric (odd harmonics), the second clipping sooner on one side (even harmonics), at twice the sample rate
+ * (linear interpolation up, a [1/4 1/2 1/4] half-band down); the highs lifted 6 dB before them and lowered after
+ * (the mids and highs distort, the bass less: less mud); a DC blocker, and a low-pass coming down from 16 kHz to
+ * 6.5 kHz as the amount goes up. The amount (0 .. 100) sets the drive into the first stage (x 0.5 .. x 32), the
+ * second's gain (x 1 .. x 2.5) and bias, and the first's bias as a share (0.15 .. 0.35) of the input's own peak, so
+ * the clipped wave stays lopsided however hard it is driven; below 6 it fades in. TONITOR brings the level back by
+ * following it (~0.2 s): on a voice that would pump a drum's hit, so here the level comes back by a curve of the
+ * amount, measured (host od) */
+static const uint16_t OD_MK[11] = {4096, 5690, 3886, 2981, 2543, 2342, 2255, 2225, 2221, 2234, 2255};   /* Q12, a 10 */
+static void od_cook(vck_t *c, int32_t a)
+{
+    int32_t amt = a * 256;
+    c->od_g = amt;
+    if (!a)
+        return;
+    c->od_g1 = (int32_t)((2048u * (uint64_t)exp2_q16(amt * 6 / 100 * 256)) >> 16);   /* x 0.5 .. x 32, Q12 */
+    c->od_b = 3277 + amt * 6554 / 25600;          /* the second stage's bias, 0.1 .. 0.3 */
+    c->od_fb = od_asym(c->od_b);
+    c->od_g2 = 4096 + amt * 6144 / 25600;         /* x 1 .. x 2.5, Q12 */
+    c->od_beta = 4915 + amt * 6554 / 25600;       /* the first stage's bias: 0.15 .. 0.35 of the input's peak */
+    c->od_tone = 29430 - amt * (29430 - 19800) / 25600;   /* 16 kHz .. 6.5 kHz */
+    c->od_w = a >= 6 ? Q15 : amt * Q15 / (6 * 256);
+    c->od_mk = OD_MK[a / 10] + (a < 100 ? (OD_MK[a / 10 + 1] - OD_MK[a / 10]) * (a % 10) / 10 : 0);
+}
 static void vck_cook(vck_t *c, const sound_t *s)
 {
     const uint8_t *f = s->flt, *a = s->amp, *x = s->fx;
@@ -209,8 +239,7 @@ static void vck_cook(vck_t *c, const sound_t *s)
     c->vol = clampi(a[A_VOL], 0, 127) * Q15 / 127;
     v = clampi(x[X_BR], 0, 127);
     c->br_bits = v ? T_BITS[v] : 0;
-    v = clampi(x[X_OD], 0, 127);                      /* x 1 .. x 32 into a soft clip (the original's mapping not read) */
-    c->od_g = v ? (int32_t)((4096u * exp2_q16(v * 5 * 65536 / 127)) >> 16) : 0;
+    od_cook(c, clampi(x[X_OD], 0, 100));
     v = clampi(x[X_SRR], 0, 127);                     /* each sample held 1 + 100 (v / 127)^2 samples */
     c->srr_inc = v ? (0xFFFFFFFFu / (uint32_t)(256 + v * v * 25600 / 16129)) << 8 : 0;
     c->srr_post = (uint8_t)(x[X_SRRT] != 0);
@@ -227,6 +256,7 @@ typedef struct {
     uint32_t srr_ph;
     int32_t srr_hold;
     uint8_t gate;
+    int32_t od_pre, od_post, od_dc, od_lp, od_env, od_ep, od_ymp, od_yp, od_dryp;   /* OVERDRIVE's (vc_od) */
     int16_t cb[COMB_N];
 } vchain_t;
 
@@ -239,6 +269,7 @@ static void vc_on(vchain_t *v, const vck_t *c, int fresh)
         if (c->fmach == FLT_CBM || c->fmach == FLT_CBP)
             memset(v->cb, 0, sizeof v->cb);
         v->cb_lp = 0;
+        v->od_pre = v->od_post = v->od_dc = v->od_lp = v->od_env = v->od_ep = v->od_ymp = v->od_yp = v->od_dryp = 0;
         v->ae.st = v->fe.st = EV_OFFST;
     }
     env_gate(&v->ae, &c->ae, c->arst || fresh);
@@ -264,13 +295,36 @@ static void vc_srr(vchain_t *v, const vck_t *c, int32_t *x)
         x[i] = v->srr_hold;
     }
 }
-static void vc_od(const vck_t *c, int32_t *x)
+#define OD_EMPH 3110             /* 1 - e^(-2 pi 700 / FS), Q15 */
+AINL int32_t od_stage(const vck_t *c, int32_t e)   /* the two stages (e biased) */
+{
+    int32_t u = tanh_q15((int32_t)(((int64_t)e * c->od_g1) >> 12));
+    return od_asym(mulq12(u, c->od_g2) + c->od_b) - c->od_fb;
+}
+static void vc_od(vchain_t *v, const vck_t *c, int32_t *x)
 {
     uint32_t i;
-    int32_t g = c->od_g, mk = (int32_t)(4096u * 4096u / (uint32_t)(4096 + (g - 4096) / 4));   /* (a level brought back
-                                                                                               * a little) */
-    for (i = 0; i < CTL; i++)
-        x[i] = mulq12(tanh_q15(mulq12(x[i], g)), mk);
+    for (i = 0; i < CTL; i++) {
+        int32_t dry = x[i], e, ym, y, o;
+        v->od_pre += mulq15(dry - v->od_pre, OD_EMPH);
+        e = 2 * dry - v->od_pre;                 /* the highs +6 dB */
+        v->od_env = absi(e) > v->od_env ? absi(e) : v->od_env - (v->od_env >> 12);
+        e += mulq15(v->od_env, c->od_beta);      /* (a bias in step with the level: lopsided however hard) */
+        ym = od_stage(c, (v->od_ep + e) >> 1);
+        y = od_stage(c, e);
+        o = (v->od_ymp + 2 * v->od_yp + ym) >> 2;   /* (one sample late) */
+        v->od_ep = e;
+        v->od_ymp = ym;
+        v->od_yp = y;
+        v->od_post += mulq15(o - v->od_post, OD_EMPH);
+        o = (o + v->od_post) >> 1;               /* the highs -6 dB again */
+        v->od_dc += (((o << 8) - v->od_dc) * 37) >> 15;   /* (~8 Hz) */
+        o -= v->od_dc >> 8;
+        v->od_lp += mulq15(o - v->od_lp, c->od_tone);
+        o = mulq12(v->od_lp, c->od_mk);
+        x[i] = v->od_dryp + mulq15(o - v->od_dryp, c->od_w);
+        v->od_dryp = dry;
+    }
 }
 static void vc_bw(vchain_t *v, const vck_t *c, int32_t *x)
 {
@@ -406,7 +460,7 @@ static int vc_block(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, int
     if (c->srr_inc && !c->srr_post)
         vc_srr(v, c, x);
     if (c->od_g && !c->od_post)
-        vc_od(c, x);
+        vc_od(v, c, x);
     if (c->bw_on && c->bw_pre)
         vc_bw(v, c, x);
     vc_filter(v, c, x, note16, fl);
@@ -415,7 +469,7 @@ static int vc_block(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, int
     if (c->srr_inc && c->srr_post)
         vc_srr(v, c, x);
     if (c->od_g && c->od_post)
-        vc_od(c, x);
+        vc_od(v, c, x);
     if (c->br_bits)
         vc_br(c, x);
     {   /* the AMP envelope (a line across the block), VOL and the note's level */

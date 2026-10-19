@@ -945,6 +945,7 @@ static void gen_sound(sound_t *s, uint32_t m, int32_t fam, int32_t avoid, uint32
         grit(s, &g);
         s->amp[A_VOL] = (uint8_t)clampi(s->amp[A_VOL] - (s->fx[X_OD] - od0) / 5, 40, 124);   /* (more drive: less level) */
     }
+    s->fx[X_OD] = (uint8_t)(s->fx[X_OD] * 100 / 127);   /* (the recipes' drive in 0 .. 127: OVERDRIVE is 0 .. 100) */
     s->family = (uint8_t)fam;
     s->seed = seed;
 }

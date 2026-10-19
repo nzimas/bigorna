@@ -65,7 +65,7 @@ static const par_t PAR_FLT2[8] = {PN("FLT DELAY"), P_("KEYTRACK", 0, 127, 0, PK_
                                   PL("BW ROUTE", 1, L_RT), PO("ENV RESET"), PL("FILTER", 5, L_FLT), PX};
 static const par_t PAR_AMP[8] = {PN("ATTACK"), P_("HOLD", 0, 127, 0, PK_HOLD), PN("DECAY"), PN("SUSTAIN"),
                                  PN("RELEASE"), PO("RESET"), PL("MODE", 1, L_MODE), PN("VOLUME")};
-static const par_t PAR_FX[8] = {PN("BIT REDUCE"), PN("OVERDRIVE"), PN("SRR"), PL("SRR ROUTE", 1, L_RT),
+static const par_t PAR_FX[8] = {PN("BIT REDUCE"), P_("OVERDRIVE", 0, 100, 0, PK_NUM), PN("SRR"), PL("SRR ROUTE", 1, L_RT),
                                 PN("DELAY SEND"), PN("REVERB SEND"), PN("CHORUS SEND"), PL("OD ROUTE", 1, L_RT)};
 /* (the FX page's order is the Digitone II's: BR OVER SRR SR.RT DEL REV CHR OD.RT) */
 static const uint8_t FX_SLOT[8] = {X_BR, X_OD, X_SRR, X_SRRT, X_DEL, X_REV, X_CHR, X_ODRT};
