@@ -1981,6 +1981,22 @@ static int cmd_projects(const char *dir)
         prj_scan(1);
         EXPECT(prj_has[10] && !prj_load(10) && !memcmp(fx_cp, CP0, NCP), "a session from build 23: the compressor's start");
         EXPECT(!prj_load(2), "(session 3 back)");
+        memcpy(sec, host_flash + prj_sector(2, 0), sizeof sec);   /* (session 3 as builds 35 .. 37 kept it: the body to
+                                                                   * its mutes, rounded up to 4 -- 2780 bytes) */
+        {
+            prj_body_t *b = (prj_body_t *)(void *)(sec + sizeof(prj_head_t));
+            b->mute[3] = 1;
+            sec[sizeof(prj_head_t) + __builtin_offsetof(prj_body_t, sel)] = 0;       /* (the padding, as memset left it) */
+            sec[sizeof(prj_head_t) + __builtin_offsetof(prj_body_t, sel) + 1u] = 0;
+        }
+        h->what = 12u * 16u;
+        h->len = 2780u;
+        h->body_crc = prj_crc(sec + sizeof(prj_head_t), 2780u);
+        h->head_crc = prj_crc(sec, __builtin_offsetof(prj_head_t, head_crc));
+        memcpy(host_flash + prj_sector(12, 0), sec, sizeof sec);
+        prj_scan(1);
+        EXPECT(prj_has[12] && !prj_load(12) && trk_mute[3] && !loops[0][0].on, "a session from build 37 (2780 bytes): found, loaded");
+        EXPECT(!prj_load(2), "(session 3 back)");
     }
     {   /* the compressor works: a loud mix takes gain off, more at a lower threshold; a track as the sidechain */
         int32_t out[2 * CTL];

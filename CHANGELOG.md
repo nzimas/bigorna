@@ -1,5 +1,12 @@
 # Changelog
 
+## Build 40
+
+Fixed
+- Sessions saved by builds 35 to 37 are found again. Builds 38 and 39 looked for them by the length of their data
+  without the 2 bytes of padding those builds saved after it (2778 bytes, not 2780), so their slots showed as
+  empty. The sessions were not changed in the flash; a slot saved into since build 38 holds the new session.
+
 ## Build 39
 
 Fixed

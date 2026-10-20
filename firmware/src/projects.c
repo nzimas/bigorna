@@ -64,7 +64,11 @@ typedef struct {
 #define PRJ_LEN28 __builtin_offsetof(prj_body_t, sc_src)
 #define PRJ_LEN32 __builtin_offsetof(prj_body_t, chord_on)
 #define PRJ_LEN34 __builtin_offsetof(prj_body_t, mute)
-#define PRJ_LEN37 __builtin_offsetof(prj_body_t, sel)
+/* (builds 35 .. 37: the body ended at mute, and its size -- what they saved -- was rounded up to the struct's
+ * alignment, 4: two bytes of padding past mute. Build 38 took the unrounded length and found none of their sessions
+ * (build 40)) */
+#define PRJ_LEN37 ((__builtin_offsetof(prj_body_t, sel) + 3u) & ~3u)
+typedef char prj_len37[PRJ_LEN37 == 2780u && PRJ_LEN34 == 2772u && PRJ_LEN32 == 2760u ? 1 : -1];   /* (as saved) */
 static void prj_lp0(prj_body_t *b)               /* (a session from before build 38: track 1, no loops) */
 {
     b->sel = 0;
