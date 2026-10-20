@@ -239,6 +239,8 @@ static void midi_cc_in(uint32_t t, uint32_t cc, uint32_t v);
 static void setup_write(void);
 static int learn_cc(uint32_t ch, uint32_t cc, uint32_t v);
 static void learn_take(uint32_t ch, uint32_t cc);
+static void learn_toggle(void);
+static void learn_save(int sh);
 static void midi_poll(void);
 static void pat_switch(uint32_t k);
 static void phrase_brk_roles(void);   /* (phrase.c: BREAK's kicks, drums and drones, from the tracks' sounds) */
@@ -706,6 +708,62 @@ static void rec_release(uint32_t k)
 static void midi_take(void)
 {
 #if TELEMETRY
+    if (tl_ready && tl_cmd[0] == 0x5Au) {        /* (a test of MIDI LEARN from the computer, F0 7D 5A a b c F7: the
+                                                  * panel's actions, as its keys call them; a 6: a report, F0 7D 5B) */
+        uint32_t a = tl_cmd[1], b = tl_cmd[2], c = tl_cmd[3];
+        if (a == 0u)
+            learn_toggle();
+        else if (a == 1u) {                      /* (EDIT on track b, its page c) */
+            ui.sel = (uint8_t)(b % NTRACK);
+            ui.page = PG_EDIT;
+            ui.edit_pg = (uint8_t)(c % pages_n(cur()));
+            ui.ehalf = ui.lsel = ui.listen = 0;
+        } else if (a == 2u) {                    /* (the effects' page c) */
+            ui.page = PG_FXP;
+            ui.fx_pg = (uint8_t)(c % NFXP);
+            ui.ehalf = ui.lsel = ui.listen = 0;
+        } else if (a == 3u) {                    /* (PRESETS to row b) */
+            ui.lsel = (uint8_t)(b & 7u);
+            ui.ehalf = (uint8_t)(ui.lsel / 4u);
+            ui.listen = 0;
+        } else if (a == 4u || a == 5u)
+            learn_save(a == 5u);                 /* (SAVE; SHIFT + SAVE) */
+        else if (a == 8u) {                      /* (every binding forgotten: written as MIDI LEARN goes off) */
+            memset(mlearn, 0, sizeof mlearn);
+            ui.learn_dirty = 1;
+        }
+        else if (a == 6u) {                      /* (the report: the state, then each binding and its parameter's
+                                                  * value now) */
+            uint8_t f[8 + 8 * NLEARN];
+            uint32_t n = 0, i;
+            f[n++] = 0xF0; f[n++] = 0x7D; f[n++] = 0x5B;
+            f[n++] = ui.learn; f[n++] = ui.listen; f[n++] = ui.lsel; f[n++] = ui.page; f[n++] = ui.sel;
+            f[n++] = ui.edit_pg; f[n++] = ui.fx_pg;
+            for (i = 0; i < NLEARN; i++) {
+                const learn_t *l = &mlearn[i];
+                int32_t v;
+                if (!l->kind)
+                    continue;
+                if (l->kind == LK_SND)
+                    v = par_val(&ui.snd[l->track % NTRACK][ui.eng[l->track % NTRACK]], l->id / 8u, l->id % 8u);
+                else {
+                    uint8_t pg = ui.fx_pg, sel = ui.sel;
+                    ui.fx_pg = (uint8_t)(l->id / 8u % NFXP);
+                    ui.sel = (uint8_t)(l->track % NTRACK);
+                    v = fx_get(l->id % 8u);
+                    ui.fx_pg = pg;
+                    ui.sel = sel;
+                }
+                f[n++] = l->ch; f[n++] = l->cc; f[n++] = l->kind; f[n++] = l->track; f[n++] = l->id;
+                f[n++] = (uint8_t)((uint32_t)(v + 1024) >> 7 & 0x7Fu); f[n++] = (uint8_t)((uint32_t)(v + 1024) & 0x7Fu);
+            }
+            f[n++] = 0xF7;
+            ota_wire_send(f, n);
+        }
+        ui.force = 1;
+        RING_PUBLISH();
+        tl_ready = 0;
+    }
     if (tl_ready) {                              /* (a diagnosis: a recipe on a track, or its level) */
         uint32_t t = tl_cmd[1] % NTRACK;
         if (tl_cmd[0] == 0x56u && tl_cmd[2] < NENG) {

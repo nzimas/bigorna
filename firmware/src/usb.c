@@ -717,7 +717,7 @@ static void sysex_byte(uint8_t b)
         if (ok)
             usb.uboot_req = 1;
 #if TELEMETRY
-        else if (usb.sx_len >= 5u && usb.sx_len <= 7u && usb.sysex[1] == 0x7D && (usb.sysex[2] == 0x56 || usb.sysex[2] == 0x57 || usb.sysex[2] == 0x58) &&
+        else if (usb.sx_len >= 5u && usb.sx_len <= 7u && usb.sysex[1] == 0x7D && (usb.sysex[2] == 0x56 || usb.sysex[2] == 0x57 || usb.sysex[2] == 0x58 || usb.sysex[2] == 0x5A) &&
                  !tl_ready) {
             for (i = 0; i < 4u; i++)
                 tl_cmd[i] = usb.sysex[2u + i];
