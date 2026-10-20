@@ -1,5 +1,20 @@
 # Changelog
 
+## Build 30
+
+Fixed
+- Sidechain ducking was barely audible, and SC LEVEL 50 and 100 sounded alike:
+  - A ducked track's reverb, delay and chorus were not ducked. Only what it sent into them was, so the shared reverb
+    kept ringing through every dip. Each effect's return is now ducked by the tracks that feed it, weighted by how
+    much each one sends (followed over ~0.7 s, the length of a tail). A return fed only by the ducked track ducks
+    fully; a return the source also feeds ducks by the ducked track's share.
+  - The duck let go about 30 ms after the hit, at the compressor's RELEASE, while a kick's body still sounded for
+    200 ms or more, so the dip sat under the kick and was masked. The duck now follows the source's level after the
+    hit: all of SC LEVEL at the hit's peak, less as the source falls, none once it is 12 dB below the peak (RELEASE
+    is the fastest it can let go). With a kick each beat at SC LEVEL 100, a pad is held down through the kick's body
+    and swells back in before the next beat; at 50 it is held about 20 dB down.
+- Host duck: the demo kick no longer has a reverb lock (KICKREV=1 puts it back); KICKMUTE=1 renders the pad alone.
+
 ## Build 29
 
 Changed

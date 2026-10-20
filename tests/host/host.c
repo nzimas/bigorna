@@ -1766,6 +1766,8 @@ static int cmd_projects(const char *dir)
                         over += dk_gp[1] < Q16 / 2;
                     }
                 }
+                if (getenv("DKDBG"))
+                    printf("lvl %u gmin %d gmax %d over %u/%u\n", lvl, gmin, gmax, over, all);
                 if (lvl == 0u)
                     EXPECT(gmin < Q16 / 4 && gmin > Q16 / 64 && gmax > Q16 * 9 / 10,
                            "SC LEVEL 50: ducked ~20 dB on the hit, back between");
@@ -1935,8 +1937,14 @@ static int cmd_duck(int lvl, const char *wav)
     ui.eng[0] = ENG_FMD;
     gen_sound(&ui.snd[1][ENG_SWM], ENG_SWM, 54, -1, 7u);
     ui.eng[1] = ENG_SWM;
+    if (getenv("NOSEND"))
+        ui.snd[1][ENG_SWM].fx[X_DEL] = ui.snd[1][ENG_SWM].fx[X_REV] = ui.snd[1][ENG_SWM].fx[X_CHR] = 0;
     for (i = 2; i < NTRACK; i++)
         ui.level[i] = 0;
+    if (getenv("KICKMUTE"))
+        ui.level[0] = 0;
+    if (getenv("PADMUTE"))
+        ui.level[1] = 0;                         /* (the kick unheard: the pad alone, the kick still its source) */
     for (i = 0; i < NTRACK; i++) {
         level_pan_apply(i);
         mark(i);
@@ -1947,7 +1955,8 @@ static int cmd_duck(int lvl, const char *wav)
     }
     memset((void *)seq_note, 0, sizeof seq_note);
     seq_note[0][0] = seq_note[0][4] = seq_note[0][8] = seq_note[0][12] = 36;
-    (void)pl_set(0, 0, PL_REV, 110);
+    if (getenv("KICKREV"))
+        (void)pl_set(0, 0, PL_REV, 110);
     sc_src[1] = 1;
     sc_lvl[1] = (uint8_t)pct_raw(lvl);
     ev_post(EV_ON, 1, 48, 127);

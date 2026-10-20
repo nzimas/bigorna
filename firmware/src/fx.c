@@ -435,23 +435,28 @@ static void dk_feed(dk_t *d, const int32_t *x, int struck)   /* a block of the t
     uint32_t i;
     if (struck) {
         d->since = 0;
-        d->hit = d->env = 0;
+        d->hit = 0;
     }
     for (i = 0; i < CTL; i++) {
         int32_t a = absi(x[i]) << 8;
-        if (d->since < 40u && a > d->env) {     /* (the hit's first ~30 ms: up to its peak) */
+        if (d->since < 40u && a > d->hit)       /* (the hit: its peak, over its first ~30 ms) */
+            d->hit = a;
+        if (a > d->env)                          /* (its level after: followed, falling no faster than RELEASE) */
             d->env = a;
-            d->hit = a > d->hit ? a : d->hit;
-        } else
+        else
             d->env -= (int32_t)(((int64_t)d->env * (int32_t)cpc.rel) >> 24);
     }
     if (d->since < 0xFFFFu)
         d->since++;
 }
+/* how far the duck goes now, Q15: all of it at the hit's peak, none 12 dB below it (in dB between) */
 static int32_t dk_e(const dk_t *d)
 {
-    uint32_t h = (uint32_t)d->hit >> 8;          /* (32-bit: the levels x 256 are below 2^24) */
-    return h ? clampi((int32_t)(((uint32_t)d->env >> 8) * 32767u / h), 0, Q15) : 0;
+    int32_t r;
+    if (d->hit < 256 || d->env < 256)
+        return 0;
+    r = log2_q16((uint32_t)d->env) - log2_q16((uint32_t)d->hit);   /* (octaves of 6 dB, Q16; 0 at the peak) */
+    return clampi(Q15 + r / 4, 0, Q15);          /* (2 octaves, 12 dB, Q16: 2^17 -> 2^15) */
 }
 
 /* --------------------------------------------------------- the interface --- */

@@ -71,6 +71,12 @@ static int32_t dk_att[NTRACK];                   /* (the duck now, dB Q16) */
 static int32_t dk_gp[NTRACK] = {Q16, Q16, Q16, Q16, Q16, Q16};   /* (its gain as the last block ended) */
 static uint8_t dk_mask;                          /* (the tracks some track ducks under) */
 static uint8_t dk_struck[NTRACK];                /* (a note began on the track this block: a hit) */
+/* a ducked track's effects ducked with it: each return (chorus, delay, reverb) brought down by the tracks in it, as
+ * much as each is in it -- what each sent, followed over ~0.7 s (its tail) */
+static uint32_t dk_sent[NTRACK][3];              /* (this block's sends, |x| summed: chorus, delay, reverb) */
+static uint32_t dk_in[NTRACK][3];                /* (followed) */
+static int32_t dk_rg[3] = {Q16, Q16, Q16};       /* (each return's gain as the last block ended) */
+static uint8_t dk_on;                            /* (some track ducked) */
 
 /* a step's parameter locks (the sequencer's): up to NPL a step, each a parameter of the sound -- its id, page x 8 +
  * knob (params.c: SYN 1 .. 4, FLTR 1, FLTR 2, AMP, FX, MANGLE), or PL_PAN -- and its value. The note's own (the
@@ -1137,6 +1143,7 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
             dk_feed(&dk[t], buf, dk_struck[t]);
             dk_struck[t] = 0;
         }
+        dk_sent[t][0] = dk_sent[t][1] = dk_sent[t][2] = 0;
         y->meter -= y->meter >> 4;
         y->g = trk_gain[t];
         y->pl = pl1;
@@ -1177,6 +1184,7 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         int32_t dg = (g1 - y->g) / CTL, dl = (pl1 - y->pl) / CTL, dr = (pr1 - y->pr) / CTL;
         int32_t dd = (sd1 - y->sd) / CTL, dv = (sr1 - y->sr) / CTL, dc = (sc1 - y->sc) / CTL;
         int32_t g = y->g, pl = y->pl, pr = y->pr, sd = y->sd, sr = y->sr, sc = y->sc;
+        uint32_t sch = 0, sdl = 0, srv = 0;
         for (i = 0; i < CTL; i++) {
             int32_t x;
             g += dg;
@@ -1187,6 +1195,12 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
             sc += dc;
             x = (int32_t)(((int64_t)buf[i] * g) >> 14);
             pk = maxi(pk, absi(x));
+            if (dk_on) {                         /* (what it sends, for its share of each return) */
+                int32_t a = absi(x);
+                sch += (uint32_t)mulq15(a, sc);
+                sdl += (uint32_t)mulq15(a, sd);
+                srv += (uint32_t)mulq15(a, sr);
+            }
             if (duck)                            /* (ducked: under its source's hits) */
                 x = (int32_t)(((int64_t)x * (dk_gp[t] + dk_dg * (int32_t)(i + 1u))) >> 16);
             mixl[i] += mulq15(x, pl);
@@ -1201,6 +1215,9 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         y->sd = sd1;
         y->sr = sr1;
         y->sc = sc1;
+        dk_sent[t][0] = sch;
+        dk_sent[t][1] = sdl;
+        dk_sent[t][2] = srv;
     }
     y->meter = pk > y->meter ? pk : y->meter - (y->meter >> 5);
     if (duck)
@@ -1279,6 +1296,7 @@ static void mix_block(int32_t *out)
             if (sc_src[q] && sc_src[q] - 1u != q && sc_src[q] <= NTRACK && sc_lvl[q])
                 m |= 1u << (sc_src[q] - 1u);
         dk_mask = (uint8_t)m;
+        dk_on = m != 0u;
     }
     seq_block();
     {   /* MANGLE's clock: where in the bar this block starts (the sequencer's, playing; else its own at the tempo) */
@@ -1301,9 +1319,43 @@ static void mix_block(int32_t *out)
         l_[i] = r_[i] = dlin[i] = rvin[i] = chin[i] = 0;
     for (t = 0; t < NTRACK; t++)
         track_block(t, l_, r_, dlin, rvin, chin);
-    ch_block(chin, l_, r_, dlin, rvin);
-    dl_block(dlin, l_, r_, rvin);
-    rv_block(rvin, l_, r_);
+    if (!dk_on) {
+        ch_block(chin, l_, r_, dlin, rvin);
+        dl_block(dlin, l_, r_, rvin);
+        rv_block(rvin, l_, r_);
+        dk_rg[0] = dk_rg[1] = dk_rg[2] = Q16;
+    } else {   /* each return apart, ducked by its tracks' share in it (a ducked pad's reverb ducked with it) */
+        int32_t wl[CTL], wr[CTL];
+        uint32_t f;
+        for (f = 0; f < 3u; f++) {
+            uint32_t num = 0, den = 0;
+            int32_t g1, dg, g;
+            for (t = 0; t < NTRACK; t++) {
+                uint32_t w;
+                dk_in[t][f] += ((dk_sent[t][f] < (1u << 21) ? dk_sent[t][f] : 1u << 21) >> 6) - (dk_in[t][f] >> 10);   /* (below 2^25) */
+                w = dk_in[t][f] >> 9;
+                num += w * ((uint32_t)dk_gp[t] >> 4);   /* (Q12: below 2^28 each) */
+                den += w;
+            }
+            g1 = den ? (int32_t)(num / den) << 4 : Q16;
+            for (i = 0; i < CTL; i++)
+                wl[i] = wr[i] = 0;
+            if (f == 0u)
+                ch_block(chin, wl, wr, dlin, rvin);
+            else if (f == 1u)
+                dl_block(dlin, wl, wr, rvin);
+            else
+                rv_block(rvin, wl, wr);
+            g = dk_rg[f];
+            dg = (g1 - g) / (int32_t)CTL;
+            for (i = 0; i < CTL; i++) {
+                g += dg;
+                l_[i] += (int32_t)(((int64_t)wl[i] * g) >> 16);
+                r_[i] += (int32_t)(((int64_t)wr[i] * g) >> 16);
+            }
+            dk_rg[f] = g1;
+        }
+    }
     cp_block(l_, r_);                            /* the compressor: the master's, the returns in it (a pad's tails duck) */
     met_block(l_, r_);
     for (i = 0; i < CTL; i++) {
