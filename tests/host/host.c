@@ -1495,8 +1495,8 @@ static int cmd_projects(const char *dir)
         for (i = 0; i < NSTEP; i++)
             seq_note[0][i] = 0;
     }
-    {   /* BREAK on the loops (build 41): a loop on track 2 the shape of track 1's steps; under BREAK on every track,
-         * at each step the loop plays the step the pattern plays -- during the break and after it */
+    {   /* BREAK leaves the loops alone (build 45, as before 41): a loop on track 2 the shape of track 1's steps;
+         * under BREAK on every track the pattern is broken up, the loop plays its own steps -- during and after */
         int32_t out[2 * CTL];
         uint32_t i, last, k, n1, both = 0, same = 1, after = 1, moved = 0, phase;
         loop_t *lp = &loops[1][0];
@@ -1551,25 +1551,21 @@ static int cmd_projects(const char *dir)
                         n1 = sq_note[1][k];
                 if (seq_sounded[0] > s0)
                     n0 = seq_played[0];
-                if ((seq_sounded[0] > s0) != (seq_sounded[1] > s1)) {
-                    same = phase ? same : 0;
+                same &= seq_sounded[1] > s1 && n1 - 72u == last;   /* (the loop: its own step, every step) */
+                if (seq_sounded[0] == s0) {
                     after &= !phase;
                     continue;
                 }
-                if (seq_sounded[0] == s0)
-                    continue;
                 both++;
                 if (phase)
-                    after &= n0 - 48u == last && n1 - 72u == last;
-                else {
-                    same &= n0 - 48u == n1 - 72u;
+                    after &= n0 - 48u == last;
+                else
                     moved += n0 - 48u != last;
-                }
             }
         }
         EXPECT(both > 40u && moved > 0u, "BREAK on every track: the pattern broken up");
-        EXPECT(same, "BREAK: the loop plays the step the pattern plays, every step");
-        EXPECT(after, "let go: the pattern and the loop on their own steps, together");
+        EXPECT(same, "BREAK: the loop plays its own steps, every one, during the break and after");
+        EXPECT(after, "let go: the pattern on its own steps again");
         lp->on = 0;
         lp->n = 0;
         seq_run = 0;
@@ -1578,8 +1574,8 @@ static int cmd_projects(const char *dir)
         for (i = 0; i < NSTEP; i++)
             seq_note[0][i] = 0;
     }
-    {   /* let go of BREAK (builds 43, 44): the notes it left sounding go at the next step; nothing is struck there;
-         * the loop's chord held over the next bar line comes back on it -- on the downbeat */
+    {   /* a loop of held chords through BREAK on every track (build 45): never cut, never moved -- at every step, the
+         * chord due then sounds, and only it, during the break and after */
         int32_t out[2 * CTL];
         uint32_t i, c, k, ok = 1, g, ph, want, n;
         loop_t *lp = &loops[1][0];
@@ -1607,11 +1603,9 @@ static int cmd_projects(const char *dir)
         key(KEY_TRIG, 1);
         fm1_in.notes &= ~(1u << KEY_SHIFT);
         brk_keep = 0;
-        while (seq_gcount != 68u)                /* (three bars broken up: let go in the 3rd chord's first bar) */
-            mix_block(out);
-        key(KEY_TRIG, 0);
-        for (c = 0; c < 20u; c++) {              /* (let go at 16th 68: silent to 80, the bar line; then the 3rd
-                                                  * chord, held over it, for its last bar) */
+        for (c = 0; c < 80u; c++) {              /* (48 steps broken up, let go at 16th 68, then 32 more) */
+            if (seq_gcount == 68u)
+                key(KEY_TRIG, 0);
             g = seq_gcount;
             while (seq_gcount == g)
                 mix_block(out);
@@ -1623,19 +1617,19 @@ static int cmd_projects(const char *dir)
                     n++;
                     ok &= sq_note[1][k] == want || sq_note[1][k] == want + 4u || sq_note[1][k] == want + 8u;
                 }
-            ok &= seq_gcount < 80u ? n == 0u : n == 3u;
+            ok &= n == 3u;
         }
-        EXPECT(ok, "let go of BREAK: nothing struck off the beat; on the next bar line the loop's chord, and only it");
+        EXPECT(ok, "BREAK: a loop's held chords never cut or moved, during it and after");
         lp->on = 0;
         lp->n = 0;
         seq_run = 0;
         for (i = 0; i < 4u; i++)
             mix_block(out);
     }
-    {   /* BREAK as played (build 44): a loop recorded with the keys from a downbeat -- a note held most of a bar,
-         * then notes on beats -- and a kick on every beat; 200 breaks, each held a different time, on one track or
-         * (SHIFT) all, let go anywhere in a step. After each, for two bars: every loop note starts on its own step
-         * or, held over, on a bar line; every kick on a beat */
+    {   /* BREAK as played (builds 44, 45): a loop recorded with the keys from a downbeat -- a note held most of a
+         * bar, then notes on beats -- and a kick on every beat; 200 breaks, each held a different time, on one track
+         * or (SHIFT) all, let go anywhere in a step. During each and for two bars after: every loop note starts on
+         * its own step; after, every kick on a beat */
         int32_t out[2 * CTL];
         uint32_t kw2[16], k, run, bad = 0, total = 0, kbad = 0, ktot = 0, i;
         loop_t *lp = &loops[2][0];
@@ -1687,15 +1681,24 @@ static int cmd_projects(const char *dir)
             key(KEY_TRIG, 1);
             fm1_in.notes &= ~(1u << KEY_SHIFT);
             brk_keep = 0;                        /* (whatever track 3's sound: broken up with the rest) */
-            for (i = 0; i < hold; i++)
+            for (i = 0; i < hold; i++) {
+                uint32_t s2 = seq_sounded[2], ph, ok, e;
                 mix_block(out);
+                if (seq_sounded[2] != s2) {
+                    ph = (seq_gcount - lp->anchor) % lp->len;
+                    for (e = 0, ok = 0; e < lp->n; e++)
+                        ok |= lp->ev[e].step == ph;
+                    total++;
+                    bad += !ok;
+                }
+            }
             key(KEY_TRIG, 0);
             for (g = seq_gcount + 32u; seq_gcount != g;) {
                 uint32_t s2 = seq_sounded[2], s0 = seq_sounded[0], ph, ok, e;
                 mix_block(out);
                 if (seq_sounded[2] != s2) {
                     ph = (seq_gcount - lp->anchor) % lp->len;
-                    for (e = 0, ok = seq_gcount % 16u == 0u; e < lp->n; e++)
+                    for (e = 0, ok = 0; e < lp->n; e++)
                         ok |= lp->ev[e].step == ph;
                     total++;
                     bad += !ok;
@@ -1708,7 +1711,7 @@ static int cmd_projects(const char *dir)
             for (i = 0; i < (run * 31u) % 300u; i++)
                 mix_block(out);
         }
-        EXPECT(total > 600u && !bad, "200 breaks: after each, every loop note on its own step or a bar line");
+        EXPECT(total > 600u && !bad, "200 breaks: during and after each, every loop note on its own step");
         EXPECT(ktot > 1000u && !kbad, "200 breaks: after each, every kick on a beat");
         lop_clear();
         seq_run = 0;
@@ -1717,6 +1720,34 @@ static int cmd_projects(const char *dir)
         EXPECT(seq_gcount == 0xFFFFFFFFu && !loop_qnow(), "stopped after a long run: the count reads not started (the looper from 0)");
         for (k = 0; k < NSTEP; k++)
             seq_note[0][k] = 0;
+    }
+    {   /* BREAK on the beat (build 45), every way, 3000 plans: a track plays as written until its next beat (half
+         * bar for REPEAT 8); from there, what is on a beat stays on a beat (HALF TIME: on the 8ths it is stretched
+         * to); no window of 3 */
+        uint32_t seed, p0, i, p, src, entered, ok = 1, w3 = 0, seen = 0;
+        for (seed = 1; seed <= 3000u; seed++) {
+            brk_r = seed * 2654435761u | 1u;
+            brk_prev = 0xFF;
+            brk_draw();
+            seen |= 1u << brk_rec;
+            w3 |= brk_rec == BR_REPEAT && brk_w == 3u;
+            brk_lay = 0;
+            brk_kick = 0;
+            p0 = seed % 16u;
+            for (i = 0, entered = 0; i < 40u; i++) {
+                p = (p0 + i) % 16u;
+                src = brk_step(0, p, 16u);
+                if (!entered && (brk_fresh & 1u)) {
+                    ok &= src == p;              /* (not yet: as written) */
+                    continue;
+                }
+                entered = 1;
+                if (p % 4u == 0u)
+                    ok &= brk_rec == BR_HALF ? src % 2u == 0u : src % 4u == 0u;
+            }
+        }
+        brk_shown = 0xFF;
+        EXPECT(ok && !w3 && seen == (1u << NBR) - 1u, "BREAK: every way on the beat, into it on a beat, no window of 3");
     }
     {   /* the looper: SHIFT + REC armed; the first note starts it; REC ends it at the nearest step; it plays */
         int32_t out[2 * CTL];

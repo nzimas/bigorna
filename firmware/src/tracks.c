@@ -756,13 +756,17 @@ static uint32_t seq_next(uint32_t t, uint32_t len)
     }
     return p < len ? p : 0u;
 }
-/* BREAK (build 37; after MOTOR:CYCLES' brk.c; their loops with them from build 41): while the 3rd black key is held,
- * the tracks in brk_mask play other steps than the ones they are on -- a beat repeated, dragged to half time, rushed to double, a window played
- * backwards, the bar's slices shuffled, or a roll -- with ratchets that speed up the longer it is held, flams, octave
+/* BREAK (build 37; after MOTOR:CYCLES' brk.c): while the 3rd black key is held, the tracks in brk_mask play other
+ * steps than the ones they are on -- a beat repeated, dragged to half time, rushed to double, its steps played
+ * backwards, the bar's beats shuffled, or a roll -- with ratchets that speed up the longer it is held, flams, octave
  * leaps and a gap before the bar's end. Nothing is written: each track's own position goes on underneath, so let go,
- * it carries on where it would have been. A plan is drawn at the press (brk_seed new) and again every two bars held,
- * never the same way twice running. Coherence: repeats start on a beat; the kick keeps the bar's first step and takes
- * no leaps, gaps and few ratchets; a drone is left alone (its long notes would be cut to pieces) */
+ * it carries on where it would have been. The loops are not broken up: they play on as recorded (from build 45, as
+ * before 41).
+ * It stays on the pattern's beat (build 45): a track goes into the break on its next beat (its next half bar for
+ * REPEAT 8), playing as written until then; every way keeps what is on a beat on a beat -- windows of 1, 2, 4 or 8
+ * steps, REVERSE keeping each window's first step, CHOP moving whole beats; a new plan is drawn only on a bar line,
+ * after two bars held, never the same way twice running. The kick keeps the bar's first step and takes no leaps, no
+ * gap and few ratchets; a drone is left alone */
 enum { BR_REPEAT, BR_HALF, BR_DOUBLE, BR_REVERSE, BR_CHOP, BR_ROLL, NBR };
 static const char *const BR_NAME[NBR] = {"REPEAT", "HALF TIME", "DOUBLE", "REVERSE", "CHOP", "ROLL"};
 enum { BL_RAT = 1, BL_OCT = 2, BL_FLAM = 4, BL_GAP = 8, BL_ACC = 16 };
@@ -771,37 +775,32 @@ static volatile uint8_t brk_kick, brk_drum, brk_keep;   /* (.. the kicks, the dr
 static volatile uint32_t brk_seed;               /* (.. a new one each press) */
 static volatile uint8_t brk_shown = 0xFF;        /* (the ISR's: the way playing, BR_*, for the screen; w after) */
 static volatile uint8_t brk_shown_w;
-static uint32_t brk_seen, brk_r, brk_n16;
-static uint8_t brk_rec, brk_prev = 0xFF, brk_w, brk_sw, brk_chop[8], brk_gap, brk_lay, brk_fresh;
-static uint8_t brk_lfresh[NTRACK];               /* (each track's loops, a bit each: their anchors still to take) */
-static uint16_t brk_lanc[NTRACK][3];             /* (.. and the anchors, in the loop's steps; build 41) */
-static uint8_t brk_was, brk_rest;                /* (the tracks the break played on; let go, the ones whose loops'
-                                                  * held notes come back on the next bar line) */
+static uint32_t brk_seen, brk_r, brk_n16, brk_since;
+static uint8_t brk_rec, brk_prev = 0xFF, brk_w, brk_chop[4], brk_gap, brk_lay, brk_fresh;
 static uint8_t brk_anchor[NTRACK];
 static uint8_t brk_rt[NTRACK], brk_fl[NTRACK];   /* (a step's: its ratchet, flam, velocity %) */
 static uint8_t brk_vp[NTRACK] = {100, 100, 100, 100, 100, 100};
 static int8_t brk_oct[NTRACK];
+static uint8_t brk_last;                         /* (the tracks under it as the last block ended) */
 static uint32_t brk_rnd(uint32_t n)
 {
     brk_r = brk_r * 1664525u + 1013904223u;
     return n ? (brk_r >> 16) % n : 0u;
 }
-static void brk_draw(void)                       /* a plan: the way, its window, its slices, its layers */
+static void brk_draw(void)                       /* a plan: the way, its window, its beats' order, its layers */
 {
-    static const uint8_t RW[7] = {1, 2, 2, 3, 4, 4, 8};
-    uint32_t i, n;
+    static const uint8_t RW[6] = {1, 2, 2, 4, 4, 8};   /* (each a whole part of the bar: on the beat, always) */
+    uint32_t i;
     do
         brk_rec = (uint8_t)brk_rnd(NBR);
     while (brk_rec == brk_prev);
     brk_prev = brk_rec;
-    brk_w = brk_rec == BR_REPEAT ? RW[brk_rnd(7)] : brk_rec == BR_REVERSE ? (brk_rnd(2) ? 8u : 4u) : 4u;
-    brk_sw = brk_rnd(2) ? 2u : 4u;               /* CHOP: the bar in slices of 2 or 4 steps, the first kept */
-    n = 16u / brk_sw;
-    for (i = 0; i < n; i++)
+    brk_w = brk_rec == BR_REPEAT ? RW[brk_rnd(6)] : brk_rec == BR_REVERSE ? (brk_rnd(2) ? 8u : 4u) : 4u;
+    for (i = 0; i < 4u; i++)                     /* CHOP: the bar's four beats, the first kept, the others swapped */
         brk_chop[i] = (uint8_t)i;
-    for (i = 1; i < n; i++)
+    for (i = 1; i < 4u; i++)
         if (brk_rnd(100) < 60u) {
-            uint32_t j = 1u + brk_rnd(n - 1u);
+            uint32_t j = 1u + brk_rnd(3);
             uint8_t x = brk_chop[i];
             brk_chop[i] = brk_chop[j];
             brk_chop[j] = x;
@@ -814,37 +813,17 @@ static void brk_draw(void)                       /* a plan: the way, its window,
     if (brk_rec == BR_ROLL)
         brk_lay |= BL_RAT;
     brk_fresh = (1u << NTRACK) - 1u;
-    memset(brk_lfresh, 0xFF, sizeof brk_lfresh);
+    brk_since = 0;
     brk_shown_w = brk_w;
     brk_shown = brk_rec;
 }
+static volatile uint32_t seq_gcount;             /* (the looper's, below: the tempo's 16ths since PLAY) */
 static void brk_tick(void)                       /* (each of the tempo's 16ths, playing) */
 {
     if (!brk_mask) {
-        uint32_t t, i;
         brk_shown = 0xFF;
-        for (t = 0; brk_was && t < NTRACK; t++) {   /* let go: the notes the break left sounding on its tracks let
-                                                  * go, its echoes and ratchets dropped (build 43). Nothing is struck
-                                                  * then: a loop goes on from its next note, on its own step, and its
-                                                  * notes held over the next bar line come back on it (loop_step;
-                                                  * build 44) */
-            if (!(brk_was >> t & 1u))
-                continue;
-            for (i = 0; i < SEQ_HOLD; i++)
-                if (sq_note[t][i]) {
-                    note_off(t, sq_note[t][i], SRC_SEQ);
-                    sq_note[t][i] = 0;
-                }
-            memset(fxq[t], 0, sizeof fxq[t]);
-            rt_left[t] = 0;
-        }
-        brk_rest |= brk_was;
-        brk_was = 0;
         return;
     }
-    brk_rest = 0;                                /* (broken up again before the bar line: nothing to put back) */
-    if (brk_shown != 0xFFu)
-        brk_was |= (uint8_t)(brk_mask & ~brk_keep);
     if (brk_seed != brk_seen) {                  /* pressed: a plan */
         brk_seen = brk_seed;
         brk_r = brk_seed | 1u;
@@ -852,11 +831,11 @@ static void brk_tick(void)                       /* (each of the tempo's 16ths, 
         brk_draw();
         return;
     }
-    if (++brk_n16 % 32u == 0u)                   /* two bars held: another */
+    brk_n16++;
+    if (++brk_since >= 32u && seq_gcount % 16u == 0u)   /* two bars held, on a bar line: another */
         brk_draw();
 }
-/* the step track t plays for its step p (of len), and its layers for that hit (0xFF: none plays) */
-/* the way's step for step p of len, from anchor a (the remap alone: a track's steps and its loops alike) */
+/* the way's step for step p of len, from anchor a (a beat) */
 static uint32_t brk_map(uint32_t a, uint32_t p, uint32_t len, uint32_t kick)
 {
     uint32_t rel, w, src = p;
@@ -873,11 +852,11 @@ static uint32_t brk_map(uint32_t a, uint32_t p, uint32_t len, uint32_t kick)
     case BR_DOUBLE:
         src = (a + 2u * rel) % len;
         break;
-    case BR_REVERSE:
-        src = p - p % w + (w - 1u - p % w);
+    case BR_REVERSE:                             /* (each window backwards after its first step: 0 3 2 1) */
+        src = p - p % w + (w - p % w) % w;
         break;
     case BR_CHOP:
-        src = len >= 16u ? p - p % 16u + brk_chop[(p % 16u) / brk_sw] * brk_sw + p % brk_sw : (a + rel % 4u) % len;
+        src = len >= 16u ? p - p % 16u + brk_chop[(p % 16u) / 4u] * 4u + p % 4u : p;
         break;
     default:
         break;
@@ -886,12 +865,15 @@ static uint32_t brk_map(uint32_t a, uint32_t p, uint32_t len, uint32_t kick)
         src = p;
     return src;
 }
-static uint32_t brk_anchor_of(uint32_t p) { return p - p % (brk_w > 4u ? 8u : 4u); }   /* (on a beat) */
+/* the step track t plays for its step p (of len), and its layers for that hit (0xFF: none plays) */
 static uint32_t brk_step(uint32_t t, uint32_t p, uint32_t len)
 {
     uint32_t src, kick = brk_kick >> t & 1u, drum = brk_drum >> t & 1u, ro, rate;
-    if (brk_fresh >> t & 1u) {                   /* (the plan's first step on the track: its anchor) */
-        brk_anchor[t] = (uint8_t)brk_anchor_of(p);
+    if (brk_fresh >> t & 1u) {                   /* (into the break on the track's next beat -- its next half bar for
+                                                  * REPEAT 8: as written until then) */
+        if (p % (brk_w > 4u ? 8u : 4u))
+            return p;
+        brk_anchor[t] = (uint8_t)p;
         brk_fresh &= (uint8_t)~(1u << t);
     }
     src = brk_map(brk_anchor[t], p, len, kick);
@@ -1025,7 +1007,6 @@ static void fxq_block(void)                      /* (each block, playing: the MI
  * A loop being recorded is not played (on 0) until it is ended; then it plays from its first step on the step it
  * ended at (anchor, in seq_gcount's count) */
 #define NLOOP 3u
-typedef char brk_lanc_fits[NLOOP == 3u ? 1 : -1];   /* (brk_lanc's) */
 #define LOOP_EV 256u             /* (notes a loop) */
 #define LOOP_MAX 512u            /* (steps: 32 bars) */
 typedef struct { uint16_t step, len8; uint8_t note, vel; } lev_t;
@@ -1063,44 +1044,6 @@ static void loop_step(void)
             if (!p->on || !p->len || (int32_t)(seq_gcount - p->anchor) < 0 || p->kick)
                 continue;
             ph = (seq_gcount - p->anchor) % p->len;
-            if ((brk_mask >> t & 1u) && !(brk_keep >> t & 1u) && brk_shown != 0xFFu) {   /* BREAK: the loop with
-                * the track's steps -- the same way, from the same beat, the same gap; its own position kept (build 41) */
-                uint32_t src, lo, hi, kick = brk_kick >> t & 1u;
-                if (brk_lfresh[t] >> l & 1u) {
-                    brk_lanc[t][l] = (uint16_t)brk_anchor_of(ph);
-                    brk_lfresh[t] &= (uint8_t)~(1u << l);
-                }
-                src = brk_map(brk_lanc[t][l], ph, p->len, kick);
-                for (lo = 0, hi = p->n; lo < hi;) {      /* (the first note at src or after) */
-                    uint32_t m = (lo + hi) / 2u;
-                    if (p->ev[m].step < src)
-                        lo = m + 1u;
-                    else
-                        hi = m;
-                }
-                if (!p->mute && !((brk_lay & BL_GAP) && !kick && ph % 16u >= brk_gap))
-                    for (; lo < p->n && p->ev[lo].step == src; lo++)
-                        seq_sound(t, p->ev[lo].note, p->ev[lo].vel, p->ev[lo].len8, 0, 0);
-                for (lo = 0, hi = p->n; lo < hi;) {      /* (the cursor past ph: let go, on from there) */
-                    uint32_t m = (lo + hi) / 2u;
-                    if (p->ev[m].step <= ph)
-                        lo = m + 1u;
-                    else
-                        hi = m;
-                }
-                p->cur = (uint16_t)lo;
-                continue;
-            }
-            if ((brk_rest >> t & 1u) && seq_gcount % 16u == 0u) {   /* (the first bar line after a break: the
-                                                  * notes held over it struck again, for what is left of them -- on
-                                                  * the downbeat, not where the key was let go) */
-                uint32_t i;
-                for (i = 0; !p->mute && i < p->n; i++) {
-                    uint32_t d = (ph + p->len - p->ev[i].step) % p->len;
-                    if (d && d * 8u < p->ev[i].len8)
-                        seq_sound(t, p->ev[i].note, p->ev[i].vel, p->ev[i].len8 - d * 8u, 0, 0);
-                }
-            }
             if (!ph)
                 p->cur = 0;
             while (p->cur < p->n && p->ev[p->cur].step < ph)
@@ -1109,8 +1052,6 @@ static void loop_step(void)
                 if (!p->mute)
                     seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
         }
-    if (seq_gcount % 16u == 0u)
-        brk_rest = 0;
 }
 /* a pattern's steps whole, as the sequencer plays them (projects.c fills one, the ISR takes it in) */
 typedef struct {
@@ -1234,7 +1175,7 @@ static void seq_block(void)
         seq_gstep = (uint8_t)((seq_gstep + 1u) & 15u);
         seq_gcount++;
         met_tick(seq_gstep);
-        brk_tick();                              /* (before the loops: a plan drawn now holds for them too) */
+        brk_tick();
         loop_step();
     }
     if (seq_pend == 1u && seq_tacc[seq_pend_t] >= SEQ_STEP8 && seq_wraps(seq_pend_t)) {   /* the pattern waiting, in */
@@ -1250,6 +1191,16 @@ static void seq_block(void)
         }
         memset(seq_plays, 0, sizeof seq_plays);
         seq_pend = 2;
+    }
+    {   /* BREAK let go: its ratchets and echoes still to come dropped at once, so the pattern is back as the key
+         * comes up (the notes sounding ring on) */
+        uint8_t m = brk_mask, gone = (uint8_t)(brk_last & ~m);
+        for (t = 0; gone && t < NTRACK; t++)
+            if (gone >> t & 1u) {
+                rt_left[t] = 0;
+                memset(fxq[t], 0, sizeof fxq[t]);
+            }
+        brk_last = m;
     }
     for (t = 0; t < NTRACK; t++) {               /* each track on its own clock */
         if (seq_tacc[t] >= SEQ_STEP8) {

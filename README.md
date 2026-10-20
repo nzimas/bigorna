@@ -165,19 +165,20 @@ while it is muted. Mutes are kept with the session.
 
 While the sequencer plays, holding the 3rd black key (the step view off) breaks up the chosen track's pattern;
 SHIFT and the key, every track at once. Nothing is written into the steps: each track's position keeps running
-underneath, and when the key is let go the pattern carries on from where it would have been. The key is lit while
-held.
+underneath, and when the key is let go the pattern carries on from where it would have been; ratchets and echoes
+the break had started stop at once. The key is lit while held.
 
-Each press draws a way of playing the steps, shown in the name band, and a new one is drawn every two bars held
-(never the same twice running):
+The break stays on the pattern's beat. A track goes into it on its next beat (its next half bar for REPEAT 8) and
+plays as written until then. Each press draws a way of playing the steps, shown in the name band; held two bars, a
+new one is drawn on the next bar line (never the same twice running). Every way keeps what is on a beat on a beat:
 
 | Way | What plays |
 | --- | --- |
-| REPEAT 1, 2, 3, 4 or 8 | A window of that many steps, from the beat the break began on, played over and over |
+| REPEAT 1, 2, 4 or 8 | A window of that many steps, from the beat the break began on, played over and over |
 | HALF TIME | The steps from that beat at half speed |
 | DOUBLE | The steps from that beat at double speed, wrapping round the track |
-| REVERSE 4 or 8 | Each window of 4 or 8 steps played backwards |
-| CHOP | The bar cut into slices of 2 or 4 steps, shuffled; the first slice stays in place |
+| REVERSE 4 or 8 | Each window of 4 or 8 steps backwards after its first step, which stays in place (0 3 2 1) |
+| CHOP | The bar's four beats shuffled; the first beat stays in place |
 | ROLL | The steps as written, with more ratchets |
 
 Over the way, some of these are drawn too:
@@ -190,10 +191,8 @@ Over the way, some of these are drawn too:
 
 The role of each track's sound (as the phrase generator reads it) keeps the result coherent: a kick keeps the
 bar's first step and takes no leaps, no gap and few ratchets; a drone (HIVE's pads and drones, dark washes) is
-left alone. The track's loops are broken up with its steps: the same way, from the same beat, with the same gap,
-so a loop stays with the pattern while the key is held, and both carry on in step when it is let go. At the first
-step after, the notes the break left sounding stop; nothing is struck there. A loop goes on from its next note, on
-its own step, and a note it holds over the next bar line (a chord, a pad) comes back on that downbeat.
+left alone. The looper's loops are not broken up: they play on as recorded, and the pattern falls back in with
+them when the key is let go.
 
 ## The effects (SEQ)
 

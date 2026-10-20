@@ -1,5 +1,19 @@
 # Changelog
 
+## Build 45
+
+Changed
+- BREAK leaves the loops alone again, as before build 41: they play on as recorded while the key is held, and the
+  pattern falls back in with them when it is let go. What builds 43 and 44 did to the loops at release goes with
+  it.
+- BREAK stays on the pattern's beat:
+  - A track goes into the break on its next beat (its next half bar for REPEAT 8), playing as written until then.
+  - REPEAT windows are 1, 2, 4 or 8 steps (3 is gone: it cycled against the beat).
+  - REVERSE keeps each window's first step in place (0 3 2 1): the beat no longer moves to the step before the next.
+  - CHOP shuffles the bar's four beats (no longer 2-step slices, which put beats on the offbeat).
+  - A new plan, after two bars held, is drawn on the next bar line, not mid-bar.
+- Let go of BREAK: the ratchets and echoes it had started stop at once, so the pattern is back as the key comes up.
+
 ## Build 44
 
 Fixed
