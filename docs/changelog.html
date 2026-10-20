@@ -42,6 +42,34 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-47">Build 47</h2>
+<p>Added</p>
+<ul>
+<li>MIDI IN on the FM-1's 3.5 mm TRS jack: notes, CCs, program changes, the clock, START, CONTINUE, STOP and the song position, routed as USB's (not SysEx). The parser is MELODEE 1.4.5's (its RX verified on an FM-1): UART1 at 31250 baud into a DMA ring, read by content, polled at 2 kHz from the timer interrupt, nested in the audio render, so a clock byte is timed as it comes.</li>
+<li>GLOBAL SETUP &gt; MIDI &gt; PORTS: USB IN, TRS IN (both on). Settings saved by build 46 are read as they were.</li>
+</ul>
+<h2 id="build-46">Build 46</h2>
+<p>Added</p>
+<ul>
+<li>GLOBAL SETUP: SHIFT + SAVE (outside the sessions' pages) opens the machine's own settings, kept in the flash (0xFD000) and read at every start. PRESETS moves, SAVE goes in or sets, SHIFT + SAVE goes back.</li>
+<li>MIDI over USB, set in GLOBAL SETUP &gt; MIDI after the Model:Cycles' MIDI CONFIG:
+<ul>
+<li>SYNC: CLK IN, CLK OUT (the clock with START, CONTINUE, STOP and the song position), PCH IN, PCH OUT.</li>
+<li>IN CHAN: each track's channel (1 to 6 at first), AUTO (the chosen track; 16), PCH.</li>
+<li>OUT CHAN: each track's channel (1 to 6), PCH.</li>
+<li>RECEIVE: NOTES, CC (on). SEND: NOTES, CC (off).</li>
+</ul></li>
+<li>Clock in: the tempo is the average of the last 24 pulses, and the sequencer is held to the pulses as they come (to where the master is, block by block, never past the next pulse before it arrives), so it does not drift. START plays from step 1 on the next pulse, CONTINUE from the song position, STOP stops; PLAY starts on the next pulse. The TEMPO page shows EXT TEMPO. No pulse for 0.5 s: the FM-1's own tempo again.</li>
+<li>Clock out: 24 pulses a beat from the sequencer, to within an audio block (0.73 ms), stopped too; SPP 0, START and the first pulse with step 1; STOP.</li>
+<li>Notes out: every note a track plays, on its OUT channel with its velocity and note off; none from a muted track.</li>
+<li>CCs in and out: level 7, pan 10, mute 94, and each page's eight parameters (the table in the manual).</li>
+<li>Program changes 0 to 15: the session's patterns 1 to 16, in and out.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>USB MIDI notes no longer play the chosen track on every channel: a track's IN channel plays it, the AUTO channel (16) the chosen track.</li>
+<li>The update loader is unchanged.</li>
+</ul>
 <h2 id="build-45">Build 45</h2>
 <p>Changed</p>
 <ul>
