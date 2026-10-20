@@ -241,42 +241,78 @@ static void ft_render(ftv_t *v, const ftck_t *c, uint32_t inc, int32_t note16, i
         nx += (g->x >> k) & 1u;
         ny += (g->y >> k) & 1u;
     }
-    for (i = 0; i < CTL; i++) {
-        int32_t o[4] = {0, 0, 0, 0}, e[4], x = 0, y = 0;
-        uint32_t j;
-        ra += dea;
-        rb += deb;
-        e[OP_C] = Q15;
-        e[OP_A] = ra;
-        e[OP_B1] = e[OP_B2] = rb;
-        for (k = 0; k < 4u; k++)
-            dep[k] += dd[k];
-        for (j = 0; j < 4u; j++) {
-            uint32_t op = g->order[j], ph = v->ph[op], mm = g->mod[op], s;
-            for (s = 0; s < 4u; s++)                         /* each modulator's output, x its depth */
-                if ((mm >> s) & 1u)
-                    ph += (uint32_t)((int64_t)o[s] * dep[s]);
-            if (op == g->fb && c->fb)                        /* feedback: x the operator's own level */
-                ph += (uint32_t)mulq15(mulq15((v->fb1 + v->fb2) >> 1, c->fb), e[op]) << 17;
-            o[op] = ft_wave(hw[op], ph);
-            if (op == g->fb) {
-                v->fb2 = v->fb1;
-                v->fb1 = o[op];
-            }
-            v->ph[op] += inc_o[op];
-        }
-        for (j = 0; j < 4u; j++) {
-            if ((g->x >> j) & 1u)
-                x += (g->xe >> j) & 1u ? mulq15(o[j], e[j]) : o[j];
-            if ((g->y >> j) & 1u)
-                y += (g->ye >> j) & 1u ? mulq15(o[j], e[j]) : o[j];
-        }
-        if (nx == 1u)                                        /* (each output is two buffers summed: one alone, twice) */
-            x *= 2;
-        if (ny == 1u)
-            y *= 2;
-        out[i] = (mulq15(x, c->mixx) + mulq15(y, c->mixy)) >> 1;
+    /* (the sample loop, one for each algorithm: its wiring constant, its tests gone; the phases in registers.
+     * A modulator's output x its depth, low 32 bits: the 64-bit product's, as before) */
+#define FT_MOD(A, op, sm) \
+    if ((FT_ALG[A].mod[op] >> (sm)) & 1u)                                                                    \
+        ph += (uint32_t)o[sm] * (uint32_t)dep[sm];
+#define FT_OPJ(A, J)                                                                                          \
+    {                                                                                                         \
+        const uint32_t op = FT_ALG[A].order[J];                                                               \
+        uint32_t ph = p[op];                                                                                  \
+        FT_MOD(A, op, 0) FT_MOD(A, op, 1) FT_MOD(A, op, 2) FT_MOD(A, op, 3)                                   \
+        if (op == FT_ALG[A].fb && c->fb)            /* feedback: x the operator's own level */               \
+            ph += (uint32_t)mulq15(mulq15((fb1 + fb2) >> 1, c->fb), e[op]) << 17;                      \
+        o[op] = ft_wave(hw[op], ph);                                                                          \
+        if (op == FT_ALG[A].fb) {                                                                             \
+            fb2 = fb1;                                                                                  \
+            fb1 = o[op];                                                                                   \
+        }                                                                                                     \
+        p[op] += inc_o[op];                                                                                   \
     }
+#define FT_OUT(A, j)                                                                                          \
+    if ((FT_ALG[A].x >> (j)) & 1u)                                                                            \
+        x += (FT_ALG[A].xe >> (j)) & 1u ? mulq15(o[j], e[j]) : o[j];                                          \
+    if ((FT_ALG[A].y >> (j)) & 1u)                                                                            \
+        y += (FT_ALG[A].ye >> (j)) & 1u ? mulq15(o[j], e[j]) : o[j];
+#define FT_LOOP(A)                                                                                            \
+    for (i = 0; i < CTL; i++) {                                                                               \
+        int32_t o[4] = {0, 0, 0, 0}, e[4], x = 0, y = 0;                                                      \
+        ra += dea;                                                                                            \
+        rb += deb;                                                                                            \
+        e[OP_C] = Q15;                                                                                        \
+        e[OP_A] = ra;                                                                                         \
+        e[OP_B1] = e[OP_B2] = rb;                                                                             \
+        dep[0] += dd[0];                                                                                      \
+        dep[1] += dd[1];                                                                                      \
+        dep[2] += dd[2];                                                                                      \
+        dep[3] += dd[3];                                                                                      \
+        FT_OPJ(A, 0) FT_OPJ(A, 1) FT_OPJ(A, 2) FT_OPJ(A, 3)                                                   \
+        FT_OUT(A, 0) FT_OUT(A, 1) FT_OUT(A, 2) FT_OUT(A, 3)                                                   \
+        if (nx == 1u)                       /* (each output is two buffers summed: one alone, twice) */     \
+            x *= 2;                                                                                           \
+        if (ny == 1u)                                                                                         \
+            y *= 2;                                                                                           \
+        out[i] = (mulq15(x, c->mixx) + mulq15(y, c->mixy)) >> 1;                                              \
+    }
+    {
+        uint32_t p[4];
+        int32_t fb1 = v->fb1, fb2 = v->fb2;      /* (the feedback, as the phases, in registers: out may alias v) */
+        p[0] = v->ph[0];
+        p[1] = v->ph[1];
+        p[2] = v->ph[2];
+        p[3] = v->ph[3];
+        switch ((uint32_t)(g - FT_ALG)) {
+        case 0: FT_LOOP(0) break;
+        case 1: FT_LOOP(1) break;
+        case 2: FT_LOOP(2) break;
+        case 3: FT_LOOP(3) break;
+        case 4: FT_LOOP(4) break;
+        case 5: FT_LOOP(5) break;
+        case 6: FT_LOOP(6) break;
+        default: FT_LOOP(7) break;
+        }
+        v->ph[0] = p[0];
+        v->ph[1] = p[1];
+        v->ph[2] = p[2];
+        v->ph[3] = p[3];
+        v->fb1 = fb1;
+        v->fb2 = fb2;
+    }
+#undef FT_LOOP
+#undef FT_OUT
+#undef FT_OPJ
+#undef FT_MOD
     for (k = 0; k < 4u; k++)
         v->dep[k] = d1[k];
 }

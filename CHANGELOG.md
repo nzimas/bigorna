@@ -1,5 +1,46 @@
 # Changelog
 
+## Build 32
+
+Changed
+- The FM-1's second core (CPU1) renders half the voices and all the effects (after Melodee 1.4.5, keremimo/melodee:
+  its CPU1 start, hold, fault handling, job mailbox and the stock supply setup; LICENSING.md). Each block, after
+  the events and the sequencer, the sounding voices are dealt to the two cores by their cost, the dearest first;
+  each renders its voices' machines and chains into buffers of their own; the tracks then fade, level and mix
+  them on CPU0 as before. Measured on the FM-1:
+
+  |                                                         | build 31            | build 32            |
+  |---------------------------------------------------------|---------------------|---------------------|
+  | kick + 3 SWARMER notes                                  | 70 % mean, 77 % peak | 43 % mean, 47 % peak |
+  | kick, a 3-note SWARMER pad, METAL HAT 16ths, FM LEAD and FM BASS 8ths | to ~133 %, the pad cut, late audio | 69 % mean, 83 % peak, nothing late |
+
+- The effects (chorus, delay, reverb) run a block behind the tracks, from the sends they made the block before: on
+  CPU1 beside its voices. Their returns come 0.73 ms later than before (a pre-delay of 32 samples); otherwise the
+  same. Alone, CPU0 runs them in the same order: the output is the same with one core or two.
+- At start-up, the stock firmware's supply setup (V15's, as Melodee applies it): the core rail at 1.38 V, VDC14
+  1.60 V, VDDIO 3.2 V. CPU1 starts only if it held, never after a failed start, and never once CPU1 was retired.
+- A CPU1 fault, stall or misread retires CPU1 until power-off: it is held, CPU0 renders everything from then on
+  (as in build 31), and the audio goes on (tested: a fault forced on CPU1; no reset, USB answering). A bus fault
+  of CPU1's (an unmapped access, which the debug unit names no core for) is told from CPU0's own by CPU1 saying
+  so in the handler.
+- FM TONE and FM DRUM run one copy of their operator loop for each algorithm, its wiring constant (the tests
+  for which operator modulates which, each sample, gone): FM TONE's machine about 3 x faster (in the
+  arrangement above, 32 % of a block to 11 %), FM DRUM's ~30 %. The same output, bit for bit.
+- The chain's drive and multimode filter, the operators' phases and feedback, and the tracks' DC blocker keep
+  their state in registers across a block; a track's sends at 0 are skipped. The same output, bit for bit.
+- The overload guard counts a new voice at half its cost while CPU1 is on.
+- The code RAM grows to 0x01C07F00 (the debug area below crt0's STATUS, as Melodee uses it); the chorus line
+  moves to ordinary RAM.
+
+Not changed
+- The update loader is the same, byte for byte (the CPU1 code is the app's only: FM1_CORE1).
+
+Testing
+- After installing, switch the FM-1 off and on: a CPU1 retired on this unit (the fault test) stays held until
+  power-off.
+- `tools/build.py --telemetry` and `tools/telelog.py status | pads | arr | crash1 | crashrec`: CPU1's state
+  (on, its jobs, misreads, faults, its share of the time), the block's phases, and a forced CPU1 fault.
+
 ## Build 31
 
 Fixed

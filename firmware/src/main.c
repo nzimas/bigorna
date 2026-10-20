@@ -67,12 +67,38 @@ static void tele_put(uint8_t *f, uint32_t *n, uint32_t v)
 }
 static void tele_send(void)
 {
-    static uint32_t sent_at;
-    uint8_t f[128];
+    static uint32_t sent_at, tele_k;
+    uint8_t f[180];
     uint32_t n = 0, k, nv = 0, nb;
     if ((uint32_t)(fm1_ms - sent_at) < 200u || !usb.config)
         return;
     sent_at = fm1_ms;
+    if (++tele_k % 5u == 0u) {                   /* (each fifth: the crash record, a message of its own: F0 7D 59) */
+        f[n++] = 0xF0; f[n++] = 0x7D; f[n++] = 0x59;
+        {   /* (the last crash's record, .noinit: across the reset it caused) and CPU1's last fault */
+            uint32_t w[18] = {fm1_crash.magic == FM1_CRASH_MAGIC ? fm1_crash.count : 0u, fm1_crash.vec, fm1_crash.pc, fm1_crash.dbg,
+                              fm1_crash.emu, fm1_core1_fault.dbg}, j;
+            for (j = 0; j < 2u; j++) {               /* (each core's last entry into the handler) */
+                const fm1_fault_seen_t *z = &fm1_fault_seen[j];
+                int ok = z->magic == 0x53454E31u;
+                w[6u + 6u * j] = ok ? z->n : 0u;
+                w[7u + 6u * j] = ok ? z->cpu : 0u;
+                w[8u + 6u * j] = ok ? z->dbg : 0u;
+                w[9u + 6u * j] = ok ? z->emu0 : 0u;
+                w[10u + 6u * j] = ok ? z->emu1 : 0u;
+                w[11u + 6u * j] = ok ? z->pc : 0u;
+            }
+            for (j = 0; j < 18u; j++) {
+                tele_put(f, &n, w[j] >> 18);
+                tele_put(f, &n, (w[j] >> 4) & 0x3FFFu);
+                tele_put(f, &n, w[j] & 15u);
+            }
+        }
+        f[n++] = 0xF7;
+        if (so_w - so_r + (n + 2u) / 3u < SXQ)
+            ota_wire_send(f, n);
+        return;
+    }
     for (k = 0; k < NVOICE; k++)
         nv += vox[k].sounding;
     f[n++] = 0xF0; f[n++] = 0x7D; f[n++] = 0x54;
@@ -97,6 +123,20 @@ static void tele_send(void)
         tele_put(f, &n, tl_fxk[k] / nb * 1000u / BLK_TICKS);
     for (k = 0; k < 8u; k++)                     /* (the chip's costs, measured at start-up) */
         tele_put(f, &n, tl_bench[k]);
+    tele_put(f, &n, (uint32_t)audio_worker_online | (uint32_t)fm1_power_ready << 1 | (uint32_t)fm1_core1_barred() << 2);
+    tele_put(f, &n, audio_worker.jobs & 0x3FFFu);   /* (CPU1: its jobs, mod 16384) */
+    tele_put(f, &n, fm1_aw_load(&audio_worker.rejected));
+    tele_put(f, &n, fm1_core1_fault.count);
+    tele_put(f, &n, audio_worker.max_wait_ticks * 1000u / BLK_TICKS);
+    tele_put(f, &n, audio_worker.timeouts);
+    tele_put(f, &n, tl_c1 / nb * 1000u / BLK_TICKS); /* (a block's time CPU1 rendered, 1/1000) */
+    tele_put(f, &n, tl_evmax * 1000u / BLK_TICKS);  /* (the worst block's: events; + the sequencer and guard) */
+    tele_put(f, &n, tl_seqmax * 1000u / BLK_TICKS);
+    tele_put(f, &n, tl_par / nb * 1000u / BLK_TICKS);   /* (the voices' phase, both cores: mean, worst) */
+    tele_put(f, &n, tl_parmax * 1000u / BLK_TICKS);
+    tl_evmax = tl_seqmax = tl_par = tl_parmax = 0;
+    audio_worker.max_wait_ticks = 0;
+    tl_c1 = 0;
     for (k = 0; k < NENG; k++)
         tl_mach[k] = tl_chain[k] = 0;
     for (k = 0; k < 4u; k++)
@@ -371,6 +411,11 @@ static void fm1_main(void)
 #endif
     tracks_init();
     ui_init();                                       /* (a sound of each machine for every track) */
+    /* CPU1: after a supply setup that held, on a boot after no failed one, and not barred since power-on. It starts
+     * through the mask ROM before it reaches our RAM loop: the PC limit only after (Melodee) */
+    if (fm1_core1_boot_allowed(fm1_power_ready, bootguard.failed))
+        fm1_multicore_start();
+    fm1_guard_enable(FM1_GUARD_PC);
     audio_init();
     usb_start();
     fm1_timer5_start(isr_timer5, 4);
@@ -437,6 +482,7 @@ void fm1_cstart(void)
     src = fm1_boot.rst_src;
     wdt = fm1_boot.wdt_con;
     fm1_wdt_arm(0x0D);
+    fm1_core1_stop();                                /* CPU1 held before the RAM is cleared and copied (Melodee) */
     if ((p3 & 1u) && !(p3 & (4u | 0x40u)))
         bootguard_clear(&bootguard);                /* a power-on: no failed boot to count */
     boot_mode = bootguard_begin(&bootguard);
@@ -454,12 +500,15 @@ void fm1_cstart(void)
     for (s = _ft_load, d = _ft_start; d < _ft_end; s++, d++)
         *d = *s;                                     /* the audio's hottest code, run from RAM too */
     fm1_mailbox_clear();
-    fm1_guard_enable(FM1_GUARD_STACK | FM1_GUARD_WRITE | FM1_GUARD_BUS | FM1_GUARD_PC);
+    fm1_power_ready = (uint8_t)fm1_power_init();   /* stock V15's supplies, before CPU1 (Melodee: its RAM reads) */
+    fm1_guard_enable(FM1_GUARD_STACK | FM1_GUARD_WRITE | FM1_GUARD_BUS);   /* (the PC limit once CPU1 has started) */
     fm1_boot.p3_rst = (uint8_t)p3;
     fm1_boot.rst_src = src;
     fm1_boot.wdt_con = (uint8_t)wdt;
-    if (boot_mode == BOOT_RECOVERY || recovery_key())
+    if (boot_mode == BOOT_RECOVERY || recovery_key()) {
+        fm1_guard_enable(FM1_GUARD_PC);
         recovery_main();                             /* two failed boots, or OCT- held at power-on */
+    }
     fm1_main();
     for (;;)
         ;

@@ -45,7 +45,7 @@ static void mangle_init(void)
 static uint32_t mg_pos, mg_dpos;
 
 /* one block of track t's mangling over x (in place): m the MANGLE values (the sound's, the track's locks over them) */
-static void mangle_block(uint32_t t, int32_t *x, const uint8_t *m)
+FAST static void mangle_block(uint32_t t, int32_t *x, const uint8_t *m)
 {
     mangle_t *q = &mangle[t];
     uint32_t i, a = m[M_DST] & 127u, pat = m[M_SLICE] && m[M_SLICE] <= 16u ? SLICE_PAT[m[M_SLICE] - 1u] : 0u;

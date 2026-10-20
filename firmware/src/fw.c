@@ -7,10 +7,10 @@
  * (isod89), GPL-3.0: the HAL, the boot, the USB stack, the update entry and loader, the rescue mode. */
 #include <stdint.h>
 #ifndef FW_ID
-#define FW_ID "FM-1_8031"         /* the package identity (tools/build.py sets it) */
+#define FW_ID "FM-1_8032"         /* the package identity (tools/build.py sets it) */
 #endif
 #ifndef FW_VERSION
-#define FW_VERSION "BUILD 31"
+#define FW_VERSION "BUILD 32"
 #endif
 #define FW_NAME "BIGORNA"
 #define FELUCCA_ID FW_ID
@@ -21,16 +21,21 @@
 #define FELUCCA_OTA_DRYRUN 0
 #define FELUCCA_CDC 0
 #define FELUCCA_UAC 0
+#define FM1_CORE1 1              /* CPU1 renders half the voices (BIGORNA build 32; hal/fm1_multicore.h) */
 
 #include "fm1_time.h"
 #include "fm1_sys.h"
+#include "fm1_power.h"
 #include "fm1_irq.h"
+#include "fm1_core1_bar.h"
+#include "fm1_multicore.h"
 #include "fm1_guard.h"
 #include "fm1_input.h"
 #include "fm1_timer.h"
 #include "fm1_audio.h"
 #include "fm1_adc.h"
 #include "fm1_lcd_hw.h"
+#define RAMTAB __attribute__((section(".data")))   /* (a table read every sample: in RAM, gen_tables.py) */
 #include "fw_tables.h"
 
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))

@@ -294,7 +294,7 @@ static void rv_init(void)
     memset(rv_mem, 0, sizeof rv_mem);
     rv.scale = 4096;
 }
-static void rv_block(const int32_t *in, int32_t *ol, int32_t *or_)
+FAST static void rv_block(const int32_t *in, int32_t *ol, int32_t *or_)
 {
     uint32_t k, d[8], dl_[7], dr[7], pre = rvc.pre;
     int32_t dec = rvc.decay, sa = rvc.shelf_a, sg = rvc.shelf_g, vol = rvc.vol, s;

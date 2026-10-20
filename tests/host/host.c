@@ -15,6 +15,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#define RAMTAB
 #include "fw_tables.h"
 
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))
@@ -88,6 +89,11 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 #define MQ 64u
 static uint32_t midi_in_q[MQ];
 static volatile uint32_t mi_w, mi_r;
+/* (the host renders on one core: CPU1's mailbox never takes a job, src/audio_worker.h) */
+static int audio_worker_online;
+static int audio_worker_submit(void (*fn)(void *), void *ctx) { (void)fn; (void)ctx; return 0; }
+static int audio_worker_join(void) { return 1; }
+static void audio_worker_check(void) {}
 #include "tracks.c"
 #include "params.c"
 #include "gen.c"
@@ -1955,6 +1961,10 @@ static int cmd_duck(int lvl, const char *wav)
     }
     memset((void *)seq_note, 0, sizeof seq_note);
     seq_note[0][0] = seq_note[0][4] = seq_note[0][8] = seq_note[0][12] = 36;
+    if (getenv("NOCOMP")) {                      /* (the master compressor out: the effects' timing alone) */
+        fx_cp[CP_MIX] = 0;
+        fx_cook_all();
+    }
     if (getenv("KICKREV"))
         (void)pl_set(0, 0, PL_REV, 110);
     sc_src[1] = 1;

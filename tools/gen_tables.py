@@ -12,8 +12,10 @@ FS = 44100
 CTL = 32
 
 
-def arr(name, ctype, vals, per=12):
-    out = [f"static const {ctype} {name}[{len(vals)}] = {{"]
+def arr(name, ctype, vals, per=12, ram=False):
+    # ram: not const, so in .data, copied to RAM at start-up (a table read every sample: the flash is ~3x slower)
+    out = ([f"static {ctype} {name}[{len(vals)}] RAMTAB = {{"] if ram else      # (RAMTAB: fw.c's .data placement;
+           [f"static const {ctype} {name}[{len(vals)}] = {{"])                 #  the compiler would fold it to flash)
     for i in range(0, len(vals), per):
         out.append("    " + ", ".join(str(v) for v in vals[i:i + per]) + ",")
     out.append("};")
@@ -47,7 +49,7 @@ def main(path):
     # log2(1 + i / 256), Q16, i = 0..256 (dsp.h log2_q16)
     L += arr("LOG2_FRAC", "uint32_t", [int(round(65536 * math.log2(1 + i / 256))) for i in range(257)], 8)
     # tanh(x) for x = 0 .. 4 in 512 steps, Q15 (dsp.h tanh_q15)
-    L += arr("TANH_Q15", "int16_t", [int(round(32767 * math.tanh(4 * i / 512))) for i in range(513)])
+    L += arr("TANH_Q15", "int16_t", [int(round(32767 * math.tanh(4 * i / 512))) for i in range(513)], ram=True)
     # the state-variable filter's g = tan(pi f / FS), f linear 0 .. 0.45 FS in 512 steps, Q24
     fmax = 0.45 * FS
     L += [f"#define TANG_FMAX {int(fmax)}"]
@@ -57,8 +59,8 @@ def main(path):
     mu = 255.0
     enc = [min(127, int(round(127 * math.log1p(mu * (i * 16 + 8) / 32768) / math.log1p(mu)))) for i in range(2048)]
     dec = [int(round(32767 * ((1 + mu) ** (c / 127) - 1) / mu)) for c in range(128)]
-    L += arr("MULAW_ENC", "uint8_t", enc, 24)
-    L += arr("MULAW_DEC", "int16_t", dec, 16)
+    L += arr("MULAW_ENC", "uint8_t", enc, 24, ram=True)
+    L += arr("MULAW_DEC", "int16_t", dec, 16, ram=True)
     L += wave_tables()
     L += single_tables()
     L += curve_tables()

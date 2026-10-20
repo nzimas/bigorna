@@ -193,10 +193,26 @@ AINL int32_t fd_folder(int32_t x, int32_t g, int32_t wet)
     return x + mulq15(y * 2 - x, wet);                       /* (x 2: the shape peaks near half scale) */
 }
 
+#define FD_MOD(A, op, sm) \
+    if ((FD_ALG[A].mod[op] >> (sm)) & 1u)                                                                    \
+        ph += (uint32_t)mulq15(o[sm], lv[sm]) << 17;   /* (a cycle at full) */
+#define FD_OPK(A, K)                                                                                          \
+    {                                                                                                         \
+        const uint32_t op = FD_ALG[A].order[K];                                                               \
+        uint32_t ph = fph[op];                                                                              \
+        FD_MOD(A, op, 0) FD_MOD(A, op, 1) FD_MOD(A, op, 2)                                                    \
+        if ((FD_ALG[A].fb >> op) & 1u && c->fb)                                                               \
+            ph += (uint32_t)mulq15((ff1[op] + ff2[op]) >> 1, c->fb) << 17;                             \
+        o[op] = fd_wave(&wv[op], ph);                                                                         \
+        ff2[op] = ff1[op];                                                                              \
+        ff1[op] = o[op];                                                                                   \
+        fph[op] += ic[op];                                                                                  \
+    }
+#define FD_OPS(A) FD_OPK(A, 0) FD_OPK(A, 1) FD_OPK(A, 2)
 FAST static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *out)
 {
     const fdalg_t *g = c->alg;
-    uint32_t inc, ic[3], i, k;
+    uint32_t inc, ic[3], i, k, ai = (uint32_t)(g - FD_ALG);
     int32_t be0 = v->be, ne0 = v->ne, be1, ne1, dbe, dne, ea0 = v->ea, eb0 = v->eb, dea, deb, b, n;
     morph_t wv[3];
     inc = note_inc(note16 + c->tune16);                      /* the sweep: x (1 + 16 p^2 env), linear in Hz */
@@ -230,6 +246,13 @@ FAST static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *o
     dea = (v->ea - ea0) / (int32_t)CTL;
     deb = (v->eb - eb0) / (int32_t)CTL;
     {
+    uint32_t fph[3];                             /* (the operators' phases and feedback in registers: out may alias v) */
+    int32_t ff1[3], ff2[3];
+    for (k = 0; k < 3u; k++) {
+        fph[k] = v->ph[k];
+        ff1[k] = v->fb1[k];
+        ff2[k] = v->fb2[k];
+    }
     int noise = c->nlev && (n || dne);           /* (the noise's envelope at 0 the whole block: none) */
     for (i = 0; i < CTL; i++) {
         int32_t o[3] = {0, 0, 0}, lv[3], body, nz, y;
@@ -240,17 +263,14 @@ FAST static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *o
         lv[FD_C] = 0;
         lv[FD_A] = mulq15(c->moda, ea0);
         lv[FD_B] = mulq15(c->modb, eb0);
-        for (k = 0; k < 3u; k++) {
-            uint32_t op = g->order[k], ph = v->ph[op], s;
-            for (s = 0; s < 3u; s++)
-                if ((g->mod[op] >> s) & 1u)
-                    ph += (uint32_t)mulq15(o[s], lv[s]) << 17;   /* (a cycle at full) */
-            if ((g->fb >> op) & 1u && c->fb)
-                ph += (uint32_t)mulq15((v->fb1[op] + v->fb2[op]) >> 1, c->fb) << 17;
-            o[op] = fd_wave(&wv[op], ph);
-            v->fb2[op] = v->fb1[op];
-            v->fb1[op] = o[op];
-            v->ph[op] += ic[op];
+        switch (ai) {                            /* (the operators, one copy for each algorithm: its wiring constant) */
+        case 0: FD_OPS(0) break;
+        case 1: FD_OPS(1) break;
+        case 2: FD_OPS(2) break;
+        case 3: FD_OPS(3) break;
+        case 4: FD_OPS(4) break;
+        case 5: FD_OPS(5) break;
+        default: FD_OPS(6) break;
         }
         body = mulq15(o[FD_C], b);                           /* (the body's envelope on C; B, heard in 5 .. 7, after
                                                               * the folder) */
@@ -278,5 +298,13 @@ FAST static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *o
         v->tn++;
         out[i] = y;
     }
+    for (k = 0; k < 3u; k++) {
+        v->ph[k] = fph[k];
+        v->fb1[k] = ff1[k];
+        v->fb2[k] = ff2[k];
+    }
     }
 }
+#undef FD_OPS
+#undef FD_OPK
+#undef FD_MOD

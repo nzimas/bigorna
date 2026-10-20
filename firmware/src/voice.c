@@ -308,23 +308,31 @@ AINL int32_t od_stage(const vck_t *c, int32_t e)   /* the two stages (e biased) 
 FAST static void vc_od(vchain_t *v, const vck_t *c, int32_t *x)
 {
     uint32_t i;
+    int32_t pre = v->od_pre, env = v->od_env, post = v->od_post, dc = v->od_dc, lp = v->od_lp;   /* (in registers:
+                                                                                           * x may alias v) */
+    const int32_t beta = c->od_beta, tone = c->od_tone, mk = c->od_mk, w = c->od_w;
     for (i = 0; i < CTL;) {
         REP4({
             int32_t dry = x[i], e, o;
-            v->od_pre += mulq15(dry - v->od_pre, OD_EMPH);
-            e = 2 * dry - v->od_pre;                 /* the highs +6 dB */
-            v->od_env = absi(e) > v->od_env ? absi(e) : v->od_env - (v->od_env >> 12);
-            e += mulq15(v->od_env, c->od_beta);      /* (a bias in step with the level: lopsided however hard) */
+            pre += mulq15(dry - pre, OD_EMPH);
+            e = 2 * dry - pre;                       /* the highs +6 dB */
+            env = absi(e) > env ? absi(e) : env - (env >> 12);
+            e += mulq15(env, beta);                  /* (a bias in step with the level: lopsided however hard) */
             o = od_stage(c, e);
-            v->od_post += mulq15(o - v->od_post, OD_EMPH);
-            o = (o + v->od_post) >> 1;               /* the highs -6 dB again */
-            v->od_dc += (((o << 8) - v->od_dc) * 37) >> 15;   /* (~8 Hz) */
-            o -= v->od_dc >> 8;
-            v->od_lp += mulq15(o - v->od_lp, c->od_tone);
-            o = mulq12(v->od_lp, c->od_mk);
-            x[i] = dry + mulq15(o - dry, c->od_w);
+            post += mulq15(o - post, OD_EMPH);
+            o = (o + post) >> 1;                     /* the highs -6 dB again */
+            dc += (((o << 8) - dc) * 37) >> 15;      /* (~8 Hz) */
+            o -= dc >> 8;
+            lp += mulq15(o - lp, tone);
+            o = mulq12(lp, mk);
+            x[i] = dry + mulq15(o - dry, w);
         })
     }
+    v->od_pre = pre;
+    v->od_env = env;
+    v->od_post = post;
+    v->od_dc = dc;
+    v->od_lp = lp;
 }
 FAST static void vc_bw(vchain_t *v, const vck_t *c, int32_t *x)
 {
@@ -346,19 +354,21 @@ FAST static void vc_filter(vchain_t *v, const vck_t *c, int32_t *x, int32_t note
     switch (c->fmach) {
     case FLT_MM: {
         svf_c k;
-        int32_t m = c->mm;
+        int32_t m = c->mm, ic1 = v->s1.ic1, ic2 = v->s1.ic2;   /* (in registers: x may alias v) */
         svf_coef(&k, hz_of_oct(oct), c->f_q);
         for (i = 0; i < CTL;) { /* (svf_run's step, its three outputs) */
             REP4({
-                int32_t v3 = x[i] - v->s1.ic2;
-                int32_t v1 = mulr16(k.a1, v->s1.ic1) + mulr24(k.a2, v3);
-                int32_t v2 = v->s1.ic2 + mulr24(k.a2, v->s1.ic1) + mulr24(k.a3, v3);
+                int32_t v3 = x[i] - ic2;
+                int32_t v1 = mulr16(k.a1, ic1) + mulr24(k.a2, v3);
+                int32_t v2 = ic2 + mulr24(k.a2, ic1) + mulr24(k.a3, v3);
                 int32_t hp = x[i] - mulr24(k.k, v1) - v2;
-                v->s1.ic1 = 2 * v1 - v->s1.ic1;
-                v->s1.ic2 = 2 * v2 - v->s1.ic2;
+                ic1 = 2 * v1 - ic1;
+                ic2 = 2 * v2 - ic2;
                 x[i] = m < Q15 ? v2 + mulq15(v1 - v2, m) : v1 + mulq15(hp - v1, m - Q15);
             })
         }
+        v->s1.ic1 = ic1;
+        v->s1.ic2 = ic2;
         break;
     }
     case FLT_LEG: {

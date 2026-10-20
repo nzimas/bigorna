@@ -649,7 +649,8 @@ static void midi_take(void)
         } else if (tl_cmd[0] == 0x57u) {
             ui.level[t] = tl_cmd[2];
             level_pan_apply(t);
-        }
+        } else if (tl_cmd[0] == 0x58u)
+            tl_c1_crash = 1;                     /* (a test: CPU1's next job writes to 0, a fault: CPU0 goes on alone) */
         mark(t);
         ui.force = 1;
         RING_PUBLISH();
