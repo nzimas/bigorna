@@ -1,5 +1,19 @@
 # Changelog
 
+## Build 35
+
+Added
+- MUTE mode: in the track's view, the step view off, the 2nd black key turns it on or off (lit while on, dim off;
+  MUTE MODE in the name's band while on). The tracks' buttons then mute rather than choose: lit, a track plays;
+  dim, it is muted. A button let go soon mutes its track or plays it again; held 1 s, its track is soloed (every
+  other muted). Off, the mutes stay as they were set, and the buttons choose tracks again. Leaving the track's
+  view (or the step view on) turns MUTE mode off.
+  - A muted track goes silent over ~9 ms (no click), its sends with it; its sequencer plays on (it comes back in
+    time). A muted track ducks no other (SC SOURCE).
+  - The chosen track's number is dark grey while it is muted.
+  - The mutes are kept with the session; sessions from before load with none muted.
+- Out of the step view the 2nd black key no longer plays a note in CHROMATIC (it is MUTE mode's).
+
 ## Build 34
 
 Changed

@@ -1709,6 +1709,53 @@ static int cmd_projects(const char *dir)
             }
             tap(KEY_GEN);
             EXPECT(!ui.chord_on[t], "the 1st black key again: CHORD mode off");
+            {   /* MUTE mode: the 2nd black key; a track's button let go soon mutes it (lit playing, dim muted), held
+                 * 1 s solos it; off, the mutes stay and the buttons choose tracks again; kept with the session */
+                uint32_t j, sel0 = ui.sel;
+                prj_body_t mb;
+                tap(KEY_TRK);
+                ui_leds();
+                EXPECT(ui.mute_mode && host_led[14u + KEY_TRK], "the 2nd black key: MUTE mode on, lit");
+                ui_draw();
+                shot(dir, "mute_mode");
+                btn(B_SEL, 0);
+                ui_input();
+                ui_leds();
+                EXPECT(trk_mute[1] && ui.sel == sel0 && !host_led[PANEL_BTN[B_SEL]] && host_led[PANEL_BTN[B_FX]],
+                       "MUTE mode: a track's button let go soon mutes it (dim), the track not chosen");
+                tap(KEY_TRK);
+                btn(B_SEL, 0);                   /* (track 2, muted, chosen: its number dark) */
+                ui.msg_until = fm1_ms;
+                ui_draw();
+                shot(dir, "muted_track");
+                btn((uint32_t)TRACK_BTN[sel0], 0);
+                tap(KEY_TRK);
+                fm1_in.buttons |= 1u << PANEL_BTN[B_ENV];
+                host_press = 1u << PANEL_BTN[B_ENV];
+                ui_input();
+                fm1_ms += 1100;
+                ui_input();
+                fm1_in.buttons &= ~(1u << PANEL_BTN[B_ENV]);
+                ui_input();
+                for (j = 0, i = 1; j < NTRACK; j++)
+                    i &= trk_mute[j] == (j != 2u);
+                EXPECT(i, "MUTE mode: a track's button held 1 s solos it, every other muted");
+                for (j = 0; j < 16u; j++)
+                    mix_block(out);
+                EXPECT(trk[0].mg == 0 && trk[2].mg == Q15, "a muted track's gain at 0 (gliding), the soloed one's whole");
+                tap(KEY_TRK);
+                EXPECT(!ui.mute_mode && trk_mute[0] && !trk_mute[2], "MUTE mode off: the mutes stay");
+                prj_take(&mb);
+                memset((void *)trk_mute, 0, NTRACK);
+                prj_give(&mb);
+                EXPECT(trk_mute[0] && !trk_mute[2], "the mutes kept with the session");
+                btn(B_SEL, 0);
+                EXPECT(ui.sel == 1u, "MUTE mode off: a track's button chooses the track");
+                btn((uint32_t)TRACK_BTN[sel0], 0);
+                memset((void *)trk_mute, 0, NTRACK);
+                for (j = 0; j < 16u; j++)
+                    mix_block(out);
+            }
             seq_note[t][si] = 0;
             seq_chf[t][si] = 0;
         }

@@ -13,6 +13,10 @@
  *                             TONITOR's: TRIAD, INV 1, INV 2, SUS2, SUS4, OPEN, FOURTHS; in CHROMATIC as semitones);
  *                             SHIFT and it, the next form (and on). The form shows at the top left. A step put in
  *                             takes the chord last played; REC records chords into the steps, the looper their notes
+ *   the 2nd black key         (the track's view, the step view off) MUTE mode on or off (lit while on): the tracks'
+ *                             buttons, lit while playing and dim muted, mute or play a track as they are let go soon;
+ *                             held 1 s, that track alone plays (solo). Off, the mutes stay (and the buttons choose
+ *                             tracks again); a muted track's number is dark. Kept with the session
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
  *                             16 steps: a key on an empty step puts the track's last note played there; a key on a
@@ -116,6 +120,9 @@ static struct {
     uint8_t last_note[NTRACK];   /* the note last played on each track (0: none yet): what a step is given */
     uint8_t last_chf[NTRACK];    /* .. and its chord (form + 1; 0: a note alone) */
     uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode, and its form (CH_*) */
+    uint8_t mute_mode;           /* MUTE mode (the 2nd black key): the tracks' buttons mute, held 1 s solo (build 35) */
+    uint8_t tb_down, tb_long;    /* .. a track's button held (a bit each), held long enough: soloed */
+    uint32_t tb_t0[NTRACK];
     uint8_t step_key;            /* SHIFT: the key of the step held (KEY_NONE none) */
     uint8_t step_new, step_edit;     /* .. its note put there as it was pressed; changed since */
     uint32_t step_t0;            /* .. pressed at */
@@ -275,8 +282,8 @@ static uint32_t key_note(uint32_t k, int32_t oct)
 static int step_view(void);
 static int key_plays(uint32_t k)
 {
-    return k != KEY_SHIFT && k != KEY_EDIT && k != KEY_STEP && (k != KEY_GEN || step_view()) &&   /* (out of the step
-                                                                         * view the 1st black key is CHORD mode's) */
+    return k != KEY_SHIFT && k != KEY_EDIT && k != KEY_STEP && ((k != KEY_GEN && k != KEY_TRK) || step_view()) &&
+           /* (out of the step view the 1st black key is CHORD mode's, the 2nd MUTE mode's) */
            (ui.scale == 0 || white_ix(k) >= 0);
 }
 /* a note in the scale (and the root); the next one up or down from n, d times */
@@ -917,7 +924,40 @@ static void ui_input(void)
         seq_smask = (uint16_t)m;
         seq_sroot = ui.root;
     }
-    for (t = 0; t < NTRACK; t++)
+    if (ui.mute_mode && (ui.page != PG_MAIN || step_view()))
+        ui.mute_mode = 0;                            /* (MUTE mode: the track's view only) */
+    for (t = 0; ui.mute_mode && t < NTRACK; t++) {   /* MUTE mode: a track's button let go soon, muted or not; held
+                                                      * 1 s, soloed (every other muted) */
+        uint32_t b = 1u << t;
+        if (btn_bit(press, TRACK_BTN[t])) {
+            ui.tb_down |= (uint8_t)b;
+            ui.tb_long &= (uint8_t)~b;
+            ui.tb_t0[t] = fm1_ms;
+        } else if ((ui.tb_down & b) && !btn_bit(fm1_in.buttons, TRACK_BTN[t])) {
+            char m[10] = "MUTE  ";
+            ui.tb_down &= (uint8_t)~b;
+            if (!(ui.tb_long & b)) {
+                trk_mute[t] = (uint8_t)!trk_mute[t];
+                if (!trk_mute[t])
+                    str_cpy(m, "PLAY  ", 7);
+                m[5] = (char)('1' + t);
+                say(m, 900);
+                prj_dirty = 1;
+                ui.force = 1;
+            }
+        } else if ((ui.tb_down & b) && !(ui.tb_long & b) && (uint32_t)(fm1_ms - ui.tb_t0[t]) >= 1000u) {
+            char m[10] = "SOLO  ";
+            uint32_t j;
+            ui.tb_long |= (uint8_t)b;
+            for (j = 0; j < NTRACK; j++)
+                trk_mute[j] = (uint8_t)(j != t);
+            m[5] = (char)('1' + t);
+            say(m, 1200);
+            prj_dirty = 1;
+            ui.force = 1;
+        }
+    }
+    for (t = 0; !ui.mute_mode && t < NTRACK; t++)
         if (btn_bit(press, TRACK_BTN[t])) {
             ui.sel = (uint8_t)t;
             if (ui.page == PG_TEMPO || pg_any() || (ui.page == PG_FXP && !sh))   /* (the effects' pages: back to the
@@ -1359,6 +1399,14 @@ static void ui_input(void)
             ui.force = 1;
             continue;
         }
+        if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_TRK && ui.page == PG_MAIN) {   /* MUTE mode on or
+                                                                         * off (the mutes stay as they are) */
+            ui.mute_mode = (uint8_t)!ui.mute_mode;
+            ui.tb_down = ui.tb_long = 0;
+            say(ui.mute_mode ? "MUTE MODE" : "MUTE OFF", 1000);
+            ui.force = 1;
+            continue;
+        }
         if (((ch & keys) >> k & 1u) && step_view() && k == KEY_TRK) {   /* the TRACK page, up or down */
             ui.page = ui.page == PG_TRK ? PG_MAIN : PG_TRK;
             ui.force = 1;
@@ -1459,6 +1507,11 @@ static void ui_leds(void)
 {
     uint32_t t, k;
     for (t = 0; t < NTRACK; t++) {
+        if (ui.mute_mode) {                          /* (MUTE mode: playing lit, muted dim) */
+            fm1_led_key(PANEL_BTN[TRACK_BTN[t]], !trk_mute[t]);
+            led_dim_key(PANEL_BTN[TRACK_BTN[t]], trk_mute[t]);
+            continue;
+        }
         fm1_led_key(PANEL_BTN[TRACK_BTN[t]], t == ui.sel);
         led_dim_key(PANEL_BTN[TRACK_BTN[t]], track_sounding(t));
     }
@@ -1484,6 +1537,11 @@ static void ui_leds(void)
             fm1_led_key(14u + k, white_ix(k) == pat_clip_from || (seq_pend == 1u && white_ix(k) == seq_pend_k)
                                      ? (fm1_ms / 250u) & 1u   /* (the one copied, the one waiting to play: blink) */
                                      : white_ix(k) == (int32_t)pat_cur && seq_pend != 1u);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (!step_view() && k == KEY_TRK && ui.page == PG_MAIN) {   /* (the MUTE key: lit while on, dim off) */
+            fm1_led_key(14u + k, ui.mute_mode);
             led_dim_key(14u + k, 1);
             continue;
         }
@@ -1553,7 +1611,7 @@ static void draw_number(void)
 {
     char d[2] = {(char)('1' + ui.sel), 0};
     CV_AREA(0, BAND_A, 240, BAND_B - BAND_A, C_BLACK) {
-        cv_text_c(3, &FONT_XL, d, TRACK_COL[ui.sel]);
+        cv_text_c(3, &FONT_XL, d, trk_mute[ui.sel] ? RGB(80, 80, 80) : TRACK_COL[ui.sel]);   /* (muted: dark grey) */
         {   /* top left: the pattern playing (P3; orange with changes not saved); one waiting to play: it and the one
              * playing in turn */
             char pn[8] = "P";
@@ -2066,6 +2124,10 @@ static void ui_draw(void)
         c = cp;
         msg = (int)((fm1_ms / 400u) & 1u);
     }
+    if (ui.mute_mode && !msg) {                      /* (MUTE mode: said in the band while it is on) */
+        c = "MUTE MODE";
+        msg = 1;
+    }
     int32_t px;
     if (draw_flash())
         return;
@@ -2128,7 +2190,8 @@ static void ui_draw(void)
         int32_t pk = pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec +
                      (seq_pend == 1u ? 1024 + (int32_t)((fm1_ms / 300u) & 1u) * 2048 : 0) +
                      (ui.oct[ui.sel] + 3) * 4096 +
-                     (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD ? (ui.chord_form[ui.sel] + 1) * 32768 : 0);   /* (the
+                     (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD ? (ui.chord_form[ui.sel] + 1) * 32768 : 0) +
+                     trk_mute[ui.sel] * (1 << 20);   /* (the
                                                       * octave and the chord shown: drawn again as they change) */
         if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pk) {
             ui.shown_prj = pk;

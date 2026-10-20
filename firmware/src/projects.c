@@ -53,14 +53,21 @@ typedef struct {
     uint8_t cp[NCP];             /* the master compressor (from build 24: sessions before end at snd, PRJ_LEN23) */
     uint8_t sc_src[NTRACK], sc_lvl[NTRACK];   /* each track's sidechain (from build 29: before, PRJ_LEN28) */
     uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode and form (from build 33: PRJ_LEN32) */
+    uint8_t mute[NTRACK];        /* each track muted (from build 35: before, PRJ_LEN34) */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body_t, cp)
 #define PRJ_LEN28 __builtin_offsetof(prj_body_t, sc_src)
 #define PRJ_LEN32 __builtin_offsetof(prj_body_t, chord_on)
+#define PRJ_LEN34 __builtin_offsetof(prj_body_t, mute)
+static void prj_mu0(prj_body_t *b)               /* (a session from before build 35: no track muted) */
+{
+    memset(b->mute, 0, NTRACK);
+}
 static void prj_ch0(prj_body_t *b)               /* (a session from before build 33: CHORD mode off) */
 {
     memset(b->chord_on, 0, NTRACK);
     memset(b->chord_form, 0, NTRACK);
+    prj_mu0(b);
 }
 static void prj_sc0(prj_body_t *b)               /* (a session from before build 29: no track ducked) */
 {
@@ -219,6 +226,12 @@ static int prj_read(uint32_t k, uint32_t s)
         prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
         return 0;
     }
+    if (!s && prj_head_ok(h, magic, k * 16u, PRJ_LEN34) &&
+        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN34)) {   /* (builds 33 .. 34: no mutes) */
+        prj_mu0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
+        prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
+        return 0;
+    }
     if (!prj_head_ok(h, magic, k * 16u + s, len) || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
         return -2;
     return 0;
@@ -250,7 +263,8 @@ static void prj_scan(int flash_ok)
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body17_t)) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN23) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN28) ||
-                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN32));
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN32) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN34));
     }
 }
 
@@ -566,6 +580,7 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     memcpy(b->sc_lvl, (const void *)sc_lvl, NTRACK);
     memcpy(b->chord_on, ui.chord_on, NTRACK);
     memcpy(b->chord_form, ui.chord_form, NTRACK);
+    memcpy(b->mute, (const void *)trk_mute, NTRACK);
     memcpy(b->snd, ui.snd, sizeof b->snd);
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
@@ -591,6 +606,7 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
         sc_lvl[t] = (uint8_t)(b->sc_lvl[t] & 127u);
         ui.chord_on[t] = (uint8_t)(b->chord_on[t] != 0);
         ui.chord_form[t] = (uint8_t)(b->chord_form[t] % CHF_N);
+        trk_mute[t] = (uint8_t)(b->mute[t] != 0);
     }
     ui.tempo = (int16_t)clampi(b->tempo, TEMPO_MIN, TEMPO_MAX);
     ui.root = (uint8_t)(b->root % 12u);

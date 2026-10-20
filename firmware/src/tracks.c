@@ -128,12 +128,15 @@ typedef struct {
     int32_t g, pl, pr;           /* the level and pan as the last block ended (they glide) */
     int32_t sd, sr, sc;          /* .. the sends */
     int32_t dc;                  /* the DC blocker's low-pass (x 256) */
+    int32_t mg;                  /* the mute's gain, Q15 (gliding: ~9 ms, no click; build 35) */
     uint8_t tid[NPL];            /* the track's locks from the step last played (the sends, MANGLE, the pan): ids .. */
     int16_t tv[NPL];             /* .. and values */
 } track_t;
 static track_t trk[NTRACK];
 /* each track's level (Q14) and equal-power pan (Q15), set by the main loop */
 static volatile int32_t trk_gain[NTRACK], trk_pl[NTRACK], trk_pr[NTRACK];
+static volatile uint8_t trk_mute[NTRACK];        /* each track muted (the MUTE mode's, the main loop's; build 35) */
+static const int32_t zero_blk[CTL];
 
 /* the budget (as TONITOR's): each machine's voice cost measured as it renders, so a start that would overrun the
  * block lets the quietest release tails go first (tail_victim), over ~6 ms, rather than the audio arriving late */
@@ -1369,8 +1372,9 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
             dk_struck[t] = 0;
         }
         dk_sent[t][0] = dk_sent[t][1] = dk_sent[t][2] = 0;
+        y->mg = trk_mute[t] ? 0 : Q15;           /* (silent: muted or not at once) */
         y->meter -= y->meter >> 4;
-        y->g = trk_gain[t];
+        y->g = (int32_t)(((int64_t)trk_gain[t] * y->mg) >> 15);
         y->pl = pl1;
         y->pr = pr1;
         y->sd = sd1;
@@ -1390,8 +1394,8 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
         y->dc = dc;
     }
     lim_block(&y->lim_env, &y->lim_g, buf);
-    if (dk_mask >> t & 1u)                       /* (a source: its hits followed) */
-        dk_feed(&dk[t], buf, dk_struck[t]);
+    if (dk_mask >> t & 1u)                       /* (a source: its hits followed; muted, it ducks nothing) */
+        dk_feed(&dk[t], trk_mute[t] ? zero_blk : buf, dk_struck[t] && !trk_mute[t]);
     dk_struck[t] = 0;
     {   /* this track ducked under its source's hits: by SC LEVEL (0 .. 100: up to 45 dB, near a gate) as the source's
          * level stands against its hit, coming down at ATTACK, back as the source's level falls (RELEASE) */
@@ -1411,7 +1415,8 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
         }
     }
     {   /* the level, the pan and the sends, gliding over the block */
-        int32_t g1 = trk_gain[t];
+        int32_t mg1 = y->mg + clampi((trk_mute[t] ? 0 : Q15) - y->mg, -Q15 / 12, Q15 / 12);   /* (the mute, gliding) */
+        int32_t g1 = (int32_t)(((int64_t)trk_gain[t] * mg1) >> 15);
         int32_t dg = (g1 - y->g) / CTL, dl = (pl1 - y->pl) / CTL, dr = (pr1 - y->pr) / CTL;
         int32_t dd = (sd1 - y->sd) / CTL, dv = (sr1 - y->sr) / CTL, dc = (sc1 - y->sc) / CTL;
         int32_t g = y->g, pl = y->pl, pr = y->pr, sd = y->sd, sr = y->sr, sc = y->sc;
@@ -1450,6 +1455,7 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
             })
         }
         y->g = g1;
+        y->mg = mg1;
         y->pl = pl1;
         y->pr = pr1;
         y->sd = sd1;
@@ -1671,6 +1677,7 @@ static void tracks_init(void)
     blk_last = blk_new = 0;
     for (t = 0; t < NTRACK; t++) {
         trk[t].lim_g = Q15;
+        trk[t].mg = Q15;
         memset(trk[t].tid, PL_NONE, sizeof trk[t].tid);
     }
     memset((void *)seq_lid, PL_NONE, sizeof seq_lid);
