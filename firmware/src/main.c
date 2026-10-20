@@ -358,7 +358,7 @@ static void ota_commit(const uint8_t *parm)
 #define PRJ_AREA_HI 0x000E0000u                  /* (the sessions; then the loop store's first 9 sectors) */
 #define PRJ_AREA2_LO 0x000E5000u                 /* (past the update's staging: the loop store's other 22, and the
                                                   * last session's note at 0xFC000) */
-#define PRJ_AREA2_HI 0x000FD000u
+#define PRJ_AREA2_HI 0x000FE000u                 /* (.. and GLOBAL SETUP's at 0xFD000: setup.c) */
 #define PRJ_IN(off, n) (FL_IN(off, n, PRJ_AREA_LO, PRJ_AREA_HI) || FL_IN(off, n, PRJ_AREA2_LO, PRJ_AREA2_HI))
 static int prj_flash_read(uint32_t off, void *p, uint32_t n) { return st_read(off, p, n); }
 static int prj_flash_erase(uint32_t off)
@@ -414,6 +414,7 @@ static void fm1_main(void)
     fm1_input_init();
     fm1_adc_init();
     prj_scan(flash_ok);                              /* the projects in flash */
+    setup_load();                                    /* GLOBAL SETUP (the MIDI settings) as last left */
 #if TELEMETRY
     tl_bench_run();
 #endif

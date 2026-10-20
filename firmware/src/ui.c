@@ -76,7 +76,7 @@
  *                             chosen, the page kept -- COMP's SC SOURCE and SC LEVEL are the chosen track's);
  *                             KNOB 1 .. 4 the first four of the page, or (PRESETS turned right; left back) the next
  *   SAVE                      the sessions (projects.c); held 0.8 s, the session saved -- never saved, the first
- *                             empty slot's page, SAVE NEW? (YES chosen)
+ *                             empty slot's page, SAVE NEW? (YES chosen). SHIFT + SAVE: GLOBAL SETUP (setup.c: MIDI)
  *   SELECT (knob)             the track's level; ALGORITHM (knob) its pan
  *   KNOB 1 .. 4               the track's filter FREQ and RESO, its delay and reverb sends; with SHIFT, KNOB 3 the
  *                             chorus send and KNOB 4 the overdrive. While one turns (and a second after) the whole
@@ -107,7 +107,7 @@ static const char *const DIR_NAME[NDIR] = {"FORWARD", "REVERSE", "PING-PONG", "R
 
 static const uint16_t TRACK_COL[NTRACK] = {RGB(255, 214, 0), RGB(0, 214, 255), RGB(255, 92, 210),
                                            RGB(96, 255, 96), RGB(255, 140, 0), RGB(190, 160, 255)};
-enum { PG_MAIN, PG_EDIT, PG_FXP, PG_TRK, PG_GEN, PG_TEMPO, PG_PRJ, PG_PRJD, PG_PAT };   /* (the sessions' list and page, the patterns' grid:
+enum { PG_MAIN, PG_EDIT, PG_FXP, PG_TRK, PG_GEN, PG_TEMPO, PG_PRJ, PG_PRJD, PG_PAT, PG_SET };   /* (the sessions' list and page, the patterns' grid:
                                                               * projects.c) */
 
 static struct {
@@ -171,7 +171,7 @@ static struct {
     uint8_t rec_step[NKEY], rec_tr[NKEY];   /* a key held as it was recorded: its step (0xFF none) and track .. */
     uint32_t rec_t0[NKEY];       /* .. and when it was pressed */
     uint32_t qk_t0;
-    uint8_t midi_track[128];
+    uint8_t midi_track[128];     /* each note received: the tracks playing it (a bit each; build 46) */
     uint32_t keys;
     char msg[16];
     uint32_t msg_until, home_until;
@@ -224,6 +224,14 @@ static void prj_press(int sh);
 static void prj_preset(int32_t s);
 static void prj_draw(void);
 static void prj_quick_save(void);
+static void setup_open(void);          /* (setup.c: GLOBAL SETUP) */
+static void setup_press(int sh);
+static void setup_preset(int32_t s);
+static void setup_draw(void);
+static void setup_poll(void);
+static void midi_cc_in(uint32_t t, uint32_t cc, uint32_t v);
+static void midi_poll(void);
+static void pat_switch(uint32_t k);
 static void phrase_brk_roles(void);   /* (phrase.c: BREAK's kicks, drums and drones, from the tracks' sounds) */
 static void pat_quick_save(void);
 static void pat_switch(uint32_t k);
@@ -439,6 +447,9 @@ static void par_turn(uint32_t id, uint32_t j, int32_t s)   /* a parameter of the
     if (id == PG_FLT2 && j == 6u)                    /* (another FLTR machine: its knob G within its range) */
         snd->flt[F_TYPE] = (uint8_t)(snd->fmach == FLT_LEG ? snd->flt[F_TYPE] != 0 : snd->flt[F_TYPE]);
     mark(ui.sel);
+    if (mcfg.send_cc && mcfg.out_ch[ui.sel] && id * 8u + j < MIDI_NPAR && p.hi > p.lo)   /* (SEND CC: midi.c) */
+        midi_main_send(0xB0u | (mcfg.out_ch[ui.sel] - 1u), MIDI_CC[id * 8u + j],
+                       (uint32_t)((clampi(v, p.lo, p.hi) - p.lo) * 127 + (p.hi - p.lo) / 2) / (uint32_t)(p.hi - p.lo));
 }
 static uint8_t *fx_vals(void)
 {
@@ -701,30 +712,119 @@ static void midi_take(void)
         tl_ready = 0;
     }
 #endif
-    while (mi_r != mi_w) {
-        uint32_t pkt = midi_in_q[mi_r % MQ], cin = pkt & 15u, note = (pkt >> 16) & 0x7Fu, vel = pkt >> 24 & 0x7Fu;
-#if TELEMETRY
-        uint32_t tt = (pkt >> 8 & 15u) < NTRACK ? (pkt >> 8 & 15u) : ui.sel;   /* (channel 1 .. 6: track 1 .. 6) */
-#else
-        uint32_t tt = ui.sel;
-#endif
+    while (mi_r != mi_w) {   /* (build 46: by the GLOBAL SETUP's MIDI settings, midi.c) */
+        uint32_t pkt = midi_in_q[mi_r % MQ], cin = pkt & 15u, ch = ((pkt >> 8) & 15u) + 1u, d1 = (pkt >> 16) & 0x7Fu;
+        uint32_t d2 = pkt >> 24 & 0x7Fu, m = 0, t;
         RING_PUBLISH();
         mi_r++;
-        if (cin == 9u && vel) {
-            if (ui.midi_track[note] != 0xFFu)
-                ev_post(EV_OFF, ui.midi_track[note], note, 0);
-            ui.midi_track[note] = (uint8_t)tt;
-            ui.last_note[tt] = (uint8_t)note;
-            ui.last_chf[tt] = 0;
-            ev_post(EV_ON, tt, note, vel);
-            rec_note(note, vel, NKEY, 0);
-            {
-                uint8_t n8 = (uint8_t)note;
-                loop_note(&n8, 1, vel, NKEY);
+        if (cin == 0xCu) {                       /* a program change: a pattern of the session */
+            if (mcfg.pc_in && ch == mcfg.pc_in_ch && d1 < 16u)   /* (PAT_SLOTS, projects.c) */
+                pat_switch(d1);
+            continue;
+        }
+        if (mcfg.auto_ch == ch)                  /* the tracks it plays: AUTO the chosen one, and those on it */
+            m |= 1u << ui.sel;
+        for (t = 0; t < NTRACK; t++)
+            if (mcfg.in_ch[t] == ch)
+                m |= 1u << t;
+        if (cin == 0xBu) {
+            for (t = 0; mcfg.rcv_cc && t < NTRACK; t++)
+                if (m >> t & 1u)
+                    midi_cc_in(t, d1, d2);
+            continue;
+        }
+        if (cin == 9u && d2) {
+            if (!mcfg.rcv_note)
+                continue;
+            for (t = 0; t < NTRACK; t++)
+                if ((ui.midi_track[d1] >> t) & 1u)
+                    ev_post(EV_OFF, t, d1, 0);
+            ui.midi_track[d1] = (uint8_t)m;
+            for (t = 0; t < NTRACK; t++) {
+                if (!(m >> t & 1u))
+                    continue;
+                ui.last_note[t] = (uint8_t)d1;
+                ui.last_chf[t] = 0;
+                ev_post(EV_ON, t, d1, d2);
+                if (t == ui.sel) {               /* (the chosen track's: recorded, into the steps or a loop) */
+                    uint8_t n8 = (uint8_t)d1;
+                    rec_note(d1, d2, NKEY, 0);
+                    loop_note(&n8, 1, d2, NKEY);
+                }
             }
-        } else if ((cin == 8u || cin == 9u) && ui.midi_track[note] != 0xFFu) {
-            ev_post(EV_OFF, ui.midi_track[note], note, 0);
-            ui.midi_track[note] = 0xFFu;
+        } else if (cin == 8u || cin == 9u) {
+            for (t = 0; t < NTRACK; t++)
+                if ((ui.midi_track[d1] >> t) & 1u)
+                    ev_post(EV_OFF, t, d1, 0);
+            ui.midi_track[d1] = 0;
+        }
+    }
+}
+/* a CC received for track t: its level (7), pan (10), mute (94), or a parameter of its sound (MIDI_CC) */
+static uint8_t midi_lv_sent[NTRACK], midi_pn_sent[NTRACK], midi_mu_sent[NTRACK];
+static void midi_cc_in(uint32_t t, uint32_t cc, uint32_t v)
+{
+    if (cc == CC_LEVEL) {
+        ui.level[t] = (int8_t)((v * LEVEL_MAX + 63u) / 127u);
+        level_pan_apply(t);
+        midi_lv_sent[t] = (uint8_t)ui.level[t];  /* (taken in: not sent back) */
+    } else if (cc == CC_PAN) {
+        ui.pan[t] = (int8_t)((int32_t)((v * 2u * PAN_MAX + 63u) / 127u) - PAN_MAX);
+        level_pan_apply(t);
+        midi_pn_sent[t] = (uint8_t)ui.pan[t];
+    } else if (cc == CC_MUTE) {
+        trk_mute[t] = (uint8_t)(v >= 64u);
+        midi_mu_sent[t] = trk_mute[t];
+    } else if (MIDI_PAR[cc] != 0xFFu) {
+        sound_t *s = &ui.snd[t][ui.eng[t]];
+        uint32_t id = MIDI_PAR[cc] / 8u, j = MIDI_PAR[cc] % 8u;
+        par_t p;
+        if (id < 4u && id >= pages_n(s) - 5u)    /* (a SYN page this machine has not) */
+            return;
+        par_get(s, id, j, &p);
+        if (p.kind == PK_NONE || p.hi <= p.lo)
+            return;
+        par_put(s, id, j, p.lo + (int32_t)((v * (uint32_t)(p.hi - p.lo) + 63u) / 127u));
+        if (id == PG_FLT2 && j == 6u)
+            s->flt[F_TYPE] = (uint8_t)(s->fmach == FLT_LEG ? s->flt[F_TYPE] != 0 : s->flt[F_TYPE]);
+        mark(t);
+    } else
+        return;
+    prj_dirty = 1;
+    ui.force = 1;
+}
+/* each pass: following a clock, its tempo; SEND CC, the level, pan and mutes as they change (whatever changed them) */
+static void midi_poll(void)
+{
+    static uint8_t was;
+    uint32_t t;
+    if (midi_slave()) {
+        uint32_t b = midi_ext_bpm10();
+        if (b != (uint32_t)fx_bpm10) {
+            fx_bpm10 = (int32_t)b;
+            fx_cook_all();
+        }
+        was = 1;
+    } else if (was) {
+        was = 0;
+        tempo_apply();
+    }
+    for (t = 0; t < NTRACK; t++) {
+        uint32_t ch = mcfg.out_ch[t];
+        if (midi_lv_sent[t] != (uint8_t)ui.level[t]) {
+            midi_lv_sent[t] = (uint8_t)ui.level[t];
+            if (mcfg.send_cc && ch)
+                midi_main_send(0xB0u | (ch - 1u), CC_LEVEL, (uint32_t)(ui.level[t] * 127 + LEVEL_MAX / 2) / LEVEL_MAX);
+        }
+        if (midi_pn_sent[t] != (uint8_t)ui.pan[t]) {
+            midi_pn_sent[t] = (uint8_t)ui.pan[t];
+            if (mcfg.send_cc && ch)
+                midi_main_send(0xB0u | (ch - 1u), CC_PAN, (uint32_t)((ui.pan[t] + PAN_MAX) * 127 + PAN_MAX) / (2u * PAN_MAX));
+        }
+        if (midi_mu_sent[t] != trk_mute[t]) {
+            midi_mu_sent[t] = trk_mute[t];
+            if (mcfg.send_cc && ch)
+                midi_main_send(0xB0u | (ch - 1u), CC_MUTE, trk_mute[t] ? 127u : 0u);
         }
     }
 }
@@ -929,6 +1029,8 @@ static void ui_input(void)
     int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u);
     (void)rel;
     pat_poll();                                      /* (a pattern switched as the sequencer took it in) */
+    midi_poll();                                     /* (the clock followed, the CCs out: build 46) */
+    setup_poll();
     {   /* CPU1 retired as it plays (a fault, a stall, a misread): said, once */
         static uint8_t was_on;
         if (was_on && !audio_worker_online)
@@ -1012,6 +1114,12 @@ static void ui_input(void)
     if (btn_bit(press, B_SAVE)) {
         if (ui.page == PG_PRJ || ui.page == PG_PRJD) {
             prj_press(sh);
+            ui.save_down = 0;
+        } else if (ui.page == PG_SET) {          /* GLOBAL SETUP's own (setup.c) */
+            setup_press(sh);
+            ui.save_down = 0;
+        } else if (sh) {                         /* SHIFT + SAVE: GLOBAL SETUP (build 46) */
+            setup_open();
             ui.save_down = 0;
         } else {
             ui.save_down = 1;
@@ -1150,14 +1258,17 @@ static void ui_input(void)
             ui.play_down = 0;
             if (!ui.play_long) {                     /* the sequencer (stopped: recording ends, a loop being recorded
                                                       * dropped; armed: it plays, recording) */
-                seq_run = (uint8_t)!seq_run;
+                if (!seq_run && midi_slave())    /* (following a clock: on its next pulse; build 46) */
+                    xk_go = 1;
+                else
+                    seq_run = (uint8_t)!seq_run;
                 if (!seq_run && ui.lrec)
                     loop_drop();
                 if (!seq_run && ui.rec)
                     rec_set(REC_OFF);
                 else if (seq_run && ui.rec == REC_ARMED)
                     rec_set(REC_ON);
-                say(seq_run ? "PLAY" : "STOP", 700);
+                say(seq_run || xk_go ? "PLAY" : "STOP", 700);
             }
         } else if (!ui.play_long && (uint32_t)(fm1_ms - ui.play_t0) >= 800u) {
             ui.play_long = 1;
@@ -1213,7 +1324,9 @@ static void ui_input(void)
     e_sel = enc_take(EN_SELECT);
     e_alg = enc_take(EN_ALGO);
     if (pg_any()) {
-        if (e_pre)
+        if (e_pre && ui.page == PG_SET)
+            setup_preset(e_pre);
+        else if (e_pre)
             prj_preset(e_pre);
         e_pre = e_sel = e_alg = 0;
     }
@@ -1598,7 +1711,7 @@ static void ui_leds(void)
     fm1_led_key(PANEL_BTN[B_HOME], (int32_t)(ui.home_until - fm1_ms) > 0);
     fm1_led_key(PANEL_BTN[B_SEQ], ui.page == PG_FXP);
     fm1_led_key(PANEL_BTN[B_ARP], ui.page == PG_PAT);
-    fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD);
+    fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD || ui.page == PG_SET);
     fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || ui.oct[ui.sel] < 0);
     fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || ui.oct[ui.sel] > 0);
     fm1_led_key(PANEL_BTN[B_REC], ui.rec == REC_ON || ui.lrec == 2 ||
@@ -2015,16 +2128,18 @@ static void draw_step_page(void)
 static void draw_tempo_page(void)
 {
     char n[8];
-    if (!ui.force && ui.shown_page == PG_TEMPO && ui.shown_rows[0] == ui.tempo)
+    int ext = midi_slave();                      /* (following a clock: its tempo, EXT; build 46) */
+    int32_t v = ext ? (fx_bpm10 + 5) / 10 : ui.tempo;
+    if (!ui.force && ui.shown_page == PG_TEMPO && ui.shown_rows[0] == v + ext * 1000)
         return;
-    fmt_int(n, ui.tempo);
+    fmt_int(n, v);
     CV_AREA(0, 0, 240, 60, C_BLACK)
-        cv_text_c(14, &FONT_M, "TEMPO", C_WHITE);
+        cv_text_c(14, &FONT_M, ext ? "EXT TEMPO" : "TEMPO", C_WHITE);
     CV_AREA(0, 60, 240, 150, C_BLACK)
         cv_text_c(0, &FONT_XL, n, RGB(255, 210, 120));
     CV_AREA(0, 210, 240, 30, C_BLACK)
         cv_text_c(2, &FONT_S, "BPM", C_GREY);
-    ui.shown_rows[0] = ui.tempo;
+    ui.shown_rows[0] = v + ext * 1000;
 }
 
 /* the PHRASE page (the phrase key held): the track's DENSITY and COMPLEXITY, as rows */
@@ -2260,7 +2375,10 @@ static void ui_draw(void)
         return;
     }
     if (pg_any()) {
-        prj_draw();
+        if (ui.page == PG_SET)
+            setup_draw();
+        else
+            prj_draw();
         ui.shown_page = ui.page;
         ui.force = 0;
         return;
@@ -2312,7 +2430,8 @@ static void ui_init(void)
     static const int8_t FAM0[NTRACK] = {0, 4, 8, -1, -1, -1};
     uint32_t t, e;
     memset(&ui, 0, sizeof ui);
-    memset(ui.midi_track, 0xFF, sizeof ui.midi_track);
+    memset(ui.midi_track, 0, sizeof ui.midi_track);
+    midi_cc_init();
     memset(ui.key_track, 0xFF, sizeof ui.key_track);
     ui.step_key = ui.qk = ui.sk = KEY_NONE;
     memset(ui.rec_step, 0xFF, sizeof ui.rec_step);

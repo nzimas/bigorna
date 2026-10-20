@@ -743,6 +743,9 @@ static void sysex_byte(uint8_t b)
 /* one USB-MIDI event packet: SysEx bytes to sysex_byte, channel voice messages and the clock /
  * transport realtime ones to the MIDI ring; a malformed packet (status not matching its CIN, a data
  * byte with bit 7) is ignored (after Felucca 1.0) */
+#ifndef FELUCCA_LOADER
+static void midi_rt(uint32_t st, uint32_t d);    /* (midi.c: the clock, the transport, the song position) */
+#endif
 static void midi_in_event(uint32_t pkt)
 {
     uint32_t cin = pkt & 15u, st = (pkt >> 8) & 0xFFu;
@@ -759,6 +762,10 @@ static void midi_in_event(uint32_t pkt)
 #endif
     }
     if (cin == 0xFu && (st == 0xF8u || st == 0xFAu || st == 0xFBu || st == 0xFCu)) {   /* clock, transport */
+#ifndef FELUCCA_LOADER
+        midi_rt(st, 0);                          /* (timed here, as they come: midi.c; build 46) */
+        return;
+#endif
         if (mi_w - mi_r < MQ) {
             midi_in_q[mi_w % MQ] = 0xFu | st << 8;
             RING_PUBLISH();
@@ -775,6 +782,12 @@ static void midi_in_event(uint32_t pkt)
         }
         return;
     }
+#ifndef FELUCCA_LOADER
+    if (cin == 3u && st == 0xF2u && !((pkt >> 16) & 0x80u) && !(pkt & 0x80000000u)) {   /* a song position */
+        midi_rt(st, ((pkt >> 16) & 0x7Fu) | ((pkt >> 24) & 0x7Fu) << 7);
+        return;
+    }
+#endif
     if (cin >= 8u)
         usb.rx_bad++;
 }

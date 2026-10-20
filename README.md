@@ -53,7 +53,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | REC | Records the keys into the track's steps; SHIFT + REC: the looper |
 | ARP | The patterns |
 | SEQ | The effects' pages |
-| SAVE | The sessions; held 0.8 s, the session saved |
+| SAVE | The sessions; held 0.8 s, the session saved; SHIFT + SAVE: GLOBAL SETUP (MIDI) |
 | MASTER | The output level |
 
 While a knob turns, the screen shows its value as a large dial for a second.
@@ -313,6 +313,73 @@ nothing is saved and NO ROOM FOR LOOPS shows; deleting a session, or saving one 
 
 The FM-1 starts with the last session loaded or saved (SESSION n shows for a moment). Changes not saved before it
 was switched off are not kept.
+
+## GLOBAL SETUP (SHIFT + SAVE)
+
+SHIFT + SAVE (outside the sessions' pages) opens GLOBAL SETUP: the settings of the machine rather than of a session.
+They are kept in the FM-1's flash and read at every start. PRESETS moves through a list and SAVE goes into the entry
+chosen; on a setting, SAVE moves the focus to its value, PRESETS changes it and SAVE sets it. SHIFT + SAVE leaves a
+value as it was, or goes back a level; from the top it leaves GLOBAL SETUP, as a track's button does. Changes are
+written to the flash as it is left.
+
+### MIDI
+
+MIDI goes over the USB cable, both ways (the FM-1 shows up as FM-1 Bigorna). The settings follow the Model:Cycles'
+MIDI CONFIG:
+
+| Part | Setting | Values | Start value |
+| --- | --- | --- | --- |
+| SYNC | CLK IN: follow a MIDI clock, and its START, CONTINUE and STOP | ON / OFF | OFF |
+| SYNC | CLK OUT: send a MIDI clock, and START and STOP | ON / OFF | OFF |
+| SYNC | PCH IN: a program change chooses the pattern | ON / OFF | OFF |
+| SYNC | PCH OUT: send a program change when a pattern is chosen | ON / OFF | OFF |
+| IN CHAN | TRACK 1 to 6: the channel each track listens on | OFF, 1 to 16 | 1 to 6 |
+| IN CHAN | AUTO: the channel that plays the track chosen | OFF, 1 to 16 | 16 |
+| IN CHAN | PCH: the channel program changes are taken on | 1 to 16 | 16 |
+| OUT CHAN | TRACK 1 to 6: the channel each track sends on | OFF, 1 to 16 | 1 to 6 |
+| OUT CHAN | PCH: the channel program changes are sent on | 1 to 16 | 16 |
+| RECEIVE | NOTES, CC: take notes and CCs in | ON / OFF | ON |
+| SEND | NOTES, CC: send notes and CCs out | ON / OFF | OFF |
+
+Clock in. With CLK IN on and a clock arriving, the FM-1 follows it: the tempo is the average of the last 24 pulses
+(one beat), and the sequencer is held to the pulses themselves, so it never drifts from the master and the jitter of
+the cable does not add up. START starts the sequencer from step 1 on the next pulse; CONTINUE starts it from the song
+position last received (each track where it would be by then on its clock and length, the loops too); STOP stops
+it. PLAY on the FM-1 starts on the master's next pulse. The TEMPO page (PLAY held) shows EXT TEMPO and the
+master's. If no pulse comes for half a second, the FM-1 goes back to its own tempo.
+
+Clock out. With CLK OUT on, the FM-1 sends 24 pulses a beat from its sequencer, stopped too, so a slave can lock to
+the tempo before it starts. PLAY sends a song position of 0, START and the first pulse together, as step 1 plays;
+stopping sends STOP. A pulse is placed to within one audio block (0.73 ms); USB then delivers it in its own 1 ms
+frames.
+
+Notes. A note received on a track's IN channel plays that track; on the AUTO channel, the track chosen. Notes on the
+chosen track are recorded (REC, the looper) as the keys are. With SEND NOTES on, every note a track plays (its steps,
+ratchets and MIDI FX, its loops, the keys, notes received) is sent on its OUT channel with its velocity, and its note
+off when it ends. A muted track sends nothing; stopping the sequencer sends the note offs still due.
+
+CCs. Received on a track's channel (or AUTO), and sent on its OUT channel with SEND CC as its knobs turn: the level
+is CC 7, the pan CC 10, the mute CC 94 (0 to 63 plays, 64 to 127 mutes), and each page's eight parameters (A to H,
+as the knobs show them) these CCs, whichever machine the track plays:
+
+| Page | A | B | C | D | E | F | G | H |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SYN 1 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 |
+| SYN 2 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 |
+| SYN 3 | 33 | 34 | 35 | 36 | 37 | 39 | 40 | 41 |
+| SYN 4 | 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49 |
+| FLTR 1 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 |
+| FLTR 2 | 58 | 59 | 60 | 61 | 62 | 63 | 70 | 71 |
+| AMP | 72 | 73 | 74 | 75 | 76 | 77 | 78 | 79 |
+| FX | 80 | 81 | 82 | 83 | 84 | 85 | 86 | 87 |
+| MANGLE | 88 | 89 | 90 | 91 | 92 | 93 | 95 | 102 |
+
+The CCs a keyboard or a DAW sends for other things are left out: 32, 38, 64 to 69 (pedals), 96 to 101. A value
+from 0 to 127 is spread over the parameter's whole range.
+
+Program changes 0 to 15 choose the session's patterns 1 to 16, in time as the patterns' grid does.
+
+The FM-1's 3.5 mm MIDI IN jack is not used yet.
 
 ## The screen
 

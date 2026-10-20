@@ -89,6 +89,15 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 #define MQ 64u
 static uint32_t midi_in_q[MQ];
 static volatile uint32_t mi_w, mi_r;
+/* (usb.c's MIDI out, here a record of what is sent) */
+static uint32_t host_mo[4096], host_mo_n;
+static void midi_out_event(uint32_t pkt)
+{
+    if (host_mo_n < 4096u)
+        host_mo[host_mo_n] = pkt;
+    host_mo_n++;
+}
+#include "midi.c"
 /* (the host renders on one core: CPU1's mailbox never takes a job, src/audio_worker.h) */
 static int audio_worker_online;
 static int audio_worker_submit(void (*fn)(void *), void *ctx) { (void)fn; (void)ctx; return 0; }
@@ -125,6 +134,7 @@ static uint8_t host_led[64];
 static void fm1_led_key(uint32_t id, int on) { if (id < 64u) host_led[id] = (uint8_t)!!on; }
 #include "ui.c"
 #include "projects.c"
+#include "setup.c"
 #include "phrase.c"
 
 /* the flash, emulated: NOR (erased to 0xFF, programming only clears bits) */
@@ -139,7 +149,7 @@ static int prj_flash_read(uint32_t off, void *p, uint32_t n)
  * the last session's note) */
 static int host_prj_in(uint32_t off, uint32_t n)
 {
-    return (off >= 0x97000u && off + n <= 0xE0000u) || (off >= 0xE5000u && off + n <= 0xFD000u);
+    return (off >= 0x97000u && off + n <= 0xE0000u) || (off >= 0xE5000u && off + n <= 0xFE000u);
 }
 static int prj_flash_erase(uint32_t off)
 {
@@ -2559,6 +2569,191 @@ static int cmd_projects(const char *dir)
             }
         }
         lop_clear();
+    }
+    {   /* MIDI (build 46) */
+        int32_t out[2 * CTL];
+        static const midi_cfg_t D = MIDI_CFG0;
+        uint32_t i, k, n, b, f8, last, ok, lo, hi;
+        const uint32_t BT = (uint32_t)((uint64_t)CTL * 24000000u / FS);   /* (a block, in ticks) */
+        lop_clear();
+        for (k = 0; k < NSTEP; k++) {            /* (track 1: a note on each beat; the rest empty) */
+            for (i = 0; i < NTRACK; i++)
+                seq_note[i][k] = 0;
+            seq_note[0][k] = (k % 4u) ? 0 : 60;
+            seq_vel[0][k] = 100;
+            seq_glen[0][k] = GLEN_DEF;
+            seq_cond[0][k] = CD_NONE;
+            seq_rtg[0][k] = 0;
+            seq_mut[0][k] = 0;
+            seq_mfx[0][k] = MFX_OFF;
+            seq_chf[0][k] = 0;
+            memset((void *)seq_lid[0][k], PL_NONE, NPL);
+        }
+        memset((void *)trk_mute, 0, sizeof trk_mute);
+        mcfg = D;
+        mcfg.clk_out = mcfg.send_note = 1;
+        fx_bpm10 = 1200;
+        /* clock out and transport: SPP 0 and START with the first pulse, as step 1 plays; 6 pulses a 16th, evenly */
+        host_mo_n = 0;
+        seq_run = 1;
+        mix_block(out);
+        EXPECT(host_mo_n >= 3u && host_mo[0] == (0x3u | 0xF2u << 8) && host_mo[1] == (0xFu | 0xFAu << 8) &&
+               host_mo[2] == (0xFu | 0xF8u << 8), "PLAY: SPP 0, START and the first clock, in the first block");
+        for (i = 0, f8 = 0, last = 0, ok = 1, lo = 99, hi = 0; seq_gcount < 64u; i++) {
+            uint32_t m0 = host_mo_n;
+            mix_block(out);
+            for (k = m0; k < host_mo_n && k < 4096u; k++)
+                if (host_mo[k] == (0xFu | 0xF8u << 8)) {
+                    if (f8) {
+                        lo = i - last < lo ? i - last : lo;
+                        hi = i - last > hi ? i - last : hi;
+                    }
+                    f8++;
+                    last = i;
+                }
+        }
+        EXPECT(f8 >= 64u * 6u - 1u && f8 <= 64u * 6u + 1u, "CLOCK OUT: 6 pulses a 16th (4 bars: 384)");
+        EXPECT(lo >= 28u && hi <= 29u, "CLOCK OUT at 120: a pulse every 28 or 29 blocks (20.8 ms, to the block)");
+        for (k = 0, n = 0, b = 0; k < host_mo_n && k < 4096u; k++) {   /* (the notes: on channel 1, on and off) */
+            n += host_mo[k] == (0x9u | 0x90u << 8 | 60u << 16 | 100u << 24);
+            b += host_mo[k] == (0x8u | 0x80u << 8 | 60u << 16);
+        }
+        EXPECT(n >= 16u && n <= 17u && b >= n - 1u, "SEND NOTES: each step's note on channel 1, and its off");
+        trk_mute[0] = 1;
+        host_mo_n = 0;
+        while (seq_gcount < 80u)
+            mix_block(out);
+        for (k = 0, n = 0; k < host_mo_n && k < 4096u; k++)
+            n += (host_mo[k] & 0xF0FFu) == (0x9u | 0x90u << 8);
+        EXPECT(!n, "a muted track sends no notes");
+        trk_mute[0] = 0;
+        host_mo_n = 0;
+        seq_run = 0;
+        mix_block(out);
+        EXPECT(host_mo_n >= 1u && host_mo[0] == (0xFu | 0xFCu << 8), "STOP sent as it stops");
+        /* following a clock: 127.3 BPM, with up to +-0.5 ms of jitter on each pulse; START; then 90.7 BPM; CONTINUE */
+        mcfg = D;
+        mcfg.clk_in = 1;
+        {
+            uint32_t now = 1000000u, next, pulses = 0, started = 0, maxss = 0, iv = 471328u, seed = 7;   /* (127.3 BPM) */
+            int32_t err;
+            host_ticks = now;
+            midi_rt(0xF8u, 0);                   /* (a clock before START: the tempo taken, nothing played) */
+            next = now + iv;
+            for (i = 0; i < 24u * 4u; ) {        /* (a bar of clock, then START) */
+                host_ticks += BT;
+                mix_block(out);
+                if ((int32_t)(host_ticks - next) >= 0) {
+                    midi_rt(0xF8u, 0);
+                    next += iv;
+                    i++;
+                }
+            }
+            ui_input();
+            EXPECT(!seq_run && fx_bpm10 >= 1271 && fx_bpm10 <= 1275, "CLOCK IN: its tempo taken (127.3), not playing");
+            midi_rt(0xFAu, 0);
+            for (i = 0; i < 24u * 4u * 32u; ) {  /* (32 bars) */
+                host_ticks += BT;
+                mix_block(out);
+                if ((int32_t)(host_ticks - next) >= 0) {
+                    if (started) {               /* (as pulse pulses + 1 comes: where the sequencer is, against where
+                                                  * it should be, in thousandths of a pulse) */
+                        err = (int32_t)(seq_gcount * 6000u + (uint32_t)((uint64_t)seq_acc_now * 6000u / SEQ_16TH)) -
+                              (int32_t)((pulses + 1u) * 1000u);
+                        err = err < 0 ? -err : err;
+                        if (pulses > 24u * 4u * 17u && (uint32_t)err > maxss)   /* (a bar after the change) */
+                            maxss = (uint32_t)err;
+                    }
+                    seed = seed * 1664525u + 1013904223u;
+                    host_ticks = next + (seed >> 16) % 24000u - 12000u;   /* (jitter: +-0.5 ms) */
+                    midi_rt(0xF8u, 0);
+                    host_ticks = next;
+                    next += iv;
+                    i++;
+                    if (seq_run && !started) {   /* (the pulse after the one it started on: the 2nd) */
+                        started = 1;
+                        pulses = 1;
+                    } else if (started)
+                        pulses++;
+                    if (i == 24u * 4u * 16u) {   /* (half way: 90.7) */
+                        iv = 661521u;
+                        ui_input();
+                    }
+                }
+            }
+            ui_input();
+            EXPECT(started && seq_gcount / 16u >= 31u, "START: from the next pulse, 32 bars played");
+            EXPECT(maxss <= 100u, "CLOCK IN: within a tenth of a pulse of the master, jitter and a tempo change");
+            EXPECT(fx_bpm10 >= 905 && fx_bpm10 <= 909, "CLOCK IN: the tempo follows (90.7)");
+            midi_rt(0xFCu, 0);
+            mix_block(out);
+            EXPECT(!seq_run, "STOP received: stopped");
+            midi_rt(0xF2u, 20);                  /* (song position: the 21st 16th) */
+            midi_rt(0xFBu, 0);
+            host_ticks += BT;
+            mix_block(out);
+            EXPECT(!seq_run, "CONTINUE: not before the next pulse");
+            host_ticks = next;
+            midi_rt(0xF8u, 0);
+            mix_block(out);
+            EXPECT(seq_run && seq_gcount == 20u && seq_pos[0] == 4u, "CONTINUE: from the song position (16th 21: step 5)");
+            midi_rt(0xFCu, 0);
+            mix_block(out);
+        }
+        /* in: notes by channel (AUTO: the chosen track), CCs, program changes */
+        mcfg = D;
+        mcfg.pc_in = 1;
+        ui.sel = 4;
+        midi_in_q[mi_w++ % MQ] = 0x9u | 0x92u << 8 | 62u << 16 | 90u << 24;    /* (channel 3: track 3) */
+        midi_in_q[mi_w++ % MQ] = 0x9u | 0x9Fu << 8 | 64u << 16 | 90u << 24;    /* (channel 16, AUTO: track 5) */
+        midi_in_q[mi_w++ % MQ] = 0x9u | 0x96u << 8 | 65u << 16 | 90u << 24;    /* (channel 7: none) */
+        midi_in_q[mi_w++ % MQ] = 0xBu | 0xB1u << 8 | CC_LEVEL << 16 | 0u << 24;   /* (channel 2: track 2's level off) */
+        midi_in_q[mi_w++ % MQ] = 0xBu | 0xB1u << 8 | (uint32_t)MIDI_CC[PG_FLT1 * 8u + 4u] << 16 | 127u << 24;
+        midi_in_q[mi_w++ % MQ] = 0xCu | 0xCFu << 8 | 3u << 16;                  /* (pattern 4) */
+        ui_input();
+        EXPECT(ui.midi_track[62] == 1u << 2 && ui.midi_track[64] == 1u << 4 && !ui.midi_track[65],
+               "notes in: channel 3 track 3, AUTO the chosen track, channel 7 none");
+        EXPECT(ui.level[1] == 0 && ui.snd[1][ui.eng[1]].flt[4] == 127, "CCs in: track 2's level, its filter frequency");
+        EXPECT(pj.slot[1] == 3u, "PROG CH IN: pattern 4");
+        /* out: a knob's CC on the track's channel */
+        mcfg.send_cc = 1;
+        ui.sel = 0;
+        mm_r = mm_w;
+        par_turn(PG_FLT1, 4, -10);
+        EXPECT(mm_w - mm_r == 1u && (mm_q[mm_r % MMQ] & 0xFFFFu) == (0xBu | 0xB0u << 8) &&
+               ((mm_q[mm_r % MMQ] >> 16) & 0x7Fu) == MIDI_CC[PG_FLT1 * 8u + 4u], "SEND CC: the knob's CC on channel 1");
+        mm_r = mm_w;
+        /* GLOBAL SETUP: SHIFT + SAVE; MIDI; FILTER; SEND NOTES on; left: in the flash, and read back */
+        mcfg = D;
+        ui.page = PG_MAIN;
+        btn(B_SAVE, 1);
+        EXPECT(ui.page == PG_SET && !set.lvl, "SHIFT + SAVE: GLOBAL SETUP");
+        ui_draw();
+        shot(dir, "setup");
+        btn(B_SAVE, 0);                          /* (MIDI) */
+        turn(EN_PRESET, 4);                      /* (SEND) */
+        btn(B_SAVE, 0);                          /* (NOTES) */
+        btn(B_SAVE, 0);
+        turn(EN_PRESET, 1);
+        ui_draw();
+        shot(dir, "setup_midi");
+        btn(B_SAVE, 0);
+        EXPECT(mcfg.send_note == 1u && set.lvl == 2u && set.part == 4u, "MIDI > SEND > NOTES: ON");
+        btn(B_SAVE, 1);
+        btn(B_SAVE, 1);
+        btn(B_SAVE, 1);
+        EXPECT(ui.page == PG_MAIN, "SHIFT + SAVE three times: out");
+        ui_input();                              /* (the next pass: what changed written) */
+        mcfg = D;
+        setup_load();
+        EXPECT(mcfg.send_note == 1u, "the setting kept in the flash, read back at the start");
+        mcfg = D;
+        setup_write();
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        for (k = 0; k < NSTEP; k++)
+            seq_note[0][k] = 0;
     }
     shot(dir, "pat_main");
     printf("projects: %d failures, %u erases\n", fails, host_erases);

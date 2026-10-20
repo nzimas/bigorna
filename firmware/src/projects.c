@@ -1265,6 +1265,8 @@ static void pat_switch(uint32_t k)
 {
     if (k >= PAT_SLOTS)
         return;
+    if (mcfg.pc_out)                             /* (PROG CH OUT: the pattern asked for, 0 .. 15; build 46) */
+        midi_main_send(0xC0u | (mcfg.pc_out_ch - 1u), k, 0);
     pj.slot[1] = (uint8_t)k;
     if (!seq_run) {                              /* stopped: at once (the one left kept as it was) */
         pat_stash();

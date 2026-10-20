@@ -1,5 +1,30 @@
 # Changelog
 
+## Build 46
+
+Added
+- GLOBAL SETUP: SHIFT + SAVE (outside the sessions' pages) opens the machine's own settings, kept in the flash
+  (0xFD000) and read at every start. PRESETS moves, SAVE goes in or sets, SHIFT + SAVE goes back.
+- MIDI over USB, set in GLOBAL SETUP > MIDI after the Model:Cycles' MIDI CONFIG:
+  - SYNC: CLK IN, CLK OUT (the clock with START, CONTINUE, STOP and the song position), PCH IN, PCH OUT.
+  - IN CHAN: each track's channel (1 to 6 at first), AUTO (the chosen track; 16), PCH.
+  - OUT CHAN: each track's channel (1 to 6), PCH.
+  - RECEIVE: NOTES, CC (on). SEND: NOTES, CC (off).
+- Clock in: the tempo is the average of the last 24 pulses, and the sequencer is held to the pulses as they come
+  (to where the master is, block by block, never past the next pulse before it arrives), so it does not drift.
+  START plays from step 1 on the next pulse, CONTINUE from the song position, STOP stops; PLAY starts on the next
+  pulse. The TEMPO page shows EXT TEMPO. No pulse for 0.5 s: the FM-1's own tempo again.
+- Clock out: 24 pulses a beat from the sequencer, to within an audio block (0.73 ms), stopped too; SPP 0, START
+  and the first pulse with step 1; STOP.
+- Notes out: every note a track plays, on its OUT channel with its velocity and note off; none from a muted track.
+- CCs in and out: level 7, pan 10, mute 94, and each page's eight parameters (the table in the manual).
+- Program changes 0 to 15: the session's patterns 1 to 16, in and out.
+
+Changed
+- USB MIDI notes no longer play the chosen track on every channel: a track's IN channel plays it, the AUTO
+  channel (16) the chosen track.
+- The update loader is unchanged.
+
 ## Build 45
 
 Changed

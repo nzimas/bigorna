@@ -18,6 +18,7 @@
 #define NTRACK 6
 typedef char mg_fits[MG_TRACKS == NTRACK ? 1 : -1];
 #define NVOICE 12
+typedef char midi_fits[MIDI_TRACKS == NTRACK ? 1 : -1];   /* (midi.c's) */
 static const char *const ENG_NAME[NENG] = {"4-OP", "DRUM", "WAVY", "HIVE"};
 static const char *const FLT_NAME[NFLT] = {"MULTI-MODE", "LOWPASS 4", "LEGACY", "COMB-", "COMB+", "EQUALIZER"};
 
@@ -285,6 +286,7 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
     track_t *y = &trk[t];
     uint32_t best;
     voice_t *v;
+    midi_note_out(t, note, note_vel, trk_mute[t]);   /* (out on the track's channel, SEND NOTES: midi.c) */
     if (!y->xfade && ck_buf[t][ck_use[t]].mach == ENG_FMD) {   /* an DRUM track chokes, as a drum machine's: its
                                                               * last hit faded out (~2 ms) as the next strikes,
                                                               * the tails never piling up */
@@ -343,6 +345,7 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
 static void note_off(uint32_t t, uint32_t note, uint32_t src)
 {
     uint32_t k, o = NVOICE;
+    midi_note_out(t, note, 0, 0);
     for (k = 0; k < NVOICE; k++) {               /* (the oldest held: two keys can hold the same note -- two chords
                                                   * with a note in common, legato -- and the first let go is the first
                                                   * struck, not the new chord's; build 34) */
@@ -438,6 +441,7 @@ static void events_take(void)
             note_off(e.track, e.note, SRC_KEY);
             break;
         case EV_STOP:
+            midi_track_off(e.track);
             for (k = 0; k < NVOICE; k++) {
                 voice_t *v = &vox[k];
                 if (vox_owner(v) == e.track) {
@@ -461,6 +465,7 @@ static void events_take(void)
  * main loop writes the steps and the lengths (bytes: whole as written), the ISR plays them */
 #define NSTEP 16u
 #define SEQ_16TH (FS * 15u * 10u)         /* a 16th note, in samples x the tempo x 10 */
+typedef char seq_midi16[SEQ_16TH == MIDI_16TH ? 1 : -1];   /* (midi.c's) */
 #define VEL_DEF 100u
 /* a step's length, in eighths of a step; the last, INF, held until the step plays again or the sequencer stops */
 #define NGLEN 15u
@@ -1119,9 +1124,24 @@ static int seq_wraps(uint32_t t)                 /* track t's next step begins i
 }
 static void seq_block(void)
 {
-    uint32_t t, i;
+    uint32_t t, i, adv, xm = 0;
+    midi_main_drain();                           /* (the main loop's MIDI out: CCs, program changes) */
+    if (xk_stop) {                               /* MIDI STOP, START, CONTINUE (midi.c) */
+        xk_stop = 0;
+        seq_run = 0;
+    }
+    if (xk_start) {
+        xm = xk_start;
+        xk_start = 0;
+        if (seq_run)                             /* (playing: from the start again) */
+            seq_was = 0;
+        seq_run = 1;
+    }
+    adv = midi_adv(seq_run && seq_was);          /* this block's way on: the tempo's, or the clock followed's */
     if (!seq_run) {
+        midi_clock_out(adv);
         if (seq_was) {
+            midi_stopped();
             seq_gcount = 0xFFFFFFFFu;            /* (stopped: not started -- else the looper, armed and its first
                                                   * note playing, measured from the last run's count and ended at
                                                   * once after 32 bars of it; build 44) */
@@ -1141,7 +1161,7 @@ static void seq_block(void)
                 met_step = (uint8_t)((met_step + 1u) & 15u);
                 met_tick(met_step);
             }
-            met_acc += CTL * (uint32_t)fx_bpm10;
+            met_acc += adv;
         }
         return;
     }
@@ -1163,7 +1183,26 @@ static void seq_block(void)
         for (t = 0; t < NTRACK; t++)             /* (the loops from their first steps) */
             for (i = 0; i < NLOOP; i++)
                 loops[t][i].anchor = 0;
+        if (xm == 2u && xk_spp) {                /* MIDI CONTINUE: from the song position, in 16ths -- each track
+                                                  * where it would be by then on its clock, the loops too */
+            uint32_t spp = xk_spp;
+            seq_gcount = spp - 1u;
+            seq_gstep = (uint8_t)((spp - 1u) & 15u);
+            for (t = 0; t < NTRACK; t++) {
+                uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p8 = spp * DIV_R8[seq_div[t] % NDIV], st = p8 / 8u;
+                seq_loop[t] = (uint16_t)(st / len);
+                if (p8 % 8u) {                   /* (inside a step: that one, played already; the next to come) */
+                    seq_pos[t] = (uint8_t)(st % len);
+                    seq_tacc[t] = (p8 % 8u) * SEQ_16TH;
+                } else
+                    seq_pos[t] = (uint8_t)(st ? (st - 1u) % len : 0xFFu);
+            }
+            midi_started(spp);
+        } else
+            midi_started(0);
+        adv = midi_adv(1);
     }
+    midi_clock_out(adv);
     for (t = 0; t < NTRACK; t++)                 /* the lengths run out */
         for (i = 0; i < SEQ_HOLD; i++)
             if (sq_note[t][i] && sq_left[t][i] != 0xFFFFu && !--sq_left[t][i]) {
@@ -1223,12 +1262,12 @@ static void seq_block(void)
             rt_next[t] += rt_int[t];
             rt_left[t]--;
         }
-        seq_tacc[t] += CTL * (uint32_t)fx_bpm10 * DIV_R8[seq_div[t] % NDIV];
+        seq_tacc[t] += adv * DIV_R8[seq_div[t] % NDIV];
         seq_tacc_now[t] = seq_tacc[t];
     }
     loop_kick();
     fxq_block();
-    seq_acc += CTL * (uint32_t)fx_bpm10;
+    seq_acc += adv;
     seq_acc_now = seq_acc;
 }
 
