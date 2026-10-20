@@ -1,5 +1,28 @@
 # Changelog
 
+## Build 33
+
+Added
+- CHORD mode (after TONITOR's): in the track's view, the step view off, the 1st black key turns it on or off for
+  the chosen track (lit while on, dim off). With it on, each white key plays a triad from its note, in the scale
+  chosen: TRIAD, INV 1, INV 2, SUS2, SUS4, OPEN or FOURTHS (in CHROMATIC, as semitones: a major triad and so on).
+  SHIFT and the key: the next form (and on). The form shows at the top left, under the pattern, in the track's
+  colour.
+  - A step put in (the step view) takes the chord last played on the track; REC records each chord into its step
+    (its root and form); the looper records a chord's three notes. A chord step plays its three notes, with its
+    ratchets, MUTATE (the root moved, the chord with it) and the MIDI FX's later notes.
+  - Each track's CHORD mode and form are kept with the session; chord steps with the pattern (a byte more a
+    chord step). Sessions and patterns from before load with CHORD mode off and single notes.
+
+Changed
+- A track's button on the effects' pages (CHORUS, COMP, DELAY, REVERB) goes back to the track's view. SHIFT and
+  a track's button chooses the track and keeps the page (for COMP's SC SOURCE and SC LEVEL, the chosen track's).
+- The 1st black key no longer plays a note in CHROMATIC out of the step view (it is CHORD mode's).
+
+Fixed
+- The octave at the top right (-1, +2 ..) was drawn again only when the track changed: OCT- / OCT+ now show at
+  once. (Track 1 starts an octave down, as before: -1.)
+
 ## Build 32
 
 Changed

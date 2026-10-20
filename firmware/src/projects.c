@@ -52,13 +52,21 @@ typedef struct {
     sound_t snd[NTRACK][NENG];
     uint8_t cp[NCP];             /* the master compressor (from build 24: sessions before end at snd, PRJ_LEN23) */
     uint8_t sc_src[NTRACK], sc_lvl[NTRACK];   /* each track's sidechain (from build 29: before, PRJ_LEN28) */
+    uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode and form (from build 33: PRJ_LEN32) */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body_t, cp)
 #define PRJ_LEN28 __builtin_offsetof(prj_body_t, sc_src)
+#define PRJ_LEN32 __builtin_offsetof(prj_body_t, chord_on)
+static void prj_ch0(prj_body_t *b)               /* (a session from before build 33: CHORD mode off) */
+{
+    memset(b->chord_on, 0, NTRACK);
+    memset(b->chord_form, 0, NTRACK);
+}
 static void prj_sc0(prj_body_t *b)               /* (a session from before build 29: no track ducked) */
 {
     memset(b->sc_src, 0, NTRACK);
     memset(b->sc_lvl, 64, NTRACK);
+    prj_ch0(b);
 }
 typedef struct {
     uint8_t used;                /* saved */
@@ -205,6 +213,12 @@ static int prj_read(uint32_t k, uint32_t s)
         prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
         return 0;
     }
+    if (!s && prj_head_ok(h, magic, k * 16u, PRJ_LEN32) &&
+        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN32)) {   /* (builds 29 .. 32: no CHORD mode) */
+        prj_ch0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
+        prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
+        return 0;
+    }
     if (!prj_head_ok(h, magic, k * 16u + s, len) || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
         return -2;
     return 0;
@@ -235,7 +249,8 @@ static void prj_scan(int flash_ok)
             prj_has[k] = (uint8_t)(prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body17_t)) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN23) ||
-                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN28));
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN28) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN32));
     }
 }
 
@@ -260,7 +275,8 @@ static uint32_t pat_bytes(void)
     for (t = 0; t < NTRACK; t++)
         for (i = 0; i < NSTEP; i++)
             if (seq_note[t][i])
-                n += 6u + 3u * pl_n(t, i) + (seq_mut[t][i] || seq_mcy[t][i] || seq_mfx[t][i] || seq_fcy[t][i] ? 3u : 0u);
+                n += 6u + 3u * pl_n(t, i) + (seq_mut[t][i] || seq_mcy[t][i] || seq_mfx[t][i] || seq_fcy[t][i] ? 3u : 0u) +
+                     (seq_chf[t][i] ? 1u : 0u);
     return n;
 }
 static int mod_on(const seqbuf_t *b, uint32_t t, uint32_t i)
@@ -288,12 +304,14 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
         p->seq[SEQ_DEN + t] = b->den[t];
         p->seq[SEQ_CX + t] = b->cx[t];
         for (i = 0; i < NSTEP; i++) {
-            uint32_t j, nl = pl_nb(b, t, i), at, md = (uint32_t)mod_on(b, t, i);
+            uint32_t j, nl = pl_nb(b, t, i), at, md = (uint32_t)mod_on(b, t, i), ch = b->chf[t][i] != 0;
             if (!b->note[t][i] || o + 6u > PAT_SEQ_ROOM)
                 continue;
             if (md && o + 9u > PAT_SEQ_ROOM)
                 md = 0;
-            while (nl && o + 6u + 3u * md + 3u * nl > PAT_SEQ_ROOM)
+            if (ch && o + 6u + 3u * md + 1u > PAT_SEQ_ROOM)
+                ch = 0;
+            while (nl && o + 6u + 3u * md + ch + 3u * nl > PAT_SEQ_ROOM)
                 nl--;
             p->seq[o++] = (uint8_t)(t * NSTEP + i);
             p->seq[o++] = b->note[t][i];
@@ -307,7 +325,9 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
                 p->seq[o++] = (uint8_t)(b->mcy[t][i] | b->fcy[t][i] << 4);
                 p->seq[o++] = b->mfx[t][i];
             }
-            for (j = 0; j < NPL && (p->seq[at] & 127u) < nl; j++) {
+            if (ch)                              /* (a chord: its form + 1; bit 6 of the locks' count, build 33) */
+                p->seq[o++] = b->chf[t][i];
+            for (j = 0; j < NPL && (p->seq[at] & 63u) < nl; j++) {
                 uint32_t id = b->lid[t][i][j];
                 int32_t v = b->lv[t][i][j];
                 if (id == PL_NONE)
@@ -319,6 +339,8 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
             }
             if (md)
                 p->seq[at] |= 0x80u;
+            if (ch)
+                p->seq[at] |= 0x40u;
             n++;
         }
     }
@@ -348,6 +370,7 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
     memset(b->mcy, 0, sizeof b->mcy);
     memset(b->mfx, 0, sizeof b->mfx);
     memset(b->fcy, 0, sizeof b->fcy);
+    memset(b->chf, 0, sizeof b->chf);
     for (t = 0; t < NTRACK; t++) {
         uint32_t bb = p->used ? p->seq[SEQ_LEN + t] : 0u, c = bb >> 5, v4 = p->used && p->seq[SEQ_FMT] == SEQ_V4;
         b->len[t] = (uint8_t)((bb & 31u) <= NSTEP ? bb & 31u : 0u);
@@ -359,7 +382,7 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
     if (p->used && (p->seq[SEQ_FMT] == SEQ_V3 || p->seq[SEQ_FMT] == SEQ_V4)) {
         uint32_t v4 = p->seq[SEQ_FMT] == SEQ_V4, o = v4 ? SEQ_REC4 : SEQ_REC, r;
         for (r = 0; r < p->seq[SEQ_NREC] && o + 6u <= PAT_SEQ_ROOM; r++) {
-            uint32_t id = p->seq[o], nl = p->seq[o + 5u] & 127u, md = p->seq[o + 5u] >> 7, l;
+            uint32_t id = p->seq[o], nl = p->seq[o + 5u] & 63u, md = p->seq[o + 5u] >> 7, ch = p->seq[o + 5u] >> 6 & 1u, l;
             if (id >= NTRACK * NSTEP)
                 break;
             t = id / NSTEP;
@@ -380,6 +403,10 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
                 b->fcy[t][i] = (uint8_t)(p->seq[o + 1u] >> 4);
                 b->mfx[t][i] = (uint8_t)(p->seq[o + 2u] < NMFX ? p->seq[o + 2u] : 0u);
                 o += 3u;
+            }
+            if (ch && o + 1u <= PAT_SEQ_ROOM) {  /* (a chord) */
+                b->chf[t][i] = (uint8_t)(p->seq[o] <= CHF_N ? p->seq[o] : 0u);
+                o += 1u;
             }
             for (l = 0; l < nl && o + 3u <= PAT_SEQ_ROOM; l++, o += 3u)
                 if (p->seq[o] <= PL_PAN && l < NPL) {
@@ -537,6 +564,8 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     memcpy(b->cp, fx_cp, NCP);
     memcpy(b->sc_src, (const void *)sc_src, NTRACK);
     memcpy(b->sc_lvl, (const void *)sc_lvl, NTRACK);
+    memcpy(b->chord_on, ui.chord_on, NTRACK);
+    memcpy(b->chord_form, ui.chord_form, NTRACK);
     memcpy(b->snd, ui.snd, sizeof b->snd);
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
@@ -560,6 +589,8 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     for (t = 0; t < NTRACK; t++) {
         sc_src[t] = (uint8_t)(b->sc_src[t] < NCP_SCS ? b->sc_src[t] : 0u);
         sc_lvl[t] = (uint8_t)(b->sc_lvl[t] & 127u);
+        ui.chord_on[t] = (uint8_t)(b->chord_on[t] != 0);
+        ui.chord_form[t] = (uint8_t)(b->chord_form[t] % CHF_N);
     }
     ui.tempo = (int16_t)clampi(b->tempo, TEMPO_MIN, TEMPO_MAX);
     ui.root = (uint8_t)(b->root % 12u);

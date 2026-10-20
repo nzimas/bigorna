@@ -1568,12 +1568,92 @@ static int cmd_projects(const char *dir)
         ui_input();
         EXPECT(ui.page == PG_FXP && ui.fx_pg == 1u && ui.half == 1u && ui.eng[ui.sel] == k,
                "the effects: OCT the next, PRESETS the half");
-        btn(B_GLO, 0);
-        EXPECT(ui.page == PG_FXP && ui.sel == 5u, "a track's button on the effects' pages: the track chosen, the page kept");
+        btn(B_SEL, 1);
+        EXPECT(ui.page == PG_FXP && ui.sel == 1u, "SHIFT and a track's button on the effects' pages: the track chosen, "
+                                                   "the page kept");
         ui_draw();
         shot(dir, "fx_comp_track");
-        while (ui.page == PG_FXP)
-            btn(B_SEQ, 0);
+        btn(B_GLO, 0);
+        EXPECT(ui.page == PG_MAIN && ui.sel == 5u, "a track's button on the effects' pages: back to the track's view");
+        {   /* the octave at the top right: drawn again as OCT- / OCT+ change it */
+            int32_t o0 = ui.oct[ui.sel];
+            ui_draw();
+            btn(B_OCTUP, 0);
+            ui_draw();
+            EXPECT(ui.oct[ui.sel] == o0 + 1 && ui.shown_prj == (int32_t)(pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec) +
+                   (ui.oct[ui.sel] + 3) * 4096 + (ui.chord_on[ui.sel] ? (ui.chord_form[ui.sel] + 1) * 32768 : 0),
+                   "the octave shown follows OCT+");
+            btn(B_OCTDN, 0);
+        }
+        {   /* CHORD mode: the 1st black key (the track's view, the step view off) on or off, lit while on; a white key
+             * its chord (three voices); SHIFT and it, the next form; a step put in after a chord: the chord; kept with
+             * the pattern and the session */
+            int32_t out[2 * CTL];
+            uint32_t kw = 0, i, ng = 0, t = ui.sel, si;
+            pat_t pp;
+            prj_body_t bb;
+            while (white_ix(kw) != 0)
+                kw++;
+            ui_input();
+            ui.chord_on[t] = 0;
+            ui.chord_form[t] = 0;
+            for (i = 0; i < 8u; i++)
+                mix_block(out);
+            tap(KEY_GEN);
+            ui_leds();
+            EXPECT(ui.chord_on[t] && host_led[14u + KEY_GEN], "the 1st black key: CHORD mode on, lit");
+            fm1_in.notes |= 1u << kw;
+            ui_input();
+            for (i = 0; i < 4u; i++)
+                mix_block(out);
+            for (i = 0; i < NVOICE; i++)
+                ng += vox[i].sounding && vox[i].gate && vox[i].track == t;
+            EXPECT(ng == 3u && ui.last_chf[t] == 1u, "a white key in CHORD mode: its triad, three voices");
+            fm1_in.notes &= ~(1u << kw);
+            ui_input();
+            for (i = 0; i < 4u; i++)
+                mix_block(out);
+            for (i = 0, ng = 0; i < NVOICE; i++)
+                ng += vox[i].gate && vox[i].track == t;
+            EXPECT(ng == 0u, "the key let go: the chord's three let go");
+            fm1_in.notes |= 1u << KEY_SHIFT;
+            tap(KEY_GEN);
+            fm1_in.notes &= ~(1u << KEY_SHIFT);
+            ui_input();
+            EXPECT(ui.chord_on[t] && ui.chord_form[t] == 1u, "SHIFT and the 1st black key: the next form");
+            ui_draw();
+            shot(dir, "chord_main");
+            tap(kw);                             /* (an INV 1 played: what a step is given) */
+            tap(KEY_STEP);
+            for (si = 0; seq_note[t][si] && si < NSTEP; si++)
+                ;
+            {
+                uint32_t ks = 0;
+                while (white_ix(ks) != (int32_t)si)
+                    ks++;
+                fm1_in.notes |= 1u << ks;
+                ui_input();
+                fm1_in.notes &= ~(1u << ks);
+                fm1_ms += 1000;
+                ui_input();
+            }
+            EXPECT(si < NSTEP && seq_note[t][si] && seq_chf[t][si] == 2u, "a step put in after a chord: the chord (INV 1)");
+            tap(KEY_STEP);
+            pat_take(&pp);
+            seq_chf[t][si] = 0;
+            pat_store[15] = pp;
+            pat_give(15);
+            EXPECT(seq_chf[t][si] == 2u, "a chord step kept with the pattern");
+            prj_take(&bb);
+            ui.chord_on[t] = 0;
+            ui.chord_form[t] = 0;
+            prj_give(&bb);
+            EXPECT(ui.chord_on[t] && ui.chord_form[t] == 1u, "CHORD mode kept with the session");
+            tap(KEY_GEN);
+            EXPECT(!ui.chord_on[t], "the 1st black key again: CHORD mode off");
+            seq_note[t][si] = 0;
+            seq_chf[t][si] = 0;
+        }
         {   /* MANGLE: SLICE gates the track in time; DESTROY breaks its samples; off, the track as it was */
             int32_t out[2 * CTL];
             uint32_t i, kind;

@@ -500,6 +500,7 @@ static void phrase_new(uint32_t t)
         seq_rtg[t][i] = 0;
         seq_mut[t][i] = 0;
         seq_mcy[t][i] = seq_mfx[t][i] = seq_fcy[t][i] = 0;
+        seq_chf[t][i] = 0;                       /* (the phrase's notes: single) */
         pl_clear(t, i);
     }
     switch (role) {

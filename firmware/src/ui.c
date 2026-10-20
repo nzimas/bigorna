@@ -8,6 +8,11 @@
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
+ *   the 1st black key         (the track's view, the step view off) CHORD mode on or off for the track (lit while
+ *                             on, dim off): each white key then plays a triad from its note, in the scale (after
+ *                             TONITOR's: TRIAD, INV 1, INV 2, SUS2, SUS4, OPEN, FOURTHS; in CHROMATIC as semitones);
+ *                             SHIFT and it, the next form (and on). The form shows at the top left. A step put in
+ *                             takes the chord last played; REC records chords into the steps, the looper their notes
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
  *                             16 steps: a key on an empty step puts the track's last note played there; a key on a
@@ -59,7 +64,8 @@
  *                             back) its E .. H; OCT- / OCT+ the page before / after
  *   ARP                       the patterns (projects.c)
  *   SEQ                       the effects' pages: CHORUS, COMP (the master compressor), DELAY, REVERB in turn, then
- *                             back (OCT- / OCT+ too);
+ *                             back (OCT- / OCT+ too; a track's button: back to its view; SHIFT and it, the track
+ *                             chosen, the page kept -- COMP's SC SOURCE and SC LEVEL are the chosen track's);
  *                             KNOB 1 .. 4 the first four of the page, or (PRESETS turned right; left back) the next
  *   SELECT (knob)             the track's level; ALGORITHM (knob) its pan
  *   KNOB 1 .. 4               the track's filter FREQ and RESO, its delay and reverb sends; with SHIFT, KNOB 3 the
@@ -106,7 +112,10 @@ static struct {
     sound_t snd[NTRACK][NENG];
     uint8_t dirty[NTRACK];       /* the sound changed: to be published */
     uint8_t key_track[NKEY], key_note[NKEY];
+    uint8_t key_cn[NKEY][3];     /* a key down: the notes it sounds (its chord's three; a note: it alone) */
     uint8_t last_note[NTRACK];   /* the note last played on each track (0: none yet): what a step is given */
+    uint8_t last_chf[NTRACK];    /* .. and its chord (form + 1; 0: a note alone) */
+    uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode, and its form (CH_*) */
     uint8_t step_key;            /* SHIFT: the key of the step held (KEY_NONE none) */
     uint8_t step_new, step_edit;     /* .. its note put there as it was pressed; changed since */
     uint32_t step_t0;            /* .. pressed at */
@@ -122,11 +131,12 @@ static struct {
     uint8_t sk, sk_long;         /* SHIFT and a step key held (KEY_NONE none): since sk_t0; held 0.8 s */
     uint32_t sk_t0;
     struct {                     /* a step copied (SHIFT + a step held): from where, and all it held */
-        uint8_t on, t, i, note, vel, glen, cond, rtg, lid[NPL], mcy, mfx, fcy;
+        uint8_t on, t, i, note, vel, glen, cond, rtg, lid[NPL], mcy, mfx, fcy, chf;
         int8_t mut;
         int16_t lv[NPL];
     } sclip;
     uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
+    uint8_t step_hn[3];          /* .. the notes (its chord's) */
     uint8_t qk, qk_long;         /* the PATTERNS grid: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
     uint8_t rec;                 /* REC_* */
     uint8_t click;               /* the metronome while recording */
@@ -139,6 +149,7 @@ static struct {
     uint8_t lv_k, lv_long;       /* the loops shown: the white key held, held 0.8 s */
     uint32_t lv_t0;
     uint16_t lk_ev[NKEY];        /* a key held as the looper recorded it: its note in the loop (0xFFFF none) .. */
+    uint8_t lk_n[NKEY];          /* .. how many (a chord: three, one after the other) */
     uint32_t lk_t0[NKEY];        /* .. and when it was pressed */
     uint8_t rec_step[NKEY], rec_tr[NKEY];   /* a key held as it was recorded: its step (0xFF none) and track .. */
     uint32_t rec_t0[NKEY];       /* .. and when it was pressed */
@@ -170,7 +181,7 @@ static struct {
     uint8_t shown_step;          /* (the EDIT page: the step held it showed, 0xFF none) */
     int8_t shown_touch;
     uint8_t shown_page, shown_half, shown_sub;
-    int16_t shown_prj;           /* (the pattern shown at the top left, and its changes) */
+    int32_t shown_prj;           /* (the pattern shown at the top left, its changes, the octave and chord) */
     uint32_t meter_at;
     uint8_t force;
 } ui;
@@ -261,9 +272,12 @@ static uint32_t key_note(uint32_t k, int32_t oct)
     q = w >= 0 ? w / n : -((n - 1 - w) / n);
     return (uint32_t)clampi(SCALE_BASE + ui.root + 12 * oct + 12 * q + SCALE_STEP[ui.scale][w - q * n], 12, 120);
 }
+static int step_view(void);
 static int key_plays(uint32_t k)
 {
-    return k != KEY_SHIFT && k != KEY_EDIT && k != KEY_STEP && (ui.scale == 0 || white_ix(k) >= 0);
+    return k != KEY_SHIFT && k != KEY_EDIT && k != KEY_STEP && (k != KEY_GEN || step_view()) &&   /* (out of the step
+                                                                         * view the 1st black key is CHORD mode's) */
+           (ui.scale == 0 || white_ix(k) >= 0);
 }
 /* a note in the scale (and the root); the next one up or down from n, d times */
 static int in_scale(int32_t n)
@@ -506,10 +520,10 @@ static void loop_drop(void)                      /* the loop being recorded, dro
     rec_set(ui.rec);
 }
 /* a note played with the looper armed or recording (k: its key, NKEY none) */
-static void loop_note(uint32_t note, uint32_t vel, uint32_t k)
+static void loop_note(const uint8_t *nn, uint32_t cnt, uint32_t vel, uint32_t k)   /* (a chord: its three) */
 {
     loop_t *p = &loops[ui.lt][ui.ll];
-    uint32_t q;
+    uint32_t q, j;
     if (!ui.lrec || ui.sel != ui.lt)
         return;
     if (!seq_run) {                              /* (stopped: the sequencer starts on it) */
@@ -522,22 +536,26 @@ static void loop_note(uint32_t note, uint32_t vel, uint32_t k)
         ui.lrec = 2;
         ui.force = 1;
     }
-    if (q - ui.lstart >= LOOP_MAX || p->n >= LOOP_EV)
+    if (q - ui.lstart >= LOOP_MAX || p->n + cnt > LOOP_EV)
         return;
-    p->ev[p->n].step = (uint16_t)(q - ui.lstart);
-    p->ev[p->n].len8 = 4;
-    p->ev[p->n].note = (uint8_t)note;
-    p->ev[p->n].vel = (uint8_t)clampi((int32_t)vel, 1, 127);
     if (k < NKEY) {
         ui.lk_ev[k] = p->n;
+        ui.lk_n[k] = (uint8_t)cnt;
         ui.lk_t0[k] = fm1_ms;
     }
-    p->n++;
+    for (j = 0; j < cnt; j++) {
+        p->ev[p->n].step = (uint16_t)(q - ui.lstart);
+        p->ev[p->n].len8 = 4;
+        p->ev[p->n].note = nn[j];
+        p->ev[p->n].vel = (uint8_t)clampi((int32_t)vel, 1, 127);
+        p->n++;
+    }
 }
-static void loop_release(uint32_t k)             /* a key the looper recorded let go: its note's length */
+static void loop_release(uint32_t k)             /* a key the looper recorded let go: its notes' length */
 {
-    if (ui.lrec == 2 && ui.lk_ev[k] < loops[ui.lt][ui.ll].n)
-        loops[ui.lt][ui.ll].ev[ui.lk_ev[k]].len8 = (uint16_t)loop_len8(fm1_ms - ui.lk_t0[k]);
+    uint32_t j;
+    for (j = 0; ui.lrec == 2 && j < ui.lk_n[k] && ui.lk_ev[k] + j < loops[ui.lt][ui.ll].n; j++)
+        loops[ui.lt][ui.ll].ev[ui.lk_ev[k] + j].len8 = (uint16_t)loop_len8(fm1_ms - ui.lk_t0[k]);
     ui.lk_ev[k] = 0xFFFF;
 }
 /* REC: the loop ends at the nearest step and plays from there (armed, nothing played: not armed) */
@@ -585,7 +603,7 @@ static uint32_t loops_n(uint32_t t)
 }
 /* a note played while recording (k: its key, NKEY none): into the chosen track's nearest step; the step the
  * sequencer comes to next is not played that once (the key has) */
-static void rec_note(uint32_t note, uint32_t vel, uint32_t k)
+static void rec_note(uint32_t note, uint32_t vel, uint32_t k, uint32_t f1)   /* (f1: a chord's form + 1, or 0) */
 {
     uint32_t t = ui.sel, i;
     if (ui.rec == REC_ARMED) {                   /* the first note: the sequencer starts on it, step 1 */
@@ -614,6 +632,7 @@ static void rec_note(uint32_t note, uint32_t vel, uint32_t k)
     seq_mut[t][i] = 0;
     seq_mcy[t][i] = seq_mfx[t][i] = seq_fcy[t][i] = 0;
     pl_clear(t, i);
+    seq_chf[t][i] = (uint8_t)f1;
     seq_note[t][i] = (uint8_t)note;
     pat_dirty = 1;
     if (k < NKEY) {
@@ -671,14 +690,28 @@ static void midi_take(void)
                 ev_post(EV_OFF, ui.midi_track[note], note, 0);
             ui.midi_track[note] = (uint8_t)tt;
             ui.last_note[tt] = (uint8_t)note;
+            ui.last_chf[tt] = 0;
             ev_post(EV_ON, tt, note, vel);
-            rec_note(note, vel, NKEY);
-            loop_note(note, vel, NKEY);
+            rec_note(note, vel, NKEY, 0);
+            {
+                uint8_t n8 = (uint8_t)note;
+                loop_note(&n8, 1, vel, NKEY);
+            }
         } else if ((cin == 8u || cin == 9u) && ui.midi_track[note] != 0xFFu) {
             ev_post(EV_OFF, ui.midi_track[note], note, 0);
             ui.midi_track[note] = 0xFFu;
         }
     }
+}
+
+/* a key let go: the notes it sounds (a chord: its three) */
+static void key_off(uint32_t k)
+{
+    uint32_t j;
+    for (j = 0; j < 3u; j++)
+        if (ui.key_cn[k][j])
+            ev_post(EV_OFF, ui.key_track[k], ui.key_cn[k][j], 0);
+    ui.key_cn[k][0] = ui.key_cn[k][1] = ui.key_cn[k][2] = 0;
 }
 
 /* SHIFT and a white key: step i of the chosen track. Pressed on an empty step, the track's last note put there; let go
@@ -694,13 +727,25 @@ static void step_say(uint32_t i, uint32_t n)
         str_cpy(m + str_len(m), "OFF", 4);
     say(m, 1500);
 }
-static void step_hear(uint32_t n)
+static void step_hear(uint32_t n)                /* (the step held: its note, or its chord) */
 {
+    uint32_t j;
     if (ui.step_heard)
-        ev_post(EV_OFF, ui.sel, ui.step_heard, 0);
+        for (j = 0; j < 3u; j++)
+            if (ui.step_hn[j])
+                ev_post(EV_OFF, ui.sel, ui.step_hn[j], 0);
     ui.step_heard = (uint8_t)n;
-    if (n)
-        ev_post(EV_ON, ui.sel, n, seq_vel[ui.sel][white_ix(ui.step_key)]);
+    ui.step_hn[0] = ui.step_hn[1] = ui.step_hn[2] = 0;
+    if (n) {
+        uint32_t i = (uint32_t)white_ix(ui.step_key), f1 = seq_chf[ui.sel][i];
+        int32_t c[3] = {(int32_t)n, 0, 0};
+        if (f1)
+            chord_of((int32_t)n, f1 - 1u, c);
+        for (j = 0; j < (f1 ? 3u : 1u); j++) {
+            ui.step_hn[j] = (uint8_t)c[j];
+            ev_post(EV_ON, ui.sel, (uint32_t)c[j], seq_vel[ui.sel][i]);
+        }
+    }
 }
 static void step_down(uint32_t k)
 {
@@ -717,6 +762,7 @@ static void step_down(uint32_t k)
         seq_rtg[ui.sel][i] = 0;
         seq_mut[ui.sel][i] = 0;
         seq_mcy[ui.sel][i] = seq_mfx[ui.sel][i] = seq_fcy[ui.sel][i] = 0;
+        seq_chf[ui.sel][i] = ui.last_note[ui.sel] ? ui.last_chf[ui.sel] : 0u;   /* (the chord last played, too) */
         seq_note[ui.sel][i] = (uint8_t)n;
         pat_dirty = 1;
     }
@@ -816,6 +862,7 @@ static void step_copy_hold(uint32_t i)
         seq_mcy[t][i] = ui.sclip.mcy;
         seq_mfx[t][i] = ui.sclip.mfx;
         seq_fcy[t][i] = ui.sclip.fcy;
+        seq_chf[t][i] = ui.sclip.chf;
         pl_clear(t, i);
         for (j = 0; j < NPL; j++)
             if (ui.sclip.lid[j] != PL_NONE)
@@ -841,6 +888,7 @@ static void step_copy_hold(uint32_t i)
     ui.sclip.mcy = seq_mcy[t][i];
     ui.sclip.mfx = seq_mfx[t][i];
     ui.sclip.fcy = seq_fcy[t][i];
+    ui.sclip.chf = seq_chf[t][i];
     for (j = 0; j < NPL; j++) {
         ui.sclip.lid[j] = seq_lid[t][i][j];
         ui.sclip.lv[j] = seq_lv[t][i][j];
@@ -866,8 +914,8 @@ static void ui_input(void)
     for (t = 0; t < NTRACK; t++)
         if (btn_bit(press, TRACK_BTN[t])) {
             ui.sel = (uint8_t)t;
-            if (ui.page == PG_TEMPO || pg_any())    /* (the effects' pages stay: COMP's sidechain is the chosen
-                                                      * track's) */
+            if (ui.page == PG_TEMPO || pg_any() || (ui.page == PG_FXP && !sh))   /* (the effects' pages: back to the
+                                                      * track; SHIFT: they stay, COMP's sidechain the chosen track's) */
                 ui.page = PG_MAIN;
             if (ui.page == PG_EDIT && ui.edit_pg >= pages_n(cur()))
                 ui.edit_pg = 0;
@@ -1222,7 +1270,7 @@ static void ui_input(void)
                                                       * (projects.c); SHIFT and held, emptied */
         for (k = 0; k < NKEY; k++) {
             if (((ch & ~keys) >> k & 1u) && ui.key_track[k] != KEY_NONE) {   /* (a note held from before: let go) */
-                ev_post(EV_OFF, ui.key_track[k], ui.key_note[k], 0);
+                key_off(k);
                 ui.key_track[k] = KEY_NONE;
             }
             if (((ch & keys) >> k & 1u) && white_ix(k) >= 0 && ui.qk == KEY_NONE) {
@@ -1288,6 +1336,21 @@ static void ui_input(void)
         ui.force = 1;
     }
     for (k = 0; ch && k < NKEY; k++) {
+        if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_GEN && ui.page == PG_MAIN) {   /* CHORD mode on or
+                                                                         * off; SHIFT: the next form (and on) */
+            if (sh) {
+                if (ui.chord_on[ui.sel])
+                    ui.chord_form[ui.sel] = (uint8_t)((ui.chord_form[ui.sel] + 1u) % CHF_N);
+                ui.chord_on[ui.sel] = 1;
+                say(CH_NAME[ui.chord_form[ui.sel]], 1200);
+            } else {
+                ui.chord_on[ui.sel] = (uint8_t)!ui.chord_on[ui.sel];
+                say(ui.chord_on[ui.sel] ? CH_NAME[ui.chord_form[ui.sel]] : "CHORDS OFF", 1200);
+            }
+            prj_dirty = 1;
+            ui.force = 1;
+            continue;
+        }
         if (((ch & keys) >> k & 1u) && step_view() && k == KEY_TRK) {   /* the TRACK page, up or down */
             ui.page = ui.page == PG_TRK ? PG_MAIN : PG_TRK;
             ui.force = 1;
@@ -1338,16 +1401,27 @@ static void ui_input(void)
                     step_down(k);
                 continue;
             }
-            ui.key_track[k] = ui.sel;
-            ui.key_note[k] = (uint8_t)note;
-            ui.last_note[ui.sel] = (uint8_t)note;
-            ev_post(EV_ON, ui.sel, note, 127);
-            rec_note(note, 127, k);
-            loop_note(note, 127, k);
+            {   /* the note, or with CHORD mode on the track its chord (the form chosen), from the key's note */
+                uint32_t f1 = ui.chord_on[ui.sel] ? ui.chord_form[ui.sel] + 1u : 0u, j, nn = f1 ? 3u : 1u;
+                int32_t c[3] = {(int32_t)note, 0, 0};
+                if (f1)
+                    chord_of((int32_t)note, f1 - 1u, c);
+                ui.key_track[k] = ui.sel;
+                ui.key_note[k] = (uint8_t)note;
+                ui.last_note[ui.sel] = (uint8_t)note;
+                ui.last_chf[ui.sel] = (uint8_t)f1;
+                ui.key_cn[k][0] = ui.key_cn[k][1] = ui.key_cn[k][2] = 0;
+                for (j = 0; j < nn; j++) {
+                    ui.key_cn[k][j] = (uint8_t)c[j];
+                    ev_post(EV_ON, ui.sel, (uint32_t)c[j], 127);
+                }
+                rec_note(note, 127, k, f1);      /* (a step holds the chord as its root and form) */
+                loop_note(ui.key_cn[k], nn, 127, k);   /* (a loop: its notes) */
+            }
         } else if (k == ui.step_key)
             step_up();
         else if (ui.key_track[k] != KEY_NONE) {
-            ev_post(EV_OFF, ui.key_track[k], ui.key_note[k], 0);
+            key_off(k);
             ui.key_track[k] = KEY_NONE;
             if (ui.rec_step[k] != 0xFFu)
                 rec_release(k);
@@ -1401,6 +1475,11 @@ static void ui_leds(void)
             fm1_led_key(14u + k, white_ix(k) == pat_clip_from || (seq_pend == 1u && white_ix(k) == seq_pend_k)
                                      ? (fm1_ms / 250u) & 1u   /* (the one copied, the one waiting to play: blink) */
                                      : white_ix(k) == (int32_t)pat_cur && seq_pend != 1u);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (!step_view() && k == KEY_GEN && ui.page == PG_MAIN) {   /* (the CHORD key: lit while on, dim off) */
+            fm1_led_key(14u + k, ui.chord_on[ui.sel]);
             led_dim_key(14u + k, 1);
             continue;
         }
@@ -1470,6 +1549,8 @@ static void draw_number(void)
             char pn[8] = "P";
             fmt_int(pn + 1, (seq_pend == 1u && (fm1_ms / 300u) & 1u ? seq_pend_k : pat_cur) + 1);
             cv_text(4, 2, &FONT_S, pn, pat_dirty ? RGB(255, 140, 0) : C_WHITE);
+            if (ui.chord_on[ui.sel])                 /* (CHORD mode: its form, left, under the pattern) */
+                cv_text(4, 6 + FONT_S.h, &FONT_S, CH_ABBR[ui.chord_form[ui.sel] % CHF_N], TRACK_COL[ui.sel]);
             if (ui.rec || ui.lrec) {                 /* (recording, right, under the octave: REC or LOOP in red;
                                                       * armed: ARM) */
                 const char *r = ui.lrec == 2 ? "LOOP" : ui.rec == REC_ON ? "REC" : "ARM";
@@ -2034,9 +2115,11 @@ static void ui_draw(void)
     }
     {
         int32_t pk = pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec +
-                     (seq_pend == 1u ? 1024 + (int32_t)((fm1_ms / 300u) & 1u) * 2048 : 0);
+                     (seq_pend == 1u ? 1024 + (int32_t)((fm1_ms / 300u) & 1u) * 2048 : 0) +
+                     (ui.oct[ui.sel] + 3) * 4096 + (ui.chord_on[ui.sel] ? (ui.chord_form[ui.sel] + 1) * 32768 : 0);   /* (the
+                                                      * octave and the chord shown: drawn again as they change) */
         if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pk) {
-            ui.shown_prj = (int16_t)pk;
+            ui.shown_prj = pk;
             draw_number();
             ui.shown_sel = ui.sel;
             ui.shown_eng = ui.shown_msg = ui.shown_pan = ui.shown_level = -100;

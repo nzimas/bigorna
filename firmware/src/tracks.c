@@ -512,7 +512,7 @@ static uint8_t seq_rnd_n[NTRACK];         /* (RANDOM: steps since the count of i
 static const uint8_t RTG_N[NRTG] = {1, 2, 3, 4, 6, 8};
 static const char *const RTG_NAME[NRTG] = {"OFF", "2", "3", "4", "6", "8"};
 static volatile uint8_t seq_rtg[NTRACK][NSTEP];
-static uint8_t rt_left[NTRACK], rt_note[NTRACK], rt_vel[NTRACK], rt_step[NTRACK];
+static uint8_t rt_left[NTRACK], rt_note[NTRACK], rt_vel[NTRACK], rt_step[NTRACK], rt_chf[NTRACK];
 static uint32_t rt_next[NTRACK], rt_int[NTRACK];
 /* a step's MOD (the step view's 4th black key): MUTATE -- its note moved by so many steps of the scale (-12 .. 12;
  * MUT_RND: a step of the scale drawn at random, up to an octave either way) -- every (seq_mcy + 1) times it plays;
@@ -526,6 +526,7 @@ static const char *const MFX_NAME[NMFX] = {"OFF", "ECHO", "ECHO UP", "ECHO DN", 
                                            "FIFTH", "TRIAD", "OCT UP", "OCT DN", "DROP"};
 static volatile int8_t seq_mut[NTRACK][NSTEP];
 static volatile uint8_t seq_mcy[NTRACK][NSTEP], seq_mfx[NTRACK][NSTEP], seq_fcy[NTRACK][NSTEP];
+static volatile uint8_t seq_chf[NTRACK][NSTEP];   /* a step's chord: its form + 1 (0: the note alone; build 33) */
 static uint8_t seq_plays[NTRACK][NSTEP];         /* (the ISR's: the times each step has played since PLAY) */
 static uint8_t seq_played[NTRACK];               /* (the note a track's step played last, mutated: the tests') */
 /* the scale, for MUTATE and the MIDI FX (the main loop's, as it is set): its notes from the root (bit k: k
@@ -562,6 +563,21 @@ static int32_t sc_count(void)
     for (; m; m &= m - 1u)
         c++;
     return (int32_t)(c ? c : 12u);
+}
+/* the chord forms (CHORD mode, after TONITOR's): three notes as steps of the scale from the root, so in the scale
+ * and of the quality it gives; in CHROMATIC, as semitones (a major triad, its inversions ..) */
+#define CHF_N 7u
+static const int8_t CH_STEP[CHF_N][3] = {{0, 2, 4}, {2, 4, 7}, {-3, 0, 2}, {0, 1, 4}, {0, 3, 4}, {0, 4, 9}, {0, 3, 6}};
+static const int8_t CH_SEMI[CHF_N][3] = {{0, 4, 7}, {4, 7, 12}, {-5, 0, 4}, {0, 2, 7}, {0, 5, 7}, {0, 7, 16}, {0, 5, 10}};
+static const char *const CH_NAME[CHF_N] = {"TRIAD", "INV 1", "INV 2", "SUS2", "SUS4", "OPEN", "FOURTHS"};
+static const char *const CH_ABBR[CHF_N] = {"TRI", "IN1", "IN2", "SU2", "SU4", "OPN", "4TH"};
+static void chord_of(int32_t root, uint32_t form, int32_t *n)   /* the chord's three notes */
+{
+    uint32_t i;
+    form %= CHF_N;
+    for (i = 0; i < 3u; i++)
+        n[i] = clampi((seq_smask & 0xFFFu) == 0xFFFu ? root + CH_SEMI[form][i] : sc_move(root, CH_STEP[form][i]), 12,
+                      120);
 }
 /* the MIDI FX's notes to come: a track's, each so many blocks from now (note 0: a free place) */
 #define FXQ 8u
@@ -655,6 +671,20 @@ static void seq_sound(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, const
         uint32_t bl = (len8 < 4096u ? len8 : 4096u) * (SEQ_16TH / 8u * 16u / (CTL * (uint32_t)clampi(fx_bpm10, 100, 3000))) / 16u;
         sq_left[t][k] = (uint16_t)(bl ? (bl < 0xFFFEu ? bl : 0xFFFEu) : 1u);
     }
+}
+/* a step's note, or its chord (f1: form + 1) */
+static void seq_soundc(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, const volatile uint8_t *lid,
+                       const volatile int16_t *lv, uint32_t f1)
+{
+    int32_t c[3];
+    uint32_t i;
+    if (!f1) {
+        seq_sound(t, n, vel, len8, lid, lv);
+        return;
+    }
+    chord_of((int32_t)n, f1 - 1u, c);
+    for (i = 0; i < 3u; i++)
+        seq_sound(t, (uint32_t)c[i], vel, len8, lid, lv);
 }
 /* the step track t plays next, by its direction (and its times through counted, for A:B and 1ST) */
 static uint32_t seq_next(uint32_t t, uint32_t len)
@@ -752,8 +782,9 @@ static void seq_trig(uint32_t t, uint32_t p)
             rt_note[t] = (uint8_t)n;
             rt_vel[t] = seq_vel[t][p];
             rt_step[t] = (uint8_t)p;
+            rt_chf[t] = seq_chf[t][p];
         }
-        seq_sound(t, n, vel, len8, seq_lid[t][p], seq_lv[t][p]);
+        seq_soundc(t, n, vel, len8, seq_lid[t][p], seq_lv[t][p], seq_chf[t][p]);
         switch (fx) {                            /* the MIDI FX's notes with it, and to come */
         case MFX_ECHO:
         case MFX_ECHOUP:
@@ -797,7 +828,7 @@ static void fxq_block(void)                      /* (each block, playing: the MI
         for (k = 0; k < FXQ; k++) {
             fxq_t *q = &fxq[t][k];
             if (q->note && !--q->left) {
-                seq_sound(t, q->note, q->vel, q->len8, seq_lid[t][q->step], seq_lv[t][q->step]);
+                seq_soundc(t, q->note, q->vel, q->len8, seq_lid[t][q->step], seq_lv[t][q->step], seq_chf[t][q->step]);
                 q->note = 0;
             }
         }
@@ -860,6 +891,7 @@ typedef struct {
     uint8_t note[NTRACK][NSTEP], vel[NTRACK][NSTEP], glen[NTRACK][NSTEP], cond[NTRACK][NSTEP], rtg[NTRACK][NSTEP];
     int8_t mut[NTRACK][NSTEP];
     uint8_t mcy[NTRACK][NSTEP], mfx[NTRACK][NSTEP], fcy[NTRACK][NSTEP];
+    uint8_t chf[NTRACK][NSTEP];
     uint8_t lid[NTRACK][NSTEP][NPL];
     int16_t lv[NTRACK][NSTEP][NPL];
     uint8_t len[NTRACK], div[NTRACK], dir[NTRACK];
@@ -876,6 +908,7 @@ static void seq_copy_out(seqbuf_t *b)            /* the steps playing, into b */
     memcpy(b->mcy, (const void *)seq_mcy, sizeof b->mcy);
     memcpy(b->mfx, (const void *)seq_mfx, sizeof b->mfx);
     memcpy(b->fcy, (const void *)seq_fcy, sizeof b->fcy);
+    memcpy(b->chf, (const void *)seq_chf, sizeof b->chf);
     memcpy(b->lid, (const void *)seq_lid, sizeof b->lid);
     memcpy(b->lv, (const void *)seq_lv, sizeof b->lv);
     memcpy(b->len, (const void *)seq_len, sizeof b->len);
@@ -893,6 +926,7 @@ static void seq_copy_in(const seqbuf_t *b)       /* b, as the steps playing */
     memcpy((void *)seq_mcy, b->mcy, sizeof b->mcy);
     memcpy((void *)seq_mfx, b->mfx, sizeof b->mfx);
     memcpy((void *)seq_fcy, b->fcy, sizeof b->fcy);
+    memcpy((void *)seq_chf, b->chf, sizeof b->chf);
     memcpy((void *)seq_lid, b->lid, sizeof b->lid);
     memcpy((void *)seq_lv, b->lv, sizeof b->lv);
     memcpy((void *)seq_len, b->len, sizeof b->len);
@@ -997,8 +1031,8 @@ static void seq_block(void)
         } else if (rt_left[t] && seq_tacc[t] >= rt_next[t]) {   /* the ratchet's next hit */
             uint32_t r8 = DIV_R8[seq_div[t] % NDIV], rn = RTG_N[seq_rtg[t][rt_step[t]] % NRTG];
             rt_vel[t] = (uint8_t)maxi(1, rt_vel[t] - rt_vel[t] / 8);
-            seq_sound(t, rt_note[t], rt_vel[t], (uint32_t)maxi(1, (int32_t)(64u / r8 / (2u * (rn > 1u ? rn : 2u)))),
-                      seq_lid[t][rt_step[t]], seq_lv[t][rt_step[t]]);
+            seq_soundc(t, rt_note[t], rt_vel[t], (uint32_t)maxi(1, (int32_t)(64u / r8 / (2u * (rn > 1u ? rn : 2u)))),
+                       seq_lid[t][rt_step[t]], seq_lv[t][rt_step[t]], rt_chf[t]);
             rt_next[t] += rt_int[t];
             rt_left[t]--;
         }
