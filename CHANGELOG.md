@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 36
+
+Changed
+- MUTE mode: the soloed track's button held 1 s again ends the solo -- the mutes as they were before it. Another
+  track's button held while one is soloed solos that one instead (ending it then still gives back the mutes from
+  before the first). A track muted or played by a short press ends the solo there (nothing to give back).
+- The CHORD key is lit dimly in the track's view on every track (DRUM's too, where it says NO CHORDS), so it shows
+  it has a use there.
+
 ## Build 35
 
 Added

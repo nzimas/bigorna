@@ -608,6 +608,7 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
         ui.chord_form[t] = (uint8_t)(b->chord_form[t] % CHF_N);
         trk_mute[t] = (uint8_t)(b->mute[t] != 0);
     }
+    ui.solo = 0xFF;                              /* (the mutes loaded: no solo to undo) */
     ui.tempo = (int16_t)clampi(b->tempo, TEMPO_MIN, TEMPO_MAX);
     ui.root = (uint8_t)(b->root % 12u);
     ui.scale = (uint8_t)(b->scale < NSCALE ? b->scale : 0);

@@ -15,7 +15,8 @@
  *                             takes the chord last played; REC records chords into the steps, the looper their notes
  *   the 2nd black key         (the track's view, the step view off) MUTE mode on or off (lit while on): the tracks'
  *                             buttons, lit while playing and dim muted, mute or play a track as they are let go soon;
- *                             held 1 s, that track alone plays (solo). Off, the mutes stay (and the buttons choose
+ *                             held 1 s, that track alone plays (solo; held 1 s again, the mutes as they were before
+ *                             it). Off, the mutes stay (and the buttons choose
  *                             tracks again); a muted track's number is dark. Kept with the session
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
@@ -122,6 +123,9 @@ static struct {
     uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode, and its form (CH_*) */
     uint8_t mute_mode;           /* MUTE mode (the 2nd black key): the tracks' buttons mute, held 1 s solo (build 35) */
     uint8_t tb_down, tb_long;    /* .. a track's button held (a bit each), held long enough: soloed */
+    uint8_t solo;                /* .. the track soloed (0xFF none), and the mutes before it (a bit each: held again,
+                                  * they come back) */
+    uint8_t pre_solo;
     uint32_t tb_t0[NTRACK];
     uint8_t step_key;            /* SHIFT: the key of the step held (KEY_NONE none) */
     uint8_t step_new, step_edit;     /* .. its note put there as it was pressed; changed since */
@@ -937,6 +941,7 @@ static void ui_input(void)
             char m[10] = "MUTE  ";
             ui.tb_down &= (uint8_t)~b;
             if (!(ui.tb_long & b)) {
+                ui.solo = 0xFF;                  /* (a mute changed by hand: no solo to undo) */
                 trk_mute[t] = (uint8_t)!trk_mute[t];
                 if (!trk_mute[t])
                     str_cpy(m, "PLAY  ", 7);
@@ -949,10 +954,21 @@ static void ui_input(void)
             char m[10] = "SOLO  ";
             uint32_t j;
             ui.tb_long |= (uint8_t)b;
-            for (j = 0; j < NTRACK; j++)
-                trk_mute[j] = (uint8_t)(j != t);
-            m[5] = (char)('1' + t);
-            say(m, 1200);
+            if (ui.solo == t) {                  /* (the soloed track held again: the mutes as they were before) */
+                for (j = 0; j < NTRACK; j++)
+                    trk_mute[j] = (uint8_t)((ui.pre_solo >> j) & 1u);
+                ui.solo = 0xFF;
+                say("SOLO OFF", 1200);
+            } else {
+                if (ui.solo == 0xFFu)            /* (another soloed after one: the mutes before the first kept) */
+                    for (j = 0, ui.pre_solo = 0; j < NTRACK; j++)
+                        ui.pre_solo |= (uint8_t)((trk_mute[j] != 0) << j);
+                ui.solo = (uint8_t)t;
+                for (j = 0; j < NTRACK; j++)
+                    trk_mute[j] = (uint8_t)(j != t);
+                m[5] = (char)('1' + t);
+                say(m, 1200);
+            }
             prj_dirty = 1;
             ui.force = 1;
         }
@@ -1545,10 +1561,9 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (!step_view() && k == KEY_GEN && ui.page == PG_MAIN) {   /* (the CHORD key: lit while on, dim off; DRUM:
-                                                                     * dark) */
+        if (!step_view() && k == KEY_GEN && ui.page == PG_MAIN) {   /* (the CHORD key: lit while on, dim off) */
             fm1_led_key(14u + k, ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD);
-            led_dim_key(14u + k, ui.eng[ui.sel] != ENG_FMD);
+            led_dim_key(14u + k, 1);                 /* (dim on every track: the key has a use here) */
             continue;
         }
         if (step_view() && k == KEY_GEN) {           /* (the phrase key: dim, lit as it makes one) */
@@ -2252,6 +2267,7 @@ static void ui_init(void)
         ck_pub[t] = ck_use[t] = 0;
     }
     ui.oct[0] = -1;
+    ui.solo = 0xFF;
     ui.touched = -1;
     ui.shown_sel = ui.shown_eng = ui.shown_msg = -1;
     ui.force = 1;

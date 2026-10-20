@@ -1740,6 +1740,26 @@ static int cmd_projects(const char *dir)
                 for (j = 0, i = 1; j < NTRACK; j++)
                     i &= trk_mute[j] == (j != 2u);
                 EXPECT(i, "MUTE mode: a track's button held 1 s solos it, every other muted");
+                {   /* held again: the mutes before the solo back (track 2 muted, as before) */
+                    uint32_t q, okm = 1;
+                    fm1_in.buttons |= 1u << PANEL_BTN[B_ENV];
+                    host_press = 1u << PANEL_BTN[B_ENV];
+                    ui_input();
+                    fm1_ms += 1100;
+                    ui_input();
+                    fm1_in.buttons &= ~(1u << PANEL_BTN[B_ENV]);
+                    ui_input();
+                    for (q = 0; q < NTRACK; q++)
+                        okm &= trk_mute[q] == (q == 1u);
+                    EXPECT(okm && ui.solo == 0xFFu, "the soloed track's button held again: the mutes as before the solo");
+                    fm1_in.buttons |= 1u << PANEL_BTN[B_ENV];   /* (and soloed again, for what follows) */
+                    host_press = 1u << PANEL_BTN[B_ENV];
+                    ui_input();
+                    fm1_ms += 1100;
+                    ui_input();
+                    fm1_in.buttons &= ~(1u << PANEL_BTN[B_ENV]);
+                    ui_input();
+                }
                 for (j = 0; j < 16u; j++)
                     mix_block(out);
                 EXPECT(trk[0].mg == 0 && trk[2].mg == Q15, "a muted track's gain at 0 (gliding), the soloed one's whole");
