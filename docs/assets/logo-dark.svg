@@ -1,15 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 758 132" width="758" height="132">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 519 60" width="519" height="60">
   <title>Bigorna</title>
-  <g fill="#c8ccd2" fill-rule="evenodd"><path d="M6,46 Q30,30 64,28 L176,28 L192,28 L196,32 L196,58 L178,62 Q152,64 146,72 L142,94 Q146,104 172,110 L184,116 L184,126 L36,126 L36,116 L48,110 Q74,104 78,94 L74,72 Q70,64 58,62 Q28,60 6,46 Z M166,33 L176,33 L176,43 L166,43 Z M157.4,38 A3.4,3.4 0 1,0 150.6,38 A3.4,3.4 0 1,0 157.4,38 Z"/></g>
-  <path d="M64,28 L192,28 L196,32 L66,32 Q65,30 64,28 Z" fill="#ff6a14"/>
-  <g transform="translate(230 16)" fill="#c8ccd2" fill-rule="evenodd">
-    <path transform="translate(0 0)" d="M0,0 L58,0 L70,12 L70,44 L64,50 L70,56 L70,88 L58,100 L0,100 Z M24,24 L46,24 L46,38 L24,38 Z M24,62 L46,62 L46,76 L24,76 Z"/>
-    <path transform="translate(84 0)" d="M5,0 L19,0 L24,5 L24,95 L19,100 L5,100 L0,95 L0,5 Z"/>
-    <path transform="translate(122 0)" d="M12,0 L58,0 L70,12 L70,30 L46,30 L46,24 L24,24 L24,76 L46,76 L46,62 L36,62 L36,44 L70,44 L70,88 L58,100 L12,100 L0,88 L0,12 Z"/>
-    <path transform="translate(206 0)" d="M12,0 L58,0 L70,12 L70,88 L58,100 L12,100 L0,88 L0,12 Z M29,24 L41,24 L46,29 L46,71 L41,76 L29,76 L24,71 L24,29 Z"/>
-    <path transform="translate(290 0)" d="M0,0 L58,0 L70,12 L70,50 L62,58 L70,66 L70,100 L46,100 L46,68 L40,62 L24,62 L24,100 L0,100 Z M24,24 L46,24 L46,40 L24,40 Z"/>
-    <path transform="translate(374 0)" d="M0,0 L28,0 L46,62 L46,0 L70,0 L70,100 L42,100 L24,38 L24,100 L0,100 Z"/>
-    <path transform="translate(458 0)" d="M12,0 L58,0 L70,12 L70,100 L46,100 L46,66 L24,66 L24,100 L0,100 L0,12 Z M24,24 L46,24 L46,46 L24,46 Z"/>
+  <path fill="#d2d5da" transform="translate(0 0)" d="M0,13 L34,6 L112,6 L112,20 L86,22 L79,38 L94,47 L94,54 L34,54 L34,47 L49,38 L42,22 L22,20 Z"/>
+  <g transform="translate(146 0)" fill="#d2d5da" fill-rule="evenodd">
+    <path transform="translate(0 0)" d="M0,0 L39,0 L44,5 L44,27 L41,30 L44,33 L44,55 L39,60 L0,60 Z M9,7 L35,7 L37,9 L37,24.5 L35,26.5 L9,26.5 L7,24.5 L7,9 Z M9,33.5 L35,33.5 L37,35.5 L37,51 L35,53 L9,53 L7,51 L7,35.5 Z"/>
+    <path transform="translate(61 0)" d="M0,0 L7,0 L7,60 L0,60 Z"/>
+    <path transform="translate(85 0)" d="M5,0 L39,0 L44,5 L44,16.8 L37,16.8 L37,7 L7,7 L7,53 L37,53 L37,33.5 L24,33.5 L24,26.5 L44,26.5 L44,55 L39,60 L5,60 L0,55 L0,5 Z"/>
+    <path transform="translate(146 0)" d="M5,0 L39,0 L44,5 L44,55 L39,60 L5,60 L0,55 L0,5 Z M9,7 L35,7 L37,9 L37,51 L35,53 L9,53 L7,51 L7,9 Z"/>
+    <path transform="translate(207 0)" d="M0,0 L39,0 L44,5 L44,28.5 L39,33.5 L7,33.5 L7,60 L0,60 Z M9,7 L35,7 L37,9 L37,24.5 L35,26.5 L9,26.5 L7,24.5 L7,9 Z M20,33.5 L29,33.5 L44,60 L35,60 Z"/>
+    <path transform="translate(268 0)" d="M0,0 L7,0 L37,44.4 L37,0 L44,0 L44,60 L37,60 L7,15.6 L7,60 L0,60 Z"/>
+    <path transform="translate(329 0)" d="M5,0 L39,0 L44,5 L44,60 L37,60 L37,38 L7,38 L7,60 L0,60 L0,5 Z M9,7 L35,7 L37,9 L37,29 L35,31 L9,31 L7,29 L7,9 Z"/>
   </g>
-  <rect x="230" y="122" width="528" height="6" fill="#ff6a14"/>
 </svg>

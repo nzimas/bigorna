@@ -135,8 +135,8 @@ def to_html(md, toc):
 
 def page(title, current, body, desc, head=""):
     """every page: the menu down the left (above the content on a narrow screen), the content, the footer"""
-    nav = [("./", "Home"), ("install.html", "Install"), ("manual.html", "Manual"), ("changelog.html", "Changelog"),
-           ("projects.html", "Other projects"), (REPO, "GitHub")]
+    nav = [("./", "Home"), ("screens.html", "Screens"), ("install.html", "Install"), ("manual.html", "Manual"),
+           ("changelog.html", "Changelog"), ("projects.html", "Other projects"), (REPO, "GitHub")]
     links = "\n      ".join(f'<a href="{h}"' + (' aria-current="page"' if n == current else "") + f">{n}</a>"
                            for h, n in nav)
     return f"""<!doctype html>
@@ -157,10 +157,9 @@ def page(title, current, body, desc, head=""):
 <div class="layout">
   <aside class="side">
     <div class="top">
-      <a class="brand" href="./"><img src="assets/logo-dark.svg" alt="Bigorna" width="758" height="132"></a>
+      <a class="brand" href="./"><img src="assets/logo-dark.svg" alt="Bigorna" width="519" height="60"></a>
       <button class="menu-btn" type="button" aria-label="Menu" aria-controls="site-nav" aria-expanded="false"><span></span><span></span><span></span></button>
     </div>
-    <div class="layers" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
     <nav id="site-nav" aria-label="Site">
       <button class="menu-close" type="button" aria-label="Close the menu">&times;</button>
       {links}
@@ -180,9 +179,7 @@ def page(title, current, body, desc, head=""):
 {body}
     </main>
     <footer>
-      <p>Bigorna is by Nuno Zimas, built on <a href="https://nzimas.github.io/tonitor/">Tonitor</a> and
-        <a href="https://github.com/hugelton/Felucca">Felucca</a>. Firmware: GPL-3.0. Website and logo: MIT.
-        <a href="{REPO}">Source on GitHub</a>.</p>
+      <p>Developed by Nuno Zimas. Firmware: GPL-3.0. Website and logo: MIT. <a href="{REPO}">Source on GitHub</a>.</p>
       <p>M-VAVE and FM-1 are trademarks of their owner; Elektron and Digitone are trademarks of Elektron Music Machines.
         They are used only to say which device Bigorna runs on and which instrument it takes as its model.</p>
       <form class="donate donate-foot" action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top">
@@ -208,6 +205,10 @@ def fragments():
         "Bigorna — a firmware for the M-VAVE FM-1", "Home", (src / "home.html").read_text(),
         "Bigorna: a firmware for the M-VAVE FM-1 for rhythmic noise, power noise, industrial and IDM, after the "
         "Elektron Digitone II."))
+    (DOCS / "screens.html").write_text(page(
+        "Bigorna on the FM-1's screen", "Screens", (src / "screens.html").read_text(),
+        "Bigorna on the M-VAVE FM-1's screen: the track view, the sound's pages, the step view, the effects, the "
+        "patterns, CHORD mode and the looper."))
     (DOCS / "install.html").write_text(page(
         "Install Bigorna", "Install", (src / "install.html").read_text(),
         "Install Bigorna on an M-VAVE FM-1 from your browser, over USB MIDI.",
