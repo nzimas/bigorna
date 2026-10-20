@@ -1424,6 +1424,71 @@ static int cmd_projects(const char *dir)
         for (i = 0; i < 4u; i++)
             mix_block(out);
     }
+    {   /* BREAK: the 3rd black key held, other steps played while the track's own position goes on; let go, it plays
+         * on from where it is (build 37) */
+        int32_t out[2 * CTL];
+        uint32_t i, last, moved = 0, kept = 1, on = 1, snd;
+        ui.sel = 0;
+        ui.page = PG_MAIN;
+        ui.sv = 0;
+        seq_len[0] = 0;
+        seq_dir[0] = DIR_FWD;
+        seq_div[0] = SEQ_DIV1;
+        for (i = 0; i < NSTEP; i++) {
+            seq_note[0][i] = (uint8_t)(48u + i);
+            seq_vel[0][i] = 100;
+            seq_glen[0][i] = GLEN_DEF;
+            seq_cond[0][i] = CD_NONE;
+            seq_rtg[0][i] = 0;
+            seq_mut[0][i] = 0;
+            seq_mfx[0][i] = MFX_OFF;
+            seq_chf[0][i] = 0;
+            memset((void *)seq_lid[0][i], PL_NONE, NPL);
+        }
+        seq_run = 1;
+        while (seq_pos[0] != 5u)
+            mix_block(out);
+        key(KEY_TRIG, 1);
+        brk_keep = 0;                            /* (whatever the sound: not left alone) */
+        EXPECT(ui.brk == 1u && brk_mask == 1u && !key_plays(KEY_TRIG), "the 3rd black key held: track 1 under BREAK");
+        for (i = 0, last = seq_pos[0]; i < 48u; i++) {   /* (three bars: a plan drawn again after two) */
+            snd = seq_sounded[0];
+            while (seq_pos[0] == last)
+                mix_block(out);
+            on &= seq_pos[0] == (last + 1u) % 16u;
+            last = seq_pos[0];
+            if (seq_sounded[0] == snd || seq_played[0] != 48u + last)
+                moved++;
+        }
+        EXPECT(on, "under BREAK the track's own position goes on, a step at a time");
+        EXPECT(moved > 0u, "under BREAK other steps play (or none, or leaps)");
+        ui_input();
+        ui_draw();
+        shot(dir, "break");
+        EXPECT(ui.brk_shown != 0xFFu && ui.msg[0], "the way playing is shown");
+        key(KEY_TRIG, 0);
+        EXPECT(!ui.brk && !brk_mask, "let go: BREAK off");
+        for (i = 0; i < 16u; i++) {
+            snd = seq_sounded[0];
+            while (seq_pos[0] == last)
+                mix_block(out);
+            last = seq_pos[0];
+            kept &= seq_sounded[0] > snd && seq_played[0] == 48u + last;
+        }
+        EXPECT(kept, "let go: each step plays its own note again, from where the track is");
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        key(KEY_TRIG, 1);
+        EXPECT(ui.brk == 0x3Fu, "SHIFT and the 3rd black key: every track");
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        key(KEY_TRIG, 0);
+        EXPECT(LOOP_MAX == 512u && loop_len8(64000u * 1200u / (uint32_t)fx_bpm10) == 4096u,
+               "a loop: up to 32 bars, a note held through all of them");
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        for (i = 0; i < NSTEP; i++)
+            seq_note[0][i] = 0;
+    }
     {   /* the looper: SHIFT + REC armed; the first note starts it; REC ends it at the nearest step; it plays */
         int32_t out[2 * CTL];
         uint32_t kw[16], k, i, n0, n2, found;
@@ -2030,6 +2095,40 @@ static int cmd_projects(const char *dir)
     fm1_ms += 2000;
     EXPECT(!prj_dirty && !prj_read(2, 0) && ((const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t)))->tempo == 99,
            "HOME held saves the project");
+    /* SAVE held: the session saved at once; never saved, the first empty slot asked (SAVE NEW?, YES), SAVE: saved */
+    ui.tempo = 101;
+    prj_dirty = 1;
+    fm1_in.buttons |= 1u << PANEL_BTN[B_SAVE];
+    host_press = 1u << PANEL_BTN[B_SAVE];
+    ui_input();
+    fm1_ms += 900;
+    ui_input();
+    fm1_in.buttons = 0;
+    ui_input();
+    fm1_ms += 2000;
+    EXPECT(ui.page == PG_MAIN && !prj_dirty && !prj_read((uint32_t)prj_cur, 0) &&
+           ((const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t)))->tempo == 101, "SAVE held saves the session");
+    {
+        int32_t was = prj_cur;
+        uint32_t k;
+        for (k = 0; k < PRJ_SLOTS && prj_has[k]; k++)
+            ;
+        prj_cur = -1;
+        fm1_in.buttons |= 1u << PANEL_BTN[B_SAVE];
+        host_press = 1u << PANEL_BTN[B_SAVE];
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        fm1_in.buttons = 0;
+        ui_input();
+        EXPECT(k < PRJ_SLOTS && ui.page == PG_PRJD && pj.ask == PQ_SAVENEW && pj.yes && pj.slot[0] == k,
+               "SAVE held, never saved: the first empty slot, SAVE NEW? (YES)");
+        ui_draw();
+        shot(dir, "save_new");
+        btn(B_SAVE, 0);
+        EXPECT(ui.page == PG_MAIN && prj_cur == (int32_t)k && prj_has[k], "SAVE: saved into it");
+        (void)was;
+    }
     shot(dir, "pat_main");
     printf("projects: %d failures, %u erases\n", fails, host_erases);
     return fails ? 1 : 0;

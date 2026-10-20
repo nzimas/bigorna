@@ -37,11 +37,12 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | The six top buttons | Tracks 1 to 6: the lit one is chosen; the others glow dimly while they sound |
 | PRESETS (knob) | The track's machine: 4-OP, DRUM, WAVY, HIVE |
 | SHIFT + PRESETS | A new sound of the family before / after |
-| HOME | A new sound for the track, on its machine; SHIFT + HOME: of the same family. Held: the session saved |
+| HOME | A new sound for the track, on its machine; SHIFT + HOME: of the same family. Held: the session saved, as SAVE held |
 | OCT− / OCT+ | The track's octave, −3 to +3 (shown at the top right) |
 | White keys | Play the track in the scale chosen |
 | 1st black key | CHORD mode on or off |
 | 2nd black key | MUTE mode on or off |
+| 3rd black key | BREAK, while held; SHIFT + it: on every track |
 | Black key before the last | EDIT: the sound's pages |
 | 3rd black key from the right | STEP: the step view |
 | Last black key | SHIFT |
@@ -52,7 +53,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | REC | Records the keys into the track's steps; SHIFT + REC: the looper |
 | ARP | The patterns |
 | SEQ | The effects' pages |
-| SAVE | The sessions |
+| SAVE | The sessions; held 0.8 s, the session saved |
 | MASTER | The output level |
 
 While a knob turns, the screen shows its value as a large dial for a second.
@@ -138,7 +139,7 @@ Per track, on the track's sound before its level:
 ## Playing
 
 The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and
-root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the 1st and 2nd),
+root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first three),
 MAJOR, MINOR NATURAL, MINOR
 HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, IN. OCT− and OCT+ move the track's octave. USB
 MIDI notes play the chosen track as the keys do.
@@ -159,6 +160,37 @@ let go soon mutes its track or plays it again. Held 1 s, its track is soloed, ev
 the mutes come back as they were. MUTE mode off, the mutes stay, and the buttons choose tracks again. A muted track
 fades out over ~9 ms, its sends with it; its steps keep playing silently. The chosen track's number is dark grey
 while it is muted. Mutes are kept with the session.
+
+### BREAK
+
+While the sequencer plays, holding the 3rd black key (the step view off) breaks up the chosen track's pattern;
+SHIFT and the key, every track at once. Nothing is written into the steps: each track's position keeps running
+underneath, and when the key is let go the pattern carries on from where it would have been. The key is lit while
+held.
+
+Each press draws a way of playing the steps, shown in the name band, and a new one is drawn every two bars held
+(never the same twice running):
+
+| Way | What plays |
+| --- | --- |
+| REPEAT 1, 2, 3, 4 or 8 | A window of that many steps, from the beat the break began on, played over and over |
+| HALF TIME | The steps from that beat at half speed |
+| DOUBLE | The steps from that beat at double speed, wrapping round the track |
+| REVERSE 4 or 8 | Each window of 4 or 8 steps played backwards |
+| CHOP | The bar cut into slices of 2 or 4 steps, shuffled; the first slice stays in place |
+| ROLL | The steps as written, with more ratchets |
+
+Over the way, some of these are drawn too:
+
+- ratchets (2 to 6 hits a step), faster the longer the key is held; not on a step that has its own ratchet;
+- flams on the drums;
+- octave leaps, up or down, on the melodic tracks;
+- a gap: every track but the kick silent for the last 2 or 4 steps of each bar;
+- accents: the steps on the beat full, the ones between softer.
+
+The role of each track's sound (as the phrase generator reads it) keeps the result coherent: a kick keeps the
+bar's first step and takes no leaps, no gap and few ratchets; a drone (HIVE's pads and drones, dark washes) is
+left alone. The looper's loops play on as they are.
 
 ## The effects (SEQ)
 
@@ -235,7 +267,8 @@ step with its velocity and its length as held, until REC again. SHIFT + PLAY tur
 
 SHIFT + REC arms a new loop on the chosen track; the first note played starts it (and the sequencer, if stopped).
 Every note played after goes into it, at the nearest step, with its velocity and length, until REC ends it: it then
-plays round in its own length (up to 16 bars) over the track's steps. Three loops a track.
+plays round in its own length (up to 32 bars) over the track's steps. Three loops a track, up to 256 notes each (a
+chord counts its three notes). A note can be held for the whole loop.
 
 SHIFT + REC held shows the track's loops on the first three white keys (lit: playing; dim: muted): a key let go soon
 mutes its loop or plays it again; held 0.8 s, empties it. SHIFT + REC held 1.5 s with no key touched empties every
@@ -259,7 +292,11 @@ loaded, until the session is saved or loaded.
 16 sessions are kept in the FM-1's flash. SAVE shows the list; PRESETS moves through it, SAVE opens a session's page:
 LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE. SAVE runs the row chosen, or moves the focus to its value (PRESETS
 changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not saved, saving over another session,
-copying over one and deleting ask first (NO / YES on PRESETS). HOME held saves the session playing into its slot.
+copying over one and deleting ask first (NO / YES on PRESETS).
+
+SAVE held 0.8 s (or HOME held) saves the session playing into its slot at once. If it has never been saved, the
+first empty slot's page shows SAVE NEW? with YES chosen: SAVE saves it there and goes back to the track (PRESETS
+left: NO). With all 16 slots taken, NO FREE SLOT shows.
 A session holds every track's machine, sounds, octave, level, pan, chord mode and mutes, the effects, the tempo, the
 root and scale, and its 16 patterns.
 

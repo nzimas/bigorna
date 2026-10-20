@@ -39,7 +39,7 @@ LDR_CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unuse
 CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
-BUILD = 36                           # the build number: the version (build 1, build 2, ..), one more each build
+BUILD = 37                           # the build number: the version (build 1, build 2, ..), one more each build
 PRODUCT = f"FM-1_8{BUILD:03d}"      # package identity: FM-1_8 and the build, three digits
 VERSION = f"BUILD {BUILD}"
 

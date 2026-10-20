@@ -685,7 +685,7 @@ static int prj_delete(uint32_t k)
 /* the rows of a session's page: the operations, then the values */
 enum { PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_ROOT, PR_SCALE, PR_N };
 static const char *const PR_NAME[PR_N] = {"LOAD", "SAVE", "COPY", "DELETE", "TEMPO", "ROOT", "SCALE"};
-enum { PQ_NONE, PQ_LOAD, PQ_SAVE, PQ_DELETE, PQ_COPYTO, PQ_COPYOVER };
+enum { PQ_NONE, PQ_LOAD, PQ_SAVE, PQ_DELETE, PQ_COPYTO, PQ_COPYOVER, PQ_SAVENEW };
 static struct {
     uint8_t slot[2];             /* the slot chosen on each list (projects, patterns) */
     uint8_t row;                 /* the row chosen on the page */
@@ -808,6 +808,10 @@ static void prj_press(int sh)
             ui.page = PG_MAIN;
         } else if (q == PQ_SAVE)
             do_save(k);
+        else if (q == PQ_SAVENEW) {
+            do_save(k);
+            ui.page = PG_MAIN;
+        }
         else if (q == PQ_DELETE)
             do_delete(k);
         else if (q == PQ_COPYOVER)
@@ -922,11 +926,27 @@ static void pat_poll(void)
     tempo_apply();
     ui.force = 1;
 }
-/* HOME held: the session playing saved into its slot; ARP held: the pattern playing into its slot */
+/* SAVE or HOME held: the session playing saved into its slot -- never saved, the first empty slot's page with SAVE
+ * NEW? (YES chosen; SAVE answers). ARP held: the pattern playing into its slot */
 static void prj_quick_save(void)
 {
+    if (ui.page == PG_PRJD && pj.ask)            /* (a question up: answered by SAVE let go, not held) */
+        return;
     if (prj_cur < 0) {
-        say("NO SESSION", 1200);                 /* (never saved: its slot chosen on the SESSIONS page) */
+        uint32_t k;
+        for (k = 0; k < PRJ_SLOTS && prj_has[k]; k++)
+            ;
+        if (k == PRJ_SLOTS) {
+            say("NO FREE SLOT", 1500);
+            return;
+        }
+        pj.slot[0] = (uint8_t)k;
+        pj.row = PR_SAVE;
+        pj.edit = 0;
+        pj.ask = PQ_SAVENEW;
+        pj.yes = 1;
+        ui.page = PG_PRJD;
+        ui.force = 1;
         return;
     }
     flash("SAVING", "", C_PRJ);
@@ -1100,8 +1120,8 @@ static void draw_prj_page(void)
         return;
     }
     if (pj.ask) {
-        draw_noyes_rows(pj.ask == PQ_LOAD ? "LOAD?" : pj.ask == PQ_DELETE ? "DELETE?" : "OVERWRITE?",
-                        pj.ask == PQ_LOAD ? C_DIRTY : C_BAD);
+        draw_noyes_rows(pj.ask == PQ_LOAD ? "LOAD?" : pj.ask == PQ_DELETE ? "DELETE?" : pj.ask == PQ_SAVENEW ? "SAVE NEW?"
+                        : "OVERWRITE?", pj.ask == PQ_LOAD ? C_DIRTY : pj.ask == PQ_SAVENEW ? C_PRJ : C_BAD);
         return;
     }
     for (r = 0; r < 5u; r++) {

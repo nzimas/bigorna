@@ -18,6 +18,9 @@
  *                             held 1 s, that track alone plays (solo; held 1 s again, the mutes as they were before
  *                             it). Off, the mutes stay (and the buttons choose
  *                             tracks again); a muted track's number is dark. Kept with the session
+ *   the 3rd black key         (the step view off) BREAK while held (tracks.c): the chosen track's pattern broken up
+ *                             -- other steps played, ratchets, flams, leaps, a gap -- its position kept; SHIFT and
+ *                             it, every track. Let go, each plays on from where it is. The way shows in the band
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
  *                             16 steps: a key on an empty step puts the track's last note played there; a key on a
@@ -58,7 +61,7 @@
  *   SHIFT + REC               the looper (after TONITOR's): a new loop on the chosen track, armed; the first note
  *                             played starts it (and the sequencer, if stopped); every note played after is in it, at
  *                             the nearest step, with its velocity and length, until REC ends it (at the nearest step):
- *                             it plays from there, round and round in its own length (up to 16 bars), over the
+ *                             it plays from there, round and round in its own length (up to 32 bars), over the
  *                             track's steps. Three loops a track
  *   SHIFT + REC held          the track's loops on the first three white keys (lit: playing; dim: muted): a key let
  *                             go soon mutes its loop or plays it again; held 0.8 s, empties it. Held 1.5 s with no
@@ -72,6 +75,8 @@
  *                             back (OCT- / OCT+ too; a track's button: back to its view; SHIFT and it, the track
  *                             chosen, the page kept -- COMP's SC SOURCE and SC LEVEL are the chosen track's);
  *                             KNOB 1 .. 4 the first four of the page, or (PRESETS turned right; left back) the next
+ *   SAVE                      the sessions (projects.c); held 0.8 s, the session saved -- never saved, the first
+ *                             empty slot's page, SAVE NEW? (YES chosen)
  *   SELECT (knob)             the track's level; ALGORITHM (knob) its pan
  *   KNOB 1 .. 4               the track's filter FREQ and RESO, its delay and reverb sends; with SHIFT, KNOB 3 the
  *                             chorus send and KNOB 4 the overdrive. While one turns (and a second after) the whole
@@ -122,6 +127,7 @@ static struct {
     uint8_t last_chf[NTRACK];    /* .. and its chord (form + 1; 0: a note alone) */
     uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode, and its form (CH_*) */
     uint8_t mute_mode;           /* MUTE mode (the 2nd black key): the tracks' buttons mute, held 1 s solo (build 35) */
+    uint8_t brk, brk_shown;      /* BREAK (the 3rd black key held): the tracks under it; the way last said (build 37) */
     uint8_t tb_down, tb_long;    /* .. a track's button held (a bit each), held long enough: soloed */
     uint8_t solo;                /* .. the track soloed (0xFF none), and the mutes before it (a bit each: held again,
                                   * they come back) */
@@ -169,8 +175,8 @@ static struct {
     uint32_t keys;
     char msg[16];
     uint32_t msg_until, home_until;
-    uint32_t home_t0, arp_t0;    /* HOME, ARP pressed at (held 0.8 s: a save; let go sooner: a press) */
-    uint8_t home_down, home_long, arp_down, arp_long;
+    uint32_t home_t0, arp_t0, save_t0;   /* HOME, ARP, SAVE pressed at (held 0.8 s: a save; let go sooner: a press) */
+    uint8_t home_down, home_long, arp_down, arp_long, save_down, save_long;
     uint32_t seed;
     uint8_t scale, root;
     int16_t tempo;               /* the project's, BPM */
@@ -218,6 +224,7 @@ static void prj_press(int sh);
 static void prj_preset(int32_t s);
 static void prj_draw(void);
 static void prj_quick_save(void);
+static void phrase_brk_roles(void);   /* (phrase.c: BREAK's kicks, drums and drones, from the tracks' sounds) */
 static void pat_quick_save(void);
 static void pat_switch(uint32_t k);
 static void pat_copy_hold(uint32_t k);
@@ -286,8 +293,9 @@ static uint32_t key_note(uint32_t k, int32_t oct)
 static int step_view(void);
 static int key_plays(uint32_t k)
 {
-    return k != KEY_SHIFT && k != KEY_EDIT && k != KEY_STEP && ((k != KEY_GEN && k != KEY_TRK) || step_view()) &&
-           /* (out of the step view the 1st black key is CHORD mode's, the 2nd MUTE mode's) */
+    return k != KEY_SHIFT && k != KEY_EDIT && k != KEY_STEP &&
+           ((k != KEY_GEN && k != KEY_TRK && k != KEY_TRIG) || step_view()) &&
+           /* (out of the step view the 1st black key is CHORD mode's, the 2nd MUTE mode's, the 3rd BREAK) */
            (ui.scale == 0 || white_ix(k) >= 0);
 }
 /* a note in the scale (and the root); the next one up or down from n, d times */
@@ -504,8 +512,8 @@ static uint32_t loop_qnow(void)
 }
 static uint32_t loop_len8(uint32_t ms)           /* a time held, in eighths of a step */
 {
-    uint32_t e = ((ms > 60000u ? 60000u : ms) * (uint32_t)fx_bpm10 * 8u + 75000u) / 150000u;   /* (rounded) */
-    return e ? (e < 2048u ? e : 2048u) : 1u;
+    uint32_t e = ((ms > 900000u ? 900000u : ms) * (uint32_t)fx_bpm10 + 9375u) / 18750u;   /* (x 8 / 150000; < 2^32) */
+    return e ? (e < 4096u ? e : 4096u) : 1u;     /* (rounded; up to the loop's whole 32 bars) */
 }
 static void loop_arm(void)
 {
@@ -992,12 +1000,26 @@ static void ui_input(void)
         ui.ehalf = 0;
         ui.force = 1;
     }
-    if (btn_bit(press, B_SAVE)) {                    /* the projects (projects.c) */
-        if (ui.page == PG_PRJ || ui.page == PG_PRJD)
-            prj_press(sh);
-        else if (!sh) {
-            ui.page = PG_PRJ;
-            ui.force = 1;
+    /* SAVE: let go soon, the projects (projects.c); held 0.8 s, the session saved (none: the first empty slot, asked) */
+    if (btn_bit(press, B_SAVE)) {
+        ui.save_down = 1;
+        ui.save_long = 0;
+        ui.save_t0 = fm1_ms;
+    }
+    if (ui.save_down) {
+        if (!btn_bit(fm1_in.buttons, B_SAVE)) {
+            ui.save_down = 0;
+            if (ui.save_long)
+                ;
+            else if (ui.page == PG_PRJ || ui.page == PG_PRJD)
+                prj_press(sh);
+            else if (!sh) {
+                ui.page = PG_PRJ;
+                ui.force = 1;
+            }
+        } else if (!ui.save_long && (uint32_t)(fm1_ms - ui.save_t0) >= 800u) {
+            ui.save_long = 1;
+            prj_quick_save();
         }
     }
     /* HOME: let go soon, a new sound (SHIFT: of the same family); held 0.8 s, the project saved. ARP: let go soon, the
@@ -1172,7 +1194,7 @@ static void ui_input(void)
             say(m, 1500);
         }
     }
-    if (ui.lrec == 2 && loop_qnow() - ui.lstart >= LOOP_MAX)   /* (16 bars: the loop ends by itself) */
+    if (ui.lrec == 2 && loop_qnow() - ui.lstart >= LOOP_MAX)   /* (32 bars: the loop ends by itself) */
         loop_end();
     /* PRESETS, SELECT, ALGORITHM: each read once, then to the page's own use (on the sessions' and patterns' pages
      * PRESETS is theirs, SELECT and ALGORITHM do nothing) */
@@ -1287,6 +1309,37 @@ static void ui_input(void)
     }
     keys = fm1_in.notes;
     ch = keys ^ ui.keys;
+    /* BREAK: the 3rd black key held (the step view off), the chosen track broken up (tracks.c); SHIFT and it, every
+     * track. Let go, each plays on from where it is */
+    if (!ui.brk && ((ch & keys) >> KEY_TRIG & 1u) && !step_view() && ui.page != PG_PAT && !ui.lrec_down) {
+        phrase_brk_roles();
+        brk_seed = next_seed() | 1u;
+        ui.brk = (uint8_t)(sh ? (1u << NTRACK) - 1u : 1u << ui.sel);
+        ui.brk_shown = 0xFF;
+        brk_mask = ui.brk;
+        if (!seq_run)
+            say("NOT PLAYING", 900);
+        else if (brk_keep >> ui.sel & 1u && !sh)
+            say("DRONE: KEPT", 900);
+        ui.force = 1;
+    } else if (ui.brk && (!((keys >> KEY_TRIG) & 1u) || step_view())) {
+        ui.brk = 0;
+        brk_mask = 0;
+        if (ui.brk_shown != 0xFFu)
+            ui.msg_until = fm1_ms;               /* (the way's name: gone with it) */
+        ui.force = 1;
+    }
+    if (ui.brk && brk_shown != 0xFFu && (uint8_t)(brk_shown * 16u + brk_shown_w) != ui.brk_shown) {
+        char m[16];                              /* the way playing, for as long as it plays */
+        uint32_t r = brk_shown;
+        ui.brk_shown = (uint8_t)(r * 16u + brk_shown_w);
+        str_cpy(m, BR_NAME[r % NBR], sizeof m);
+        if (r == BR_REPEAT || r == BR_REVERSE) {
+            str_cpy(m + str_len(m), " ", 2);
+            fmt_int(m + str_len(m), brk_shown_w);
+        }
+        say(m, 60000);
+    }
     if ((ch & keys) >> KEY_EDIT & 1u) {              /* EDIT: the parameter pages, up or down */
         ui.page = ui.page == PG_EDIT ? PG_MAIN : PG_EDIT;
         ui.ehalf = 0;
@@ -1553,6 +1606,11 @@ static void ui_leds(void)
             fm1_led_key(14u + k, white_ix(k) == pat_clip_from || (seq_pend == 1u && white_ix(k) == seq_pend_k)
                                      ? (fm1_ms / 250u) & 1u   /* (the one copied, the one waiting to play: blink) */
                                      : white_ix(k) == (int32_t)pat_cur && seq_pend != 1u);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (!step_view() && k == KEY_TRIG) {    /* (the BREAK key: lit while held, dim) */
+            fm1_led_key(14u + k, ui.brk != 0);
             led_dim_key(14u + k, 1);
             continue;
         }

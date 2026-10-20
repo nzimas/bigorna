@@ -43,6 +43,23 @@ static uint32_t phrase_role(const sound_t *s)
     return s->family < NRECIPE ? RO_OF[s->family] : BY_MACH[s->mach % NENG];
 }
 
+/* BREAK's view of the tracks (tracks.c): the kicks, the drums (a kick, snare, hat, percussion, noise) and the drones,
+ * from the sound each plays now */
+static void phrase_brk_roles(void)
+{
+    uint32_t t, r;
+    uint8_t k = 0, d = 0, n = 0;
+    for (t = 0; t < NTRACK; t++) {
+        r = phrase_role(&ui.snd[t][ui.eng[t]]);
+        k |= (uint8_t)((r == RO_KICK) << t);
+        d |= (uint8_t)((r <= RO_NOISE) << t);
+        n |= (uint8_t)((r == RO_DRONE) << t);
+    }
+    brk_kick = k;
+    brk_drum = d;
+    brk_keep = n;
+}
+
 /* ------------------------------------------------------------- the dice --- */
 static uint32_t ph_seed;
 static uint32_t ph_rnd(uint32_t n)               /* 0 .. n - 1 */

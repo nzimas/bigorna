@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 37
+
+Added
+- BREAK: in the track's view (the step view off), the 3rd black key held breaks up the chosen track's pattern;
+  SHIFT and the key, every track. The steps are not changed: each track's position runs on underneath, and let go,
+  the pattern continues from where it would have been. Each press draws a way of playing the steps (REPEAT 1, 2,
+  3, 4 or 8, HALF TIME, DOUBLE, REVERSE 4 or 8, CHOP, ROLL), shown in the name band, and another every two bars
+  held. Drawn with it: ratchets that get faster the longer the key is held, flams on drums, octave leaps on melodic
+  tracks, a gap before the bar's end, accents. A kick keeps the bar's first step; a drone is left alone. After the
+  break key of MOTOR:CYCLES.
+- SAVE held 0.8 s saves the session at once. A session never saved: the first empty slot's page opens with SAVE
+  NEW? and YES chosen; SAVE saves it there. All 16 slots taken: NO FREE SLOT. HOME held does the same.
+- Out of the step view the 3rd black key no longer plays a note in CHROMATIC (it is BREAK's).
+
+Changed
+- The looper: a loop up to 32 bars (was 16) and 256 notes (was 128); a note can be held for the whole loop.
+
 ## Build 36
 
 Changed
