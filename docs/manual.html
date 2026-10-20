@@ -158,15 +158,15 @@
 <h3 id="mute-mode">MUTE mode</h3>
 <p>In the track's view, the step view off, the 2nd black key turns MUTE mode on or off (lit while on; the name band reads MUTE MODE). The track buttons then mute instead of choosing: lit, a track plays; dim, it is muted. A button let go soon mutes its track or plays it again. Held 1 s, its track is soloed, every other muted; held 1 s again, the mutes come back as they were. MUTE mode off, the mutes stay, and the buttons choose tracks again. A muted track fades out over ~9 ms, its sends with it; its steps keep playing silently. The chosen track's number is dark grey while it is muted. Mutes are kept with the session.</p>
 <h3 id="break">BREAK</h3>
-<p>While the sequencer plays, holding the 3rd black key (the step view off) breaks up the chosen track's pattern; SHIFT and the key, every track at once. Nothing is written into the steps: each track's position keeps running underneath, and when the key is let go the pattern carries on from where it would have been. The key is lit while held.</p>
-<p>Each press draws a way of playing the steps, shown in the name band, and a new one is drawn every two bars held (never the same twice running):</p>
+<p>While the sequencer plays, holding the 3rd black key (the step view off) breaks up the chosen track's pattern; SHIFT and the key, every track at once. Nothing is written into the steps: each track's position keeps running underneath, and when the key is let go the pattern carries on from where it would have been; ratchets and echoes the break had started stop at once. The key is lit while held.</p>
+<p>The break stays on the pattern's beat. A track goes into it on its next beat (its next half bar for REPEAT 8) and plays as written until then. Each press draws a way of playing the steps, shown in the name band; held two bars, a new one is drawn on the next bar line (never the same twice running). Every way keeps what is on a beat on a beat:</p>
 <table>
 <tr><th>Way</th><th>What plays</th></tr>
-<tr><td>REPEAT 1, 2, 3, 4 or 8</td><td>A window of that many steps, from the beat the break began on, played over and over</td></tr>
+<tr><td>REPEAT 1, 2, 4 or 8</td><td>A window of that many steps, from the beat the break began on, played over and over</td></tr>
 <tr><td>HALF TIME</td><td>The steps from that beat at half speed</td></tr>
 <tr><td>DOUBLE</td><td>The steps from that beat at double speed, wrapping round the track</td></tr>
-<tr><td>REVERSE 4 or 8</td><td>Each window of 4 or 8 steps played backwards</td></tr>
-<tr><td>CHOP</td><td>The bar cut into slices of 2 or 4 steps, shuffled; the first slice stays in place</td></tr>
+<tr><td>REVERSE 4 or 8</td><td>Each window of 4 or 8 steps backwards after its first step, which stays in place (0 3 2 1)</td></tr>
+<tr><td>CHOP</td><td>The bar's four beats shuffled; the first beat stays in place</td></tr>
 <tr><td>ROLL</td><td>The steps as written, with more ratchets</td></tr>
 </table>
 <p>Over the way, some of these are drawn too:</p>
@@ -177,7 +177,7 @@
 <li>a gap: every track but the kick silent for the last 2 or 4 steps of each bar;</li>
 <li>accents: the steps on the beat full, the ones between softer.</li>
 </ul>
-<p>The role of each track's sound (as the phrase generator reads it) keeps the result coherent: a kick keeps the bar's first step and takes no leaps, no gap and few ratchets; a drone (HIVE's pads and drones, dark washes) is left alone. The track's loops are broken up with its steps: the same way, from the same beat, with the same gap, so a loop stays with the pattern while the key is held, and both carry on in step when it is let go.</p>
+<p>The role of each track's sound (as the phrase generator reads it) keeps the result coherent: a kick keeps the bar's first step and takes no leaps, no gap and few ratchets; a drone (HIVE's pads and drones, dark washes) is left alone. The looper's loops are not broken up: they play on as recorded, and the pattern falls back in with them when the key is let go.</p>
 <h2 id="the-effects-seq">The effects (SEQ)</h2>
 <p>SEQ shows CHORUS, COMP, DELAY and REVERB in turn, then goes back (OCT− and OCT+ move between them; a track's button goes back to the track's view). KNOB 1 to 4 set the first four rows; PRESETS turned right shows the next four.</p>
 <ul>

@@ -42,6 +42,31 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-45">Build 45</h2>
+<p>Changed</p>
+<ul>
+<li>BREAK leaves the loops alone again, as before build 41: they play on as recorded while the key is held, and the pattern falls back in with them when it is let go. What builds 43 and 44 did to the loops at release goes with it.</li>
+<li>BREAK stays on the pattern's beat:
+<ul>
+<li>A track goes into the break on its next beat (its next half bar for REPEAT 8), playing as written until then.</li>
+<li>REPEAT windows are 1, 2, 4 or 8 steps (3 is gone: it cycled against the beat).</li>
+<li>REVERSE keeps each window's first step in place (0 3 2 1): the beat no longer moves to the step before the next.</li>
+<li>CHOP shuffles the bar's four beats (no longer 2-step slices, which put beats on the offbeat).</li>
+<li>A new plan, after two bars held, is drawn on the next bar line, not mid-bar.</li>
+</ul></li>
+<li>Let go of BREAK: the ratchets and echoes it had started stop at once, so the pattern is back as the key comes up.</li>
+</ul>
+<h2 id="build-44">Build 44</h2>
+<p>Fixed</p>
+<ul>
+<li>After BREAK, a loop's notes no longer sound off the beat. Build 43 struck the loop's held notes again at the step the key was let go on (a chord from beat 1 heard on step 3, say). Now nothing is struck at that point: the notes the break left sounding stop, the loop carries on from its next note on its own step, and a note held over the next bar line (a chord, a pad) comes back on that downbeat for the rest of its length.</li>
+<li>With the sequencer stopped after more than 32 bars of playing, a loop armed and started from the first note ended at once, on that note: the looper measured it from the last run's step count. The count now resets when the sequencer stops.</li>
+</ul>
+<h2 id="build-43">Build 43</h2>
+<p>Fixed</p>
+<ul>
+<li>After BREAK, a loop sounded out of place until its next notes came round: the notes the break had started (a chord from another bar, held for its full length) kept sounding, and the loop's own notes that should have been sounding at that point did not come back. At the first step after the key is let go, the notes the break left sounding on its tracks are now let go (its echoes and ratchets dropped), and each loop's notes due to be sounding then start again for what is left of their length.</li>
+</ul>
 <h2 id="build-42">Build 42</h2>
 <p>Changed</p>
 <ul>
