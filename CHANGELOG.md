@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 47
+
+Added
+- MIDI IN on the FM-1's 3.5 mm TRS jack: notes, CCs, program changes, the clock, START, CONTINUE, STOP and the song
+  position, routed as USB's (not SysEx). The parser is MELODEE 1.4.5's (its RX verified on an FM-1): UART1 at
+  31250 baud into a DMA ring, read by content, polled at 2 kHz from the timer interrupt, nested in the audio
+  render, so a clock byte is timed as it comes.
+- GLOBAL SETUP > MIDI > PORTS: USB IN, TRS IN (both on). Settings saved by build 46 are read as they were.
+
 ## Build 46
 
 Added

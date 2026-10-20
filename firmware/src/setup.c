@@ -10,6 +10,7 @@
  *          OUT CHAN   TRACK 1 .. 6, PCH                                                        OFF, 1 .. 16
  *          RECEIVE    NOTES, CC                                                                ON / OFF
  *          SEND       NOTES, CC                                                                ON / OFF
+ *          PORTS      USB IN, TRS IN (the 3.5 mm MIDI IN jack; build 47)                       ON / OFF
  * (the Model:Cycles' names, short enough for the pages' type; midi.c does what they say) */
 
 #define SET_SECT 0x000FD000u
@@ -29,10 +30,11 @@ static const set_row_t SET_OUT[] = {SR("TRACK 1", out_ch[0], SK_CHAN), SR("TRACK
                                     SR("PCH", pc_out_ch, SK_CHAN1)};
 static const set_row_t SET_RCV[] = {SR("NOTES", rcv_note, SK_ONOFF), SR("CC", rcv_cc, SK_ONOFF)};
 static const set_row_t SET_SND[] = {SR("NOTES", send_note, SK_ONOFF), SR("CC", send_cc, SK_ONOFF)};
-#define SET_NPART 5u
+static const set_row_t SET_PORT[] = {SR("USB IN", usb_in, SK_ONOFF), SR("TRS IN", trs_in, SK_ONOFF)};
+#define SET_NPART 6u
 static const struct { const char *name; const set_row_t *rows; uint8_t n; } SET_PART[SET_NPART] = {
     {"SYNC", SET_SYNC, NELEM(SET_SYNC)}, {"IN CHAN", SET_IN, NELEM(SET_IN)}, {"OUT CHAN", SET_OUT, NELEM(SET_OUT)},
-    {"RECEIVE", SET_RCV, NELEM(SET_RCV)}, {"SEND", SET_SND, NELEM(SET_SND)}};
+    {"RECEIVE", SET_RCV, NELEM(SET_RCV)}, {"SEND", SET_SND, NELEM(SET_SND)}, {"PORTS", SET_PORT, NELEM(SET_PORT)}};
 static const char *const SET_SECTION[1] = {"MIDI"};
 #define C_SET RGB(150, 200, 255)
 
@@ -60,15 +62,17 @@ static void setup_write(void)
 static void setup_load(void)                     /* (the start: the settings as last left, or the defaults) */
 {
     static const midi_cfg_t D = MIDI_CFG0;
-    midi_cfg_t c;
+    midi_cfg_t c = D;
     const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
-    uint32_t i;
+    uint32_t i, len;
     mcfg = D;
-    if (!prj_ok || prj_flash_read(SET_SECT, prj_buf, sizeof(prj_head_t) + sizeof(midi_cfg_t)) ||
-        !prj_head_ok(h, SET_MAGIC, 0, sizeof(midi_cfg_t)) ||
-        h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), sizeof(midi_cfg_t)))
+    if (!prj_ok || prj_flash_read(SET_SECT, prj_buf, sizeof(prj_head_t) + sizeof(midi_cfg_t)))
         return;
-    memcpy(&c, prj_buf + sizeof(prj_head_t), sizeof c);
+    len = prj_head_ok(h, SET_MAGIC, 0, sizeof(midi_cfg_t)) ? sizeof(midi_cfg_t)
+          : prj_head_ok(h, SET_MAGIC, 0, MIDI_CFG46) ? MIDI_CFG46 : 0u;   /* (build 46's: no PORTS -- both on) */
+    if (!len || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
+        return;
+    memcpy(&c, prj_buf + sizeof(prj_head_t), len);
     for (i = 0; i < SET_NPART; i++) {            /* (each value in its range, or the default) */
         uint32_t r;
         for (r = 0; r < SET_PART[i].n; r++) {

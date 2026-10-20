@@ -22,8 +22,11 @@ typedef struct {
     uint8_t in_ch[MIDI_TRACKS], auto_ch, pc_in_ch;     /* (channels: 0 OFF, 1 .. 16) */
     uint8_t out_ch[MIDI_TRACKS], pc_out_ch;
     uint8_t rcv_note, rcv_cc, send_note, send_cc;
+    uint8_t usb_in, trs_in;                      /* PORTS: what is taken from USB, from the TRS jack (build 47; a
+                                                  * record from build 46 ends before them: midi_cfg46) */
 } midi_cfg_t;
-#define MIDI_CFG0 {0, 0, 0, 0, {1, 2, 3, 4, 5, 6}, 16, 16, {1, 2, 3, 4, 5, 6}, 16, 1, 1, 0, 0}
+#define MIDI_CFG0 {0, 0, 0, 0, {1, 2, 3, 4, 5, 6}, 16, 16, {1, 2, 3, 4, 5, 6}, 16, 1, 1, 0, 0, 1, 1}
+#define MIDI_CFG46 __builtin_offsetof(midi_cfg_t, usb_in)
 static midi_cfg_t mcfg = MIDI_CFG0;             /* (the main loop's; the ISRs read single bytes of it) */
 
 /* the CCs of the sound's parameters, page id x 8 + knob (params.c: SYN 1 .. 4, FLTR 1, FLTR 2, AMP, FX, MANGLE):
@@ -120,9 +123,13 @@ static volatile uint8_t xk_go;                   /* START (1) or CONTINUE (2) ta
 static volatile uint8_t xk_start, xk_stop;       /* (.. for the audio ISR: start (1, 2), stop) */
 static volatile uint16_t xk_spp;                 /* the song position, 16ths */
 #define XK_LOST (24000u * 500u)                  /* no pulse for 0.5 s: no clock */
-static void midi_rt(uint32_t st, uint32_t d)     /* (usb_poll: a clock, START, CONTINUE, STOP, a song position) */
+static void midi_rt(uint32_t st, uint32_t d)     /* (usb_poll, or the TRS jack's poll -- d's bit 16: a clock,
+                                                  * START, CONTINUE, STOP, a song position) */
 {
     uint32_t now = fm1_ticks();
+    if (!((d >> 16) & 1u ? mcfg.trs_in : mcfg.usb_in))   /* (PORTS: the input left out) */
+        return;
+    d &= 0x3FFFu;
     if (st == 0xF8u) {
         if (!mcfg.clk_in)
             return;

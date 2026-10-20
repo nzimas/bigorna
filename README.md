@@ -324,7 +324,8 @@ written to the flash as it is left.
 
 ### MIDI
 
-MIDI goes over the USB cable, both ways (the FM-1 shows up as FM-1 Bigorna). The settings follow the Model:Cycles'
+MIDI goes over the USB cable, both ways (the FM-1 shows up as FM-1 Bigorna), and comes in through the FM-1's 3.5 mm
+MIDI IN jack (TRS; a Type A or Type B adapter, as the sending device needs). The settings follow the Model:Cycles'
 MIDI CONFIG:
 
 | Part | Setting | Values | Start value |
@@ -340,6 +341,7 @@ MIDI CONFIG:
 | OUT CHAN | PCH: the channel program changes are sent on | 1 to 16 | 16 |
 | RECEIVE | NOTES, CC: take notes and CCs in | ON / OFF | ON |
 | SEND | NOTES, CC: send notes and CCs out | ON / OFF | OFF |
+| PORTS | USB IN, TRS IN: take MIDI from USB, from the jack | ON / OFF | ON |
 
 Clock in. With CLK IN on and a clock arriving, the FM-1 follows it: the tempo is the average of the last 24 pulses
 (one beat), and the sequencer is held to the pulses themselves, so it never drifts from the master and the jitter of
@@ -379,7 +381,8 @@ from 0 to 127 is spread over the parameter's whole range.
 
 Program changes 0 to 15 choose the session's patterns 1 to 16, in time as the patterns' grid does.
 
-The FM-1's 3.5 mm MIDI IN jack is not used yet.
+The jack takes notes, CCs, program changes, the clock, START, CONTINUE, STOP and the song position, as USB does
+(not SysEx). With both inputs on, the two are merged; a clock should come from one of them only.
 
 ## The screen
 

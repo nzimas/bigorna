@@ -209,7 +209,8 @@ static void audio_init(void)
 
 /* --------------------------------------- TIMER5: the panel, time, USB --- */
 /* 10 kHz, above the audio (it may nest in the render: the scan keeps its pace, the LEDs do not shimmer);
- * USB is polled at 2 kHz, never nested */
+ * USB is polled at 2 kHz, never nested; the TRS MIDI IN jack at 2 kHz too, nested as well (as MELODEE does: a clock
+ * byte timed as it comes, not after the render; it touches only its DMA ring, the MIDI ring and midi.c's clock) */
 void fm1_timer5_irq(void)
 {
     static uint32_t sub, owed, last, acc;
@@ -224,6 +225,8 @@ void fm1_timer5_irq(void)
     }
     if (sub % 5u == 0u)
         owed |= 1u;
+    if (sub % 5u == 2u)
+        uart_midi_poll();                        /* (the TRS jack: build 47) */
     if (++sub == 10u)
         sub = 0;
     if (dbg.in_audio) {
@@ -432,6 +435,7 @@ static void fm1_main(void)
         say("1 CORE", 4000);
     audio_init();
     usb_start();
+    uart_midi_init();                                /* the TRS MIDI IN jack (before TIMER5: PORTH) */
     fm1_timer5_start(isr_timer5, 4);
     fm1_guard_lock_top();
     fm1_irq_enable_all();

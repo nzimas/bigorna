@@ -98,6 +98,7 @@ static void midi_out_event(uint32_t pkt)
     host_mo_n++;
 }
 #include "midi.c"
+#include "midi_uart.c"
 /* (the host renders on one core: CPU1's mailbox never takes a job, src/audio_worker.h) */
 static int audio_worker_online;
 static int audio_worker_submit(void (*fn)(void *), void *ctx) { (void)fn; (void)ctx; return 0; }
@@ -2747,6 +2748,52 @@ static int cmd_projects(const char *dir)
         mcfg = D;
         setup_load();
         EXPECT(mcfg.send_note == 1u, "the setting kept in the flash, read back at the start");
+        {   /* the TRS jack (build 47): bytes as the DMA leaves them -- running status, a clock inside a note, a song
+             * position; PORTS leaving either input out; a record from build 46 (no PORTS) read with both on */
+            static const uint8_t B[] = {0x91, 60, 100, 62, 90, 0x90, 64, 0xF8, 80, 0xF2, 5, 1};
+            uint32_t r0, n0 = xk_n;
+            for (i = 0; i < UM_RING; i++)
+                um_ring[i] = UM_EMPTY;
+            um.rd = 0;
+            mcfg = D;
+            mcfg.clk_in = 1;
+            r0 = mi_w;
+            for (i = 0; i < sizeof B; i++)
+                um_ring[i] = B[i];
+            uart_midi_take(sizeof B);
+            EXPECT(mi_w - r0 == 3u && midi_in_q[r0 % MQ] == (0x19u | 0x91u << 8 | 60u << 16 | 100u << 24) &&
+                   midi_in_q[(r0 + 1u) % MQ] == (0x19u | 0x91u << 8 | 62u << 16 | 90u << 24) &&
+                   midi_in_q[(r0 + 2u) % MQ] == (0x19u | 0x90u << 8 | 64u << 16 | 80u << 24),
+                   "TRS: notes (running status too, a clock inside one) as cable 1's packets");
+            EXPECT(xk_n == n0 + 1u && xk_spp == 5u + 128u, "TRS: the clock to midi_rt, the song position (133)");
+            ui.sel = 0;
+            memset(ui.midi_track, 0, sizeof ui.midi_track);
+            ui_input();
+            EXPECT(ui.midi_track[60] == 1u << 1 && ui.midi_track[64] == 1u, "TRS: its notes routed by channel as USB's");
+            mcfg.trs_in = 0;                     /* (PORTS: TRS IN off) */
+            n0 = xk_n;
+            for (i = 0; i < 4u; i++)
+                um_ring[(um.rd + i) % UM_RING] = (uint8_t)(i == 0u ? 0x92u : i == 3u ? 0xF8u : 61u + i);
+            uart_midi_take(4);
+            memset(ui.midi_track, 0, sizeof ui.midi_track);
+            ui_input();
+            EXPECT(xk_n == n0 && !ui.midi_track[62], "TRS IN off: its notes and clock left out");
+            mcfg = D;
+            mcfg.usb_in = 0;                     /* (PORTS: USB IN off) */
+            midi_in_q[mi_w++ % MQ] = 0x9u | 0x92u << 8 | 63u << 16 | 90u << 24;
+            ui_input();
+            EXPECT(!ui.midi_track[63], "USB IN off: USB's notes left out");
+            mcfg = D;
+            mcfg.rcv_cc = 0;                     /* (a record as build 46 wrote it: up to PORTS) */
+            memset(prj_buf, 0, sizeof(prj_head_t) + sizeof(midi_cfg_t));
+            memcpy(prj_buf + sizeof(prj_head_t), &mcfg, MIDI_CFG46);
+            prj_head_fill(SET_MAGIC, 0, MIDI_CFG46);
+            prj_flash_erase(SET_SECT);
+            prj_flash_prog(SET_SECT, prj_buf, sizeof(prj_head_t) + MIDI_CFG46);
+            mcfg = D;
+            setup_load();
+            EXPECT(!mcfg.rcv_cc && mcfg.usb_in && mcfg.trs_in, "build 46's settings read, both inputs on");
+        }
         mcfg = D;
         setup_write();
         seq_run = 0;

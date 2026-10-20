@@ -717,6 +717,8 @@ static void midi_take(void)
         uint32_t d2 = pkt >> 24 & 0x7Fu, m = 0, t;
         RING_PUBLISH();
         mi_r++;
+        if (!((pkt >> 4) & 15u ? mcfg.trs_in : mcfg.usb_in))   /* (PORTS: cable 1 the TRS jack's, 0 USB's) */
+            continue;
         if (cin == 0xCu) {                       /* a program change: a pattern of the session */
             if (mcfg.pc_in && ch == mcfg.pc_in_ch && d1 < 16u)   /* (PAT_SLOTS, projects.c) */
                 pat_switch(d1);
