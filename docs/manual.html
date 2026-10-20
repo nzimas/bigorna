@@ -58,6 +58,7 @@
 <a href="#playing">Playing</a>
 <a href="#chord-mode" class="sub">CHORD mode</a>
 <a href="#mute-mode" class="sub">MUTE mode</a>
+<a href="#break" class="sub">BREAK</a>
 <a href="#the-effects-seq">The effects (SEQ)</a>
 <a href="#sidechain" class="sub">Sidechain</a>
 <a href="#the-sequencer">The sequencer</a>
@@ -78,11 +79,12 @@
 <tr><td>The six top buttons</td><td>Tracks 1 to 6: the lit one is chosen; the others glow dimly while they sound</td></tr>
 <tr><td>PRESETS (knob)</td><td>The track's machine: 4-OP, DRUM, WAVY, HIVE</td></tr>
 <tr><td>SHIFT + PRESETS</td><td>A new sound of the family before / after</td></tr>
-<tr><td>HOME</td><td>A new sound for the track, on its machine; SHIFT + HOME: of the same family. Held: the session saved</td></tr>
+<tr><td>HOME</td><td>A new sound for the track, on its machine; SHIFT + HOME: of the same family. Held: the session saved, as SAVE held</td></tr>
 <tr><td>OCT− / OCT+</td><td>The track's octave, −3 to +3 (shown at the top right)</td></tr>
 <tr><td>White keys</td><td>Play the track in the scale chosen</td></tr>
 <tr><td>1st black key</td><td>CHORD mode on or off</td></tr>
 <tr><td>2nd black key</td><td>MUTE mode on or off</td></tr>
+<tr><td>3rd black key</td><td>BREAK, while held; SHIFT + it: on every track</td></tr>
 <tr><td>Black key before the last</td><td>EDIT: the sound's pages</td></tr>
 <tr><td>3rd black key from the right</td><td>STEP: the step view</td></tr>
 <tr><td>Last black key</td><td>SHIFT</td></tr>
@@ -93,7 +95,7 @@
 <tr><td>REC</td><td>Records the keys into the track's steps; SHIFT + REC: the looper</td></tr>
 <tr><td>ARP</td><td>The patterns</td></tr>
 <tr><td>SEQ</td><td>The effects' pages</td></tr>
-<tr><td>SAVE</td><td>The sessions</td></tr>
+<tr><td>SAVE</td><td>The sessions; held 0.8 s, the session saved</td></tr>
 <tr><td>MASTER</td><td>The output level</td></tr>
 </table>
 <p>While a knob turns, the screen shows its value as a large dial for a second.</p>
@@ -150,11 +152,32 @@
 <li>SLICE, SLICE RATE, SLC DEPTH, SLC EDGE, SLC SHIFT: a slicer gate synced to the tempo — sixteen patterns at 1/8, 1/16, 1/32 or 1/16 triplets, how deep, how soft its edges, shifted in steps</li>
 </ul>
 <h2 id="playing">Playing</h2>
-<p>The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the 1st and 2nd), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, IN. OCT− and OCT+ move the track's octave. USB MIDI notes play the chosen track as the keys do.</p>
+<p>The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first three), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, IN. OCT− and OCT+ move the track's octave. USB MIDI notes play the chosen track as the keys do.</p>
 <h3 id="chord-mode">CHORD mode</h3>
 <p>In the track's view, the step view off, the 1st black key turns CHORD mode on or off for the track (lit while on, dim off). Each white key then plays a triad from its note, in the scale: TRIAD, INV 1, INV 2, SUS2, SUS4, OPEN or FOURTHS (in CHROMATIC, the same shapes in semitones). SHIFT and the key choose the next form. The form shows at the top left. A step put in takes the chord last played; REC records chords into the steps; the looper records their notes. DRUM tracks play no chords.</p>
 <h3 id="mute-mode">MUTE mode</h3>
 <p>In the track's view, the step view off, the 2nd black key turns MUTE mode on or off (lit while on; the name band reads MUTE MODE). The track buttons then mute instead of choosing: lit, a track plays; dim, it is muted. A button let go soon mutes its track or plays it again. Held 1 s, its track is soloed, every other muted; held 1 s again, the mutes come back as they were. MUTE mode off, the mutes stay, and the buttons choose tracks again. A muted track fades out over ~9 ms, its sends with it; its steps keep playing silently. The chosen track's number is dark grey while it is muted. Mutes are kept with the session.</p>
+<h3 id="break">BREAK</h3>
+<p>While the sequencer plays, holding the 3rd black key (the step view off) breaks up the chosen track's pattern; SHIFT and the key, every track at once. Nothing is written into the steps: each track's position keeps running underneath, and when the key is let go the pattern carries on from where it would have been. The key is lit while held.</p>
+<p>Each press draws a way of playing the steps, shown in the name band, and a new one is drawn every two bars held (never the same twice running):</p>
+<table>
+<tr><th>Way</th><th>What plays</th></tr>
+<tr><td>REPEAT 1, 2, 3, 4 or 8</td><td>A window of that many steps, from the beat the break began on, played over and over</td></tr>
+<tr><td>HALF TIME</td><td>The steps from that beat at half speed</td></tr>
+<tr><td>DOUBLE</td><td>The steps from that beat at double speed, wrapping round the track</td></tr>
+<tr><td>REVERSE 4 or 8</td><td>Each window of 4 or 8 steps played backwards</td></tr>
+<tr><td>CHOP</td><td>The bar cut into slices of 2 or 4 steps, shuffled; the first slice stays in place</td></tr>
+<tr><td>ROLL</td><td>The steps as written, with more ratchets</td></tr>
+</table>
+<p>Over the way, some of these are drawn too:</p>
+<ul>
+<li>ratchets (2 to 6 hits a step), faster the longer the key is held; not on a step that has its own ratchet;</li>
+<li>flams on the drums;</li>
+<li>octave leaps, up or down, on the melodic tracks;</li>
+<li>a gap: every track but the kick silent for the last 2 or 4 steps of each bar;</li>
+<li>accents: the steps on the beat full, the ones between softer.</li>
+</ul>
+<p>The role of each track's sound (as the phrase generator reads it) keeps the result coherent: a kick keeps the bar's first step and takes no leaps, no gap and few ratchets; a drone (HIVE's pads and drones, dark washes) is left alone. The looper's loops play on as they are.</p>
 <h2 id="the-effects-seq">The effects (SEQ)</h2>
 <p>SEQ shows CHORUS, COMP, DELAY and REVERB in turn, then goes back (OCT− and OCT+ move between them; a track's button goes back to the track's view). KNOB 1 to 4 set the first four rows; PRESETS turned right shows the next four.</p>
 <ul>
@@ -193,14 +216,15 @@
 <h2 id="recording">Recording</h2>
 <p>REC records the keys into the chosen track's steps. Stopped: REC arms (it flashes, the metronome counts) and the first note played starts the sequencer on step 1. Playing: recording starts at once. Each note goes to the nearest step with its velocity and its length as held, until REC again. SHIFT + PLAY turns the metronome on or off.</p>
 <h2 id="the-looper">The looper</h2>
-<p>SHIFT + REC arms a new loop on the chosen track; the first note played starts it (and the sequencer, if stopped). Every note played after goes into it, at the nearest step, with its velocity and length, until REC ends it: it then plays round in its own length (up to 16 bars) over the track's steps. Three loops a track.</p>
+<p>SHIFT + REC arms a new loop on the chosen track; the first note played starts it (and the sequencer, if stopped). Every note played after goes into it, at the nearest step, with its velocity and length, until REC ends it: it then plays round in its own length (up to 32 bars) over the track's steps. Three loops a track, up to 256 notes each (a chord counts its three notes). A note can be held for the whole loop.</p>
 <p>SHIFT + REC held shows the track's loops on the first three white keys (lit: playing; dim: muted): a key let go soon mutes its loop or plays it again; held 0.8 s, empties it. SHIFT + REC held 1.5 s with no key touched empties every loop of the track.</p>
 <h2 id="tempo">Tempo</h2>
 <p>PLAY held 0.8 s shows the TEMPO page: PRESETS sets the session's tempo (10 to 300 BPM). A track's button or another page takes it down.</p>
 <h2 id="patterns-arp">Patterns (ARP)</h2>
 <p>A session has 16 patterns: every track's steps, lengths, clocks and directions. ARP shows the PATTERNS grid; the white keys are the 16 patterns (dim; the one playing brighter). A key let go soon loads its pattern — while the sequencer plays, at the end of the chosen track's steps. Held 0.8 s, copies it; another held 0.8 s pastes it there; SHIFT and held 0.8 s empties it. ARP held saves the pattern playing. A pattern keeps its edits when another is loaded, until the session is saved or loaded.</p>
 <h2 id="sessions-save">Sessions (SAVE)</h2>
-<p>16 sessions are kept in the FM-1's flash. SAVE shows the list; PRESETS moves through it, SAVE opens a session's page: LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE. SAVE runs the row chosen, or moves the focus to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not saved, saving over another session, copying over one and deleting ask first (NO / YES on PRESETS). HOME held saves the session playing into its slot. A session holds every track's machine, sounds, octave, level, pan, chord mode and mutes, the effects, the tempo, the root and scale, and its 16 patterns.</p>
+<p>16 sessions are kept in the FM-1's flash. SAVE shows the list; PRESETS moves through it, SAVE opens a session's page: LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE. SAVE runs the row chosen, or moves the focus to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not saved, saving over another session, copying over one and deleting ask first (NO / YES on PRESETS).</p>
+<p>SAVE held 0.8 s (or HOME held) saves the session playing into its slot at once. If it has never been saved, the first empty slot's page shows SAVE NEW? with YES chosen: SAVE saves it there and goes back to the track (PRESETS left: NO). With all 16 slots taken, NO FREE SLOT shows. A session holds every track's machine, sounds, octave, level, pan, chord mode and mutes, the effects, the tempo, the root and scale, and its 16 patterns.</p>
 <h2 id="the-screen">The screen</h2>
 <p>Few words, very large type, high contrast, and a colour for each track. The track's view shows the track's number, its machine and its sound's family; at the top left the pattern playing (orange with changes not saved) and the chord form; at the top right the octave and, while recording, REC or LOOP.</p>
 <h2 id="rescue">Rescue</h2>
