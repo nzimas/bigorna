@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 758 132" width="758" height="132">
+  <title>Bigorna</title>
+  <g fill="#c8ccd2" fill-rule="evenodd"><path d="M6,46 Q30,30 64,28 L176,28 L192,28 L196,32 L196,58 L178,62 Q152,64 146,72 L142,94 Q146,104 172,110 L184,116 L184,126 L36,126 L36,116 L48,110 Q74,104 78,94 L74,72 Q70,64 58,62 Q28,60 6,46 Z M166,33 L176,33 L176,43 L166,43 Z M157.4,38 A3.4,3.4 0 1,0 150.6,38 A3.4,3.4 0 1,0 157.4,38 Z"/></g>
+  <path d="M64,28 L192,28 L196,32 L66,32 Q65,30 64,28 Z" fill="#ff6a14"/>
+  <g transform="translate(230 16)" fill="#c8ccd2" fill-rule="evenodd">
+    <path transform="translate(0 0)" d="M0,0 L58,0 L70,12 L70,44 L64,50 L70,56 L70,88 L58,100 L0,100 Z M24,24 L46,24 L46,38 L24,38 Z M24,62 L46,62 L46,76 L24,76 Z"/>
+    <path transform="translate(84 0)" d="M5,0 L19,0 L24,5 L24,95 L19,100 L5,100 L0,95 L0,5 Z"/>
+    <path transform="translate(122 0)" d="M12,0 L58,0 L70,12 L70,30 L46,30 L46,24 L24,24 L24,76 L46,76 L46,62 L36,62 L36,44 L70,44 L70,88 L58,100 L12,100 L0,88 L0,12 Z"/>
+    <path transform="translate(206 0)" d="M12,0 L58,0 L70,12 L70,88 L58,100 L12,100 L0,88 L0,12 Z M29,24 L41,24 L46,29 L46,71 L41,76 L29,76 L24,71 L24,29 Z"/>
+    <path transform="translate(290 0)" d="M0,0 L58,0 L70,12 L70,50 L62,58 L70,66 L70,100 L46,100 L46,68 L40,62 L24,62 L24,100 L0,100 Z M24,24 L46,24 L46,40 L24,40 Z"/>
+    <path transform="translate(374 0)" d="M0,0 L28,0 L46,62 L46,0 L70,0 L70,100 L42,100 L24,38 L24,100 L0,100 Z"/>
+    <path transform="translate(458 0)" d="M12,0 L58,0 L70,12 L70,100 L46,100 L46,66 L24,66 L24,100 L0,100 L0,12 Z M24,24 L46,24 L46,46 L24,46 Z"/>
+  </g>
+  <rect x="230" y="122" width="528" height="6" fill="#ff6a14"/>
+</svg>
