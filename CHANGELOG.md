@@ -1,5 +1,16 @@
 # Changelog
 
+## Build 44
+
+Fixed
+- After BREAK, a loop's notes no longer sound off the beat. Build 43 struck the loop's held notes again at the step
+  the key was let go on (a chord from beat 1 heard on step 3, say). Now nothing is struck at that point: the notes
+  the break left sounding stop, the loop carries on from its next note on its own step, and a note held over the
+  next bar line (a chord, a pad) comes back on that downbeat for the rest of its length.
+- With the sequencer stopped after more than 32 bars of playing, a loop armed and started from the first note
+  ended at once, on that note: the looper measured it from the last run's step count. The count now resets when
+  the sequencer stops.
+
 ## Build 43
 
 Fixed

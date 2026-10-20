@@ -1578,23 +1578,23 @@ static int cmd_projects(const char *dir)
         for (i = 0; i < NSTEP; i++)
             seq_note[0][i] = 0;
     }
-    {   /* let go of BREAK (build 43): the notes it left sounding go, and the loop's chord due to be sounding then
-         * comes back at once, for the rest of its length -- not a bar later */
+    {   /* let go of BREAK (builds 43, 44): the notes it left sounding go at the next step; nothing is struck there;
+         * the loop's chord held over the next bar line comes back on it -- on the downbeat */
         int32_t out[2 * CTL];
         uint32_t i, c, k, ok = 1, g, ph, want, n;
         loop_t *lp = &loops[1][0];
         for (i = 0; i < NSTEP; i++)
             seq_note[1][i] = 0;
-        for (c = 0; c < 4u; c++)                 /* (four chords, each held a bar) */
+        for (c = 0; c < 4u; c++)                 /* (four chords, each held two bars) */
             for (i = 0; i < 3u; i++) {
                 lev_t *e = &lp->ev[c * 3u + i];
-                e->step = (uint16_t)(c * 16u);
-                e->len8 = 16u * 8u;
+                e->step = (uint16_t)(c * 32u);
+                e->len8 = 32u * 8u;
                 e->note = (uint8_t)(57u + c * 2u + i * 4u);
                 e->vel = 100;
             }
         lp->n = 12;
-        lp->len = 64;
+        lp->len = 128;
         lp->mute = 0;
         lp->cur = 0;
         lp->kick = 0;
@@ -1607,29 +1607,116 @@ static int cmd_projects(const char *dir)
         key(KEY_TRIG, 1);
         fm1_in.notes &= ~(1u << KEY_SHIFT);
         brk_keep = 0;
-        while (seq_gcount != 52u)                /* (two bars broken up: let go in the 4th chord's bar) */
+        while (seq_gcount != 68u)                /* (three bars broken up: let go in the 3rd chord's first bar) */
             mix_block(out);
         key(KEY_TRIG, 0);
-        for (c = 0; c < 20u; c++) {
+        for (c = 0; c < 20u; c++) {              /* (let go at 16th 68: silent to 80, the bar line; then the 3rd
+                                                  * chord, held over it, for its last bar) */
             g = seq_gcount;
             while (seq_gcount == g)
                 mix_block(out);
             mix_block(out);
             ph = (seq_gcount - lp->anchor) % lp->len;
-            want = 57u + (ph / 16u) * 2u;
+            want = 57u + (ph / 32u) * 2u;
             for (k = 0, n = 0; k < SEQ_HOLD; k++)
                 if (sq_note[1][k]) {
                     n++;
                     ok &= sq_note[1][k] == want || sq_note[1][k] == want + 4u || sq_note[1][k] == want + 8u;
                 }
-            ok &= n == 3u;
+            ok &= seq_gcount < 80u ? n == 0u : n == 3u;
         }
-        EXPECT(ok, "let go of BREAK: the loop's chord due then sounds at once, and only it");
+        EXPECT(ok, "let go of BREAK: nothing struck off the beat; on the next bar line the loop's chord, and only it");
         lp->on = 0;
         lp->n = 0;
         seq_run = 0;
         for (i = 0; i < 4u; i++)
             mix_block(out);
+    }
+    {   /* BREAK as played (build 44): a loop recorded with the keys from a downbeat -- a note held most of a bar,
+         * then notes on beats -- and a kick on every beat; 200 breaks, each held a different time, on one track or
+         * (SHIFT) all, let go anywhere in a step. After each, for two bars: every loop note starts on its own step
+         * or, held over, on a bar line; every kick on a beat */
+        int32_t out[2 * CTL];
+        uint32_t kw2[16], k, run, bad = 0, total = 0, kbad = 0, ktot = 0, i;
+        loop_t *lp = &loops[2][0];
+        for (k = 0; k < NKEY; k++)
+            if (white_ix(k) >= 0)
+                kw2[white_ix(k)] = k;
+        for (k = 0; k < NSTEP; k++) {
+            seq_note[0][k] = (k % 4u) ? 0 : 48;
+            seq_vel[0][k] = 100;
+            seq_glen[0][k] = GLEN_DEF;
+            seq_cond[0][k] = CD_NONE;
+            seq_rtg[0][k] = 0;
+            seq_mut[0][k] = 0;
+            seq_mfx[0][k] = MFX_OFF;
+            seq_chf[0][k] = 0;
+            seq_note[1][k] = seq_note[2][k] = 0;
+        }
+        lop_clear();
+        seq_run = 1;
+        while (seq_gcount != 16u)
+            mix_block(out);
+        ui.sel = 2;
+        btn(B_REC, 1);                           /* (the looper armed on track 3) */
+        while (!(seq_gcount == 31u && seq_acc_now > SEQ_16TH * 3u / 4u))
+            mix_block(out);
+        fm1_in.notes |= 1u << kw2[0];            /* (just before 32: on it) -- held to 44 */
+        ui_input();
+        while (seq_gcount != 44u)
+            mix_block(out);
+        fm1_ms += 12u * 15000u * 10u / (uint32_t)fx_bpm10;   /* (12 steps held) */
+        fm1_in.notes &= ~(1u << kw2[0]);
+        ui_input();
+        for (i = 48; i < 64u; i += 4u) {         /* (then a note on each beat of the next bar) */
+            while (seq_gcount != i)
+                mix_block(out);
+            tap(kw2[2 + i / 4u % 4u]);
+        }
+        while (!(seq_gcount == 63u && seq_acc_now > SEQ_16TH * 2u / 3u))
+            mix_block(out);
+        btn(B_REC, 0);
+        EXPECT(lp->on && lp->len == 32u && lp->anchor == 32u && lp->n == 5u && lp->ev[0].len8 >= 80u,
+               "(the loop: 2 bars from the downbeat, a held note and four on the beats)");
+        for (run = 0; run < 200u; run++) {
+            uint32_t hold = 200u + (run * 7919u) % 3000u, g;
+            ui.sel = (uint8_t)(run % 3u);
+            ui.page = PG_MAIN;
+            if (run & 1u)
+                fm1_in.notes |= 1u << KEY_SHIFT;
+            key(KEY_TRIG, 1);
+            fm1_in.notes &= ~(1u << KEY_SHIFT);
+            brk_keep = 0;                        /* (whatever track 3's sound: broken up with the rest) */
+            for (i = 0; i < hold; i++)
+                mix_block(out);
+            key(KEY_TRIG, 0);
+            for (g = seq_gcount + 32u; seq_gcount != g;) {
+                uint32_t s2 = seq_sounded[2], s0 = seq_sounded[0], ph, ok, e;
+                mix_block(out);
+                if (seq_sounded[2] != s2) {
+                    ph = (seq_gcount - lp->anchor) % lp->len;
+                    for (e = 0, ok = seq_gcount % 16u == 0u; e < lp->n; e++)
+                        ok |= lp->ev[e].step == ph;
+                    total++;
+                    bad += !ok;
+                }
+                if (seq_sounded[0] != s0) {
+                    ktot++;
+                    kbad += seq_gcount % 4u != 0u;
+                }
+            }
+            for (i = 0; i < (run * 31u) % 300u; i++)
+                mix_block(out);
+        }
+        EXPECT(total > 600u && !bad, "200 breaks: after each, every loop note on its own step or a bar line");
+        EXPECT(ktot > 1000u && !kbad, "200 breaks: after each, every kick on a beat");
+        lop_clear();
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        EXPECT(seq_gcount == 0xFFFFFFFFu && !loop_qnow(), "stopped after a long run: the count reads not started (the looper from 0)");
+        for (k = 0; k < NSTEP; k++)
+            seq_note[0][k] = 0;
     }
     {   /* the looper: SHIFT + REC armed; the first note starts it; REC ends it at the nearest step; it plays */
         int32_t out[2 * CTL];
