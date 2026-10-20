@@ -72,8 +72,9 @@
   <div class="big riveted">
     <h2>Long, quantized loops over the sequence</h2>
     <p>The looper records what you play over the running steps: up to 32 bars a loop, three loops a track, on all
-      six tracks. Notes are quantized to the step on the way in. Each note keeps its velocity and the length it
-      was held, and a note can be held for the whole loop.</p>
+      six tracks. Notes are quantized to the step on the way in, and the loop's length to whole bars when REC ends
+      it, so it never drifts from the pattern. Each note keeps its velocity and the length it was held, and a note
+      can be held for the whole loop. Loops are saved with the session.</p>
     <p>This makes it suited to slow chord progressions with CHORD mode: long pad chords and held atmospheric
       layers, over a 16-step drum pattern. It suits improvised lines just as well, kept as played. Each loop can be
       muted or cleared on its own. A looper of this length, synced to the sequencer, is rare on hardware of this
@@ -110,8 +111,8 @@
     and the loops.</dd>
   <dt>BREAK</dt>
   <dd>Held, the 3rd black key breaks up the track's pattern — beat repeats, half and double time, reversed windows,
-    shuffled slices, rolls, with ratchets, flams and octave leaps; SHIFT, every track. Nothing is written: let go,
-    the pattern continues in place.</dd>
+    shuffled slices, rolls, with ratchets, flams and octave leaps; SHIFT, every track. The track's loops break up
+    with it. Nothing is written: let go, the pattern and the loops continue in place.</dd>
   <dt>Mute and solo</dt>
   <dd>MUTE mode turns the track buttons into mutes; held, a track is soloed.</dd>
   <dt>Send effects</dt>
@@ -119,8 +120,9 @@
   <dt>Compressor and sidechain</dt>
   <dd>A master compressor; any track can be ducked by another track's hits, from light pumping to a gate.</dd>
   <dt>Patterns and sessions</dt>
-  <dd>16 sessions in the FM-1's flash, each with 16 patterns; a pattern switches in time, as the chosen track
-    finishes its steps.</dd>
+  <dd>16 sessions in the FM-1's flash. A session holds the whole state: sounds, effects, its 16 patterns and the
+    loops. SAVE held saves it; the FM-1 starts with the last session used. A pattern switches in time, as the
+    chosen track finishes its steps.</dd>
   <dt>Scales</dt>
   <dd>The white keys play one of ten scales from any root.</dd>
   <dt>Readable screen</dt>

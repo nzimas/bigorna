@@ -42,6 +42,38 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-42">Build 42</h2>
+<p>Changed</p>
+<ul>
+<li>REC ends a loop at the nearest whole number of bars (16 steps each; one bar at least, 32 at most), so a loop never drifts against a 16-step pattern. The loop's first step stays where its first note was played, and it carries on from where it is in its length: ended short of the bar line, it plays its last steps and then comes round; ended past it, the notes past the length fold onto the loop's first steps. LOOP n and the bars show (LOOP 1  4 BARS).</li>
+</ul>
+<h2 id="build-41">Build 41</h2>
+<p>Changed</p>
+<ul>
+<li>BREAK takes in the loops of the tracks under it. A loop is broken up as its track's steps are: the same way, from the same beat, with the same gap before the bar's end, so loop and pattern stay together while the key is held. Each loop's own position runs on underneath, as the steps' does: let go, both carry on in step. A drone's loops, like its steps, are left alone.</li>
+</ul>
+<h2 id="build-40">Build 40</h2>
+<p>Fixed</p>
+<ul>
+<li>Sessions saved by builds 35 to 37 are found again. Builds 38 and 39 looked for them by the length of their data without the 2 bytes of padding those builds saved after it (2778 bytes, not 2780), so their slots showed as empty. The sessions were not changed in the flash; a slot saved into since build 38 holds the new session.</li>
+</ul>
+<h2 id="build-39">Build 39</h2>
+<p>Fixed</p>
+<ul>
+<li>On the sessions' pages SAVE acts as it is pressed again, as before build 37. Since build 37 it acted when let go, and a press of 0.8 s or more counted as SAVE held: on LOAD it saved the session in place instead of loading the one chosen. SAVE held now saves only from the other pages.</li>
+</ul>
+<h2 id="build-38">Build 38</h2>
+<p>Added</p>
+<ul>
+<li>A session now holds its loops: SAVE stores every loop of every track (its notes, length and mute), and LOAD gives them back, starting at the next bar if the sequencer is playing. A session with no loops, or saved by an earlier build, empties the loops when loaded.</li>
+<li>The loops are kept in a loop store of 31 sectors of flash shared by the 16 sessions; a session takes as many as its loops need (up to 7, every loop full). If the store has no room, nothing is saved and NO ROOM FOR LOOPS shows. New loops are written before the session that points at them, so a save cut off by power loss leaves the session as it was.</li>
+<li>The FM-1 starts with the last session loaded or saved (SESSION n shows). After a start that failed, it starts empty instead.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>A session also keeps the track chosen, and loads at the pattern it was saved playing (was: pattern 1).</li>
+<li>COPY copies a session's loops with it.</li>
+</ul>
 <h2 id="build-37">Build 37</h2>
 <p>Added</p>
 <ul>
