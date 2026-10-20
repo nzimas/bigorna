@@ -60,9 +60,9 @@
  *                             (it plays on)
  *   SHIFT + REC               the looper (after TONITOR's): a new loop on the chosen track, armed; the first note
  *                             played starts it (and the sequencer, if stopped); every note played after is in it, at
- *                             the nearest step, with its velocity and length, until REC ends it (at the nearest step):
- *                             it plays from there, round and round in its own length (up to 32 bars), over the
- *                             track's steps. Three loops a track
+ *                             the nearest step, with its velocity and length, until REC ends it: its length the
+ *                             nearest whole bars (1 .. 32), it plays round and round in it, on from where it is, over
+ *                             the track's steps. Three loops a track
  *   SHIFT + REC held          the track's loops on the first three white keys (lit: playing; dim: muted): a key let
  *                             go soon mutes its loop or plays it again; held 0.8 s, empties it. Held 1.5 s with no
  *                             white key touched: every loop of the track emptied
@@ -577,19 +577,21 @@ static void loop_release(uint32_t k)             /* a key the looper recorded le
         loops[ui.lt][ui.ll].ev[ui.lk_ev[k] + j].len8 = (uint16_t)loop_len8(fm1_ms - ui.lk_t0[k]);
     ui.lk_ev[k] = 0xFFFF;
 }
-/* REC: the loop ends at the nearest step and plays from there (armed, nothing played: not armed) */
+/* REC: the loop ends, its length the nearest whole number of bars (one at least; build 42), so it never drifts from
+ * the patterns; it plays on from where it is in that length, its first step where its first note was (armed,
+ * nothing played: not armed) */
 static void loop_end(void)
 {
     loop_t *p = &loops[ui.lt][ui.ll];
     uint32_t q = loop_qnow(), len, i, j;
-    char m[8] = "LOOP ";
+    char m[16] = "LOOP ";
     if (ui.lrec != 2 || !p->n) {
         loop_drop();
         say("LOOP OFF", 900);
         return;
     }
-    len = q - ui.lstart;
-    len = len < 1u ? 1u : len > LOOP_MAX ? LOOP_MAX : len;
+    len = (q - ui.lstart + 8u) / 16u * 16u;      /* (whole bars of 16 steps, the nearest) */
+    len = len < 16u ? 16u : len > LOOP_MAX ? LOOP_MAX : len;
     for (i = 0; i < NKEY; i++)                   /* (keys still held: their notes to here) */
         if (ui.lk_ev[i] != 0xFFFFu)
             loop_release(i);
@@ -602,15 +604,19 @@ static void loop_end(void)
         p->ev[j] = e;
     }
     p->len = (uint16_t)len;
-    p->anchor = q;
+    p->anchor = ui.lstart;                       /* (its first step where recording began: on now, at (q - lstart) % len) */
     p->mute = 0;
     p->cur = 0;
-    p->kick = (uint8_t)(seq_gcount != 0xFFFFFFFFu && q <= seq_gcount);   /* (its first step gone by: played now) */
+    p->kick = (uint8_t)((q - ui.lstart) % len == 0u && seq_gcount != 0xFFFFFFFFu && q <= seq_gcount);   /* (its first
+                                                  * step due now and gone by: played at once) */
     RING_PUBLISH();
     p->on = 1;
     ui.lrec = 0;
     rec_set(ui.rec);
     fmt_int(m + 5, ui.ll + 1);
+    str_cpy(m + str_len(m), "  ", 3);
+    fmt_int(m + str_len(m), (int32_t)(len / 16u));
+    str_cpy(m + str_len(m), len == 16u ? " BAR" : " BARS", 6);
     say(m, 1200);
 }
 static uint32_t loops_n(uint32_t t)

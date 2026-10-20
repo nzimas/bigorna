@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 42
+
+Changed
+- REC ends a loop at the nearest whole number of bars (16 steps each; one bar at least, 32 at most), so a loop
+  never drifts against a 16-step pattern. The loop's first step stays where its first note was played, and it
+  carries on from where it is in its length: ended short of the bar line, it plays its last steps and then comes
+  round; ended past it, the notes past the length fold onto the loop's first steps. LOOP n and the bars show
+  (LOOP 1  4 BARS).
+
 ## Build 41
 
 Changed

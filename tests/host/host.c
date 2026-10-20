@@ -1605,18 +1605,47 @@ static int cmd_projects(const char *dir)
         while (!(seq_gcount == 9u && seq_acc_now < SEQ_16TH / 3u))
             mix_block(out);
         btn(B_REC, 0);
-        EXPECT(!ui.lrec && loops[0][0].on && loops[0][0].len == 9u && loops[0][0].anchor == 9u && !met_on,
-               "REC: the loop ends, 9 steps long");
+        EXPECT(!ui.lrec && loops[0][0].on && loops[0][0].len == 16u && loops[0][0].anchor == 0u && !met_on &&
+               !loops[0][0].kick, "REC after 9 steps: the loop ends, a bar long (the nearest), from its first note");
+        EXPECT(!strcmp(ui.msg, "LOOP 1  1 BAR"), "LOOP 1  1 BAR shown");
+        while (seq_gcount != 16u)                /* (on, at step 9 of 16: its first note at the next bar) */
+            mix_block(out);
         for (i = 0; i < 2u; i++)
             mix_block(out);
         for (i = 0, found = 0; i < SEQ_HOLD; i++)
             found |= sq_note[0][i] == n0;
-        EXPECT(found, "its first step played at once (it had gone by)");
-        while (seq_gcount != 13u)
+        EXPECT(found, "its first step plays on the next bar");
+        while (seq_gcount != 20u)
             mix_block(out);
         for (i = 0, found = 0; i < SEQ_HOLD; i++)
             found |= sq_note[0][i] == n2;
         EXPECT(found, "its fifth step plays, quantized");
+        {   /* the rounding: recorded so many steps, the loop's length in whole bars, its phase where it was */
+            static const uint32_t REC[4] = {23, 24, 37, 600}, LEN[4] = {16, 32, 32, 512};
+            uint32_t c, gc = seq_gcount, ac = seq_acc_now, ok = 1;
+            loop_t keep = loops[0][2];
+            for (c = 0; c < 4u; c++) {
+                loop_t *p = &loops[0][2];
+                p->n = 1;
+                p->ev[0].step = 0;
+                p->ev[0].note = 60;
+                p->ev[0].len8 = 4;
+                p->on = 0;
+                ui.lt = 0;
+                ui.ll = 2;
+                ui.lrec = 2;
+                ui.lstart = 1000u + 3u;
+                seq_gcount = ui.lstart + REC[c];
+                seq_acc_now = 0;
+                loop_end();
+                ok &= p->len == LEN[c] && p->anchor == ui.lstart &&
+                      (seq_gcount - p->anchor) % p->len == REC[c] % LEN[c];
+            }
+            EXPECT(ok, "a loop's length: the nearest whole bars (23 steps 1, 24 2, 37 2, 600 the most, 32), its phase kept");
+            loops[0][2] = keep;
+            seq_gcount = gc;
+            seq_acc_now = ac;
+        }
         /* SHIFT + REC held: the loops on the white keys */
         fm1_in.notes |= 1u << KEY_SHIFT;
         fm1_in.buttons |= 1u << PANEL_BTN[B_REC];

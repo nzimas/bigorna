@@ -267,8 +267,10 @@ step with its velocity and its length as held, until REC again. SHIFT + PLAY tur
 ## The looper
 
 SHIFT + REC arms a new loop on the chosen track; the first note played starts it (and the sequencer, if stopped).
-Every note played after goes into it, at the nearest step, with its velocity and length, until REC ends it: it then
-plays round in its own length (up to 32 bars) over the track's steps. Three loops a track, up to 256 notes each (a
+Every note played after goes into it, at the nearest step, with its velocity and length, until REC ends it. Its
+length is then the nearest whole number of bars (16 steps a bar; 1 bar at least, 32 at most), so it never drifts
+from the patterns: it plays round in that length over the track's steps, its first step where its first note was,
+carrying on from where it is (LOOP 1  4 BARS shows). Three loops a track, up to 256 notes each (a
 chord counts its three notes). A note can be held for the whole loop.
 
 SHIFT + REC held shows the track's loops on the first three white keys (lit: playing; dim: muted): a key let go soon
