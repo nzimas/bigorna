@@ -20,10 +20,12 @@
  *   ARP held          the pattern playing saved, into its slot of the session (and into the flash if the session has
  *                     a slot)
  *   a track's button  back to playing
- * A session loads with its pattern 1; so does the start.
+ * A session loads at the pattern it was saved playing; the start, at the last session's (or pattern 1).
  * LOAD with changes not saved, SAVE over another, DELETE, and COPY over another ask first: NO / YES on PRESETS, SAVE
  * answers. COPY asks for the slot to copy to (PRESETS), then SAVE.
- * A session's SAVE stores the pattern playing into its slot too, then the whole session.
+ * A session's SAVE stores the pattern playing into its slot too, then the whole session -- its loops with it (in the
+ * loop store, below), and the track chosen; LOAD gives all of it back, at the pattern it was saved playing.
+ * The last session loaded or saved is noted (LST_SECT): the FM-1 starts with it.
  *
  * Each sector begins with a head: magic, format, what it is (the project, or which four patterns), the body's length
  * and CRC, the head's own CRC. A sector whose head does not check (empty, erased, another firmware's) is empty. */
@@ -54,14 +56,25 @@ typedef struct {
     uint8_t sc_src[NTRACK], sc_lvl[NTRACK];   /* each track's sidechain (from build 29: before, PRJ_LEN28) */
     uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode and form (from build 33: PRJ_LEN32) */
     uint8_t mute[NTRACK];        /* each track muted (from build 35: before, PRJ_LEN34) */
+    uint8_t sel;                 /* the track chosen (from build 38: before, PRJ_LEN37) */
+    uint8_t loop_nsec;           /* the loops: their sectors in the loop store (0: none) .. */
+    uint32_t loop_gen;           /* .. and the generation they were written with */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body_t, cp)
 #define PRJ_LEN28 __builtin_offsetof(prj_body_t, sc_src)
 #define PRJ_LEN32 __builtin_offsetof(prj_body_t, chord_on)
 #define PRJ_LEN34 __builtin_offsetof(prj_body_t, mute)
+#define PRJ_LEN37 __builtin_offsetof(prj_body_t, sel)
+static void prj_lp0(prj_body_t *b)               /* (a session from before build 38: track 1, no loops) */
+{
+    b->sel = 0;
+    b->loop_nsec = 0;
+    b->loop_gen = 0;
+}
 static void prj_mu0(prj_body_t *b)               /* (a session from before build 35: no track muted) */
 {
     memset(b->mute, 0, NTRACK);
+    prj_lp0(b);
 }
 static void prj_ch0(prj_body_t *b)               /* (a session from before build 33: CHORD mode off) */
 {
@@ -232,6 +245,12 @@ static int prj_read(uint32_t k, uint32_t s)
         prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
         return 0;
     }
+    if (!s && prj_head_ok(h, magic, k * 16u, PRJ_LEN37) &&
+        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN37)) {   /* (builds 35 .. 37: no loops) */
+        prj_lp0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
+        prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
+        return 0;
+    }
     if (!prj_head_ok(h, magic, k * 16u + s, len) || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
         return -2;
     return 0;
@@ -251,21 +270,341 @@ static int prj_write(uint32_t k, uint32_t s)
         return -3;
     return 0;
 }
+/* ------------------------------------------------------------ the loops --- */
+/* The loop store (build 38): 31 sectors the FM-1's flash has free (beyond the sessions' 64, apart from the update's
+ * staging area), shared by the sessions. A session's loops are a stream -- how many loops, then each: its track,
+ * its number, muted, its length, its notes as they are in RAM -- cut into as many sectors as it takes (up to 7: 18
+ * loops of 256 notes), each sector marked with the session's slot, its place in the stream, and a generation. A
+ * sector is in use while a session in its slot holds that generation; any other is free. SAVE writes the loops into
+ * free sectors first, then the session that points at them: a save cut off leaves the session before it whole. */
+#define LOP_MAGIC 0x334C4742u   /* "BGL3" */
+#define LST_MAGIC 0x31534742u   /* "BGS1": the last session */
+#define LOP_N 31u
+#define LST_SECT 0x000FC000u
+typedef struct { uint32_t gen; uint8_t slot, idx, nsec, pad; uint32_t bytes; } lop_meta_t;
+#define LOP_BODY (PRJ_SECT - (uint32_t)sizeof(prj_head_t))
+#define LOP_DATA (LOP_BODY - (uint32_t)sizeof(lop_meta_t))
+#define LOP_WHAT 0x1000u        /* (+ slot x 16 + its place) */
+static uint32_t prj_lgen[PRJ_SLOTS];    /* each slot's session: its loops' generation (0: none) */
+static uint32_t lop_gmax;               /* the highest generation in the store */
+static int8_t lst_slot = -1;            /* the last session, as noted */
+static uint32_t lop_sector(uint32_t i)  /* 0xD7000 .. 0xDF000, 0xE5000 .. 0xFA000 (not 0xE0000 .. 0xE4FFF: the
+                                         * update's staging) */
+{
+    return i < 9u ? 0x000D7000u + i * PRJ_SECT : 0x000E5000u + (i - 9u) * PRJ_SECT;
+}
+static lop_meta_t *lop_meta(void) { return (lop_meta_t *)(void *)(prj_buf + sizeof(prj_head_t)); }
+static uint8_t *lop_data(void) { return prj_buf + sizeof(prj_head_t) + sizeof(lop_meta_t); }
+/* sector i's head and mark (not its body): 0 if it is a loop sector */
+static int lop_peek(uint32_t i, lop_meta_t *m)
+{
+    struct { prj_head_t h; lop_meta_t m; } x;
+    if (prj_flash_read(lop_sector(i), &x, sizeof x) || x.h.magic != LOP_MAGIC || x.h.format != PRJ_FORMAT ||
+        x.h.len != LOP_BODY || x.h.head_crc != prj_crc((const uint8_t *)&x.h, __builtin_offsetof(prj_head_t, head_crc)) ||
+        x.m.slot >= PRJ_SLOTS || x.h.what != LOP_WHAT + x.m.slot * 16u + x.m.idx)
+        return -1;
+    *m = x.m;
+    return 0;
+}
+static int lop_live(uint32_t i)          /* in use: a session's */
+{
+    lop_meta_t m;
+    return !lop_peek(i, &m) && prj_has[m.slot] && m.gen && prj_lgen[m.slot] == m.gen;
+}
+static int lop_read(uint32_t i)          /* sector i into prj_buf, whole */
+{
+    const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
+    if (prj_flash_read(lop_sector(i), prj_buf, PRJ_SECT) || h->magic != LOP_MAGIC || h->len != LOP_BODY ||
+        h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), LOP_BODY))
+        return -1;
+    return 0;
+}
+static int lop_write(uint32_t i)         /* prj_buf (its mark and data filled) into sector i: erased, written, read back */
+{
+    lop_meta_t m = *lop_meta();
+    uint16_t c;
+    prj_head_fill(LOP_MAGIC, LOP_WHAT + m.slot * 16u + m.idx, LOP_BODY);
+    c = ((prj_head_t *)(void *)prj_buf)->body_crc;
+    if (prj_flash_erase(lop_sector(i)) || prj_flash_prog(lop_sector(i), prj_buf, PRJ_SECT))
+        return -2;
+    if (lop_read(i) || ((prj_head_t *)(void *)prj_buf)->body_crc != c)
+        return -3;
+    return 0;
+}
+/* the free sectors for session k: nsec of them into map (k's own in use last, only if the others are too few) */
+static int lop_alloc(uint32_t k, uint32_t nsec, uint8_t *map)
+{
+    uint32_t i, n = 0, pass;
+    for (pass = 0; pass < 2u && n < nsec; pass++)
+        for (i = 0; i < LOP_N && n < nsec; i++) {
+            lop_meta_t m;
+            int live = lop_live(i), own = live && !lop_peek(i, &m) && m.slot == k;
+            if (pass == 0u ? !live : own)
+                map[n++] = (uint8_t)i;
+        }
+    return n == nsec ? 0 : -4;
+}
+/* the stream, written: a byte at a time into prj_buf, a sector written as it fills */
+static struct {
+    uint32_t pos, j, nsec, slot, gen, bytes;
+    uint8_t map[8];
+    int err;
+} lw;
+static void lw_flush(void)
+{
+    lop_meta_t *m = lop_meta();
+    if (lw.err || lw.j >= lw.nsec)
+        return;
+    m->gen = lw.gen;
+    m->slot = (uint8_t)lw.slot;
+    m->idx = (uint8_t)lw.j;
+    m->nsec = (uint8_t)lw.nsec;
+    m->pad = 0;
+    m->bytes = lw.bytes;
+    if (lop_write(lw.map[lw.j]))
+        lw.err = -2;
+    lw.j++;
+    lw.pos = 0;
+    memset(lop_data(), 0, LOP_DATA);
+}
+static void lw_put(const void *p, uint32_t n)
+{
+    const uint8_t *b = (const uint8_t *)p;
+    while (n--) {
+        if (lw.pos == LOP_DATA)
+            lw_flush();
+        lop_data()[lw.pos++] = *b++;
+    }
+}
+static uint32_t lop_bytes(void)          /* the stream's length (0: no loop) */
+{
+    uint32_t t, l, n = 0, b = 1;
+    for (t = 0; t < NTRACK; t++)
+        for (l = 0; l < NLOOP; l++)
+            if (loops[t][l].on && loops[t][l].n) {
+                n++;
+                b += 8u + loops[t][l].n * (uint32_t)sizeof(lev_t);
+            }
+    return n ? b : 0u;
+}
+/* the loops playing into the store, for session k: their generation and sectors (0, 0: none) */
+static int lop_save(uint32_t k, uint32_t *gen, uint8_t *nsec)
+{
+    uint32_t t, l, bytes = lop_bytes();
+    uint8_t cnt = 0;
+    *gen = 0;
+    *nsec = 0;
+    if (!bytes)
+        return 0;
+    memset(&lw, 0, sizeof lw);
+    lw.nsec = (bytes + LOP_DATA - 1u) / LOP_DATA;
+    if (lw.nsec > sizeof lw.map || lop_alloc(k, lw.nsec, lw.map))
+        return -4;
+    lw.slot = k;
+    lw.gen = ++lop_gmax;
+    lw.bytes = bytes;
+    memset(lop_data(), 0, LOP_DATA);
+    for (t = 0; t < NTRACK; t++)
+        for (l = 0; l < NLOOP; l++)
+            cnt += (uint8_t)(loops[t][l].on && loops[t][l].n);
+    lw_put(&cnt, 1);
+    for (t = 0; t < NTRACK; t++)
+        for (l = 0; l < NLOOP; l++) {
+            const loop_t *p = &loops[t][l];
+            uint8_t h[8];
+            if (!p->on || !p->n)
+                continue;
+            h[0] = (uint8_t)t;
+            h[1] = (uint8_t)l;
+            h[2] = p->mute;
+            h[3] = 0;
+            h[4] = (uint8_t)p->len;
+            h[5] = (uint8_t)(p->len >> 8);
+            h[6] = (uint8_t)p->n;
+            h[7] = (uint8_t)(p->n >> 8);
+            lw_put(h, 8);
+            lw_put(p->ev, p->n * (uint32_t)sizeof(lev_t));
+        }
+    lw_flush();                                  /* (the last, part full) */
+    if (lw.err || lw.j != lw.nsec)
+        return lw.err ? lw.err : -3;
+    *gen = lw.gen;
+    *nsec = (uint8_t)lw.nsec;
+    return 0;
+}
+/* the loops emptied (none playing, none recording) */
+static void lop_clear(void)
+{
+    uint32_t t, l;
+    if (ui.lrec)
+        loop_drop();
+    for (t = 0; t < NTRACK; t++)
+        for (l = 0; l < NLOOP; l++)
+            loops[t][l].on = 0;
+    RING_PUBLISH();
+    for (t = 0; t < NTRACK; t++)
+        for (l = 0; l < NLOOP; l++) {
+            loops[t][l].n = loops[t][l].len = 0;
+            loops[t][l].mute = 0;
+        }
+}
+/* the stream read back: a byte at a time from the sectors in map, each read as the one before runs out */
+static struct {
+    uint32_t pos, j, nsec, left;
+    uint8_t map[8];
+    int err;
+} lr;
+static void lr_get(void *p, uint32_t n)
+{
+    uint8_t *b = (uint8_t *)p;
+    while (n--) {
+        if (lr.err || !lr.left) {
+            lr.err = -1;
+            *b++ = 0;
+            continue;
+        }
+        if (lr.pos == LOP_DATA) {
+            if (++lr.j >= lr.nsec || lop_read(lr.map[lr.j]))
+                lr.err = -2;
+            lr.pos = 0;
+        }
+        *b++ = lop_data()[lr.pos++];
+        lr.left--;
+    }
+}
+/* session k's loops (generation gen, nsec sectors) given back; the loops emptied first, and left empty if they do
+ * not read whole. Playing, they start at the next bar */
+static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec)
+{
+    uint32_t i, j, a;
+    uint8_t cnt;
+    lop_clear();
+    if (!gen || !nsec)
+        return 0;
+    if (nsec > sizeof lr.map)
+        return -2;
+    memset(&lr, 0, sizeof lr);
+    lr.nsec = nsec;
+    for (j = 0; j < nsec; j++) {                 /* (each place in the stream: the sector that holds it) */
+        lop_meta_t m;
+        for (i = 0; i < LOP_N; i++)
+            if (!lop_peek(i, &m) && m.slot == k && m.gen == gen && m.idx == j && m.nsec == nsec)
+                break;
+        if (i == LOP_N)
+            return -2;
+        lr.map[j] = (uint8_t)i;
+    }
+    if (lop_read(lr.map[0]))
+        return -2;
+    lr.left = lop_meta()->bytes;
+    a = seq_run && seq_gcount != 0xFFFFFFFFu ? (seq_gcount / 16u + 1u) * 16u : 0u;
+    lr_get(&cnt, 1);
+    for (i = 0; i < cnt && !lr.err; i++) {
+        uint8_t h[8];
+        loop_t *p;
+        uint32_t n, len;
+        lr_get(h, 8);
+        n = h[6] | (uint32_t)h[7] << 8;
+        len = h[4] | (uint32_t)h[5] << 8;
+        if (lr.err || h[0] >= NTRACK || h[1] >= NLOOP || n > LOOP_EV || !len || len > LOOP_MAX)
+            break;
+        p = &loops[h[0]][h[1]];
+        lr_get(p->ev, n * (uint32_t)sizeof(lev_t));
+        p->n = (uint16_t)n;
+        p->len = (uint16_t)len;
+        p->mute = (uint8_t)(h[2] != 0);
+        p->anchor = a;
+        p->cur = 0;
+        p->kick = 0;
+    }
+    if (lr.err || i != cnt) {
+        lop_clear();
+        return -2;
+    }
+    RING_PUBLISH();
+    for (i = 0; i < NTRACK * NLOOP; i++)
+        if (loops[i / NLOOP][i % NLOOP].n)
+            loops[i / NLOOP][i % NLOOP].on = 1;
+    return 0;
+}
+/* session k's loops copied for session to: their new generation and sectors */
+static int lop_copy(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t to, uint32_t *ngen)
+{
+    uint32_t i, j;
+    uint8_t from[8], dst[8];
+    *ngen = 0;
+    if (!gen || !nsec)
+        return 0;
+    if (nsec > sizeof from || lop_alloc(to, nsec, dst))
+        return -4;
+    for (j = 0; j < nsec; j++) {
+        lop_meta_t m;
+        for (i = 0; i < LOP_N; i++)
+            if (!lop_peek(i, &m) && m.slot == k && m.gen == gen && m.idx == j)
+                break;
+        if (i == LOP_N)
+            return -2;
+        from[j] = (uint8_t)i;
+    }
+    *ngen = ++lop_gmax;
+    for (j = 0; j < nsec; j++) {
+        lop_meta_t *m;
+        if (lop_read(from[j]))
+            return -2;
+        m = lop_meta();
+        m->slot = (uint8_t)to;
+        m->gen = *ngen;
+        if (lop_write(dst[j]))
+            return -2;
+    }
+    return 0;
+}
+/* the last session, noted (only when it changes) */
+static void lst_note(uint32_t k)
+{
+    if (!prj_ok || lst_slot == (int8_t)k)
+        return;
+    memset(prj_buf, 0, sizeof(prj_head_t) + 4u);
+    prj_buf[sizeof(prj_head_t)] = (uint8_t)k;
+    prj_head_fill(LST_MAGIC, 0, 4u);
+    if (!prj_flash_erase(LST_SECT) && !prj_flash_prog(LST_SECT, prj_buf, sizeof(prj_head_t) + 4u))
+        lst_slot = (int8_t)k;
+}
+
 static void prj_scan(int flash_ok)
 {
-    uint32_t k;
+    uint32_t k, i;
     prj_ok = (uint8_t)flash_ok;
+    lop_gmax = 0;
     for (k = 0; k < PRJ_SLOTS; k++) {
         prj_head_t h;
         prj_has[k] = 0;
-        if (prj_ok && !prj_flash_read(prj_sector(k, 0), &h, sizeof h))
+        prj_lgen[k] = 0;
+        if (prj_ok && !prj_flash_read(prj_sector(k, 0), &h, sizeof h)) {
             prj_has[k] = (uint8_t)(prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body17_t)) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN23) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN28) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN32) ||
-                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN34));
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN34) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN37));
+            if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)))   /* (its loops' generation) */
+                prj_flash_read(prj_sector(k, 0) + sizeof h + __builtin_offsetof(prj_body_t, loop_gen), &prj_lgen[k], 4u);
+        }
+        if (prj_lgen[k] > lop_gmax)
+            lop_gmax = prj_lgen[k];
     }
+    for (i = 0; prj_ok && i < LOP_N; i++) {      /* (a generation never used twice: past every one written) */
+        lop_meta_t m;
+        if (!lop_peek(i, &m) && m.gen > lop_gmax)
+            lop_gmax = m.gen;
+    }
+    lst_slot = -1;
+    if (prj_ok && !prj_flash_read(LST_SECT, prj_buf, sizeof(prj_head_t) + 4u) &&
+        prj_head_ok((const prj_head_t *)(void *)prj_buf, LST_MAGIC, 0, 4u) &&
+        ((const prj_head_t *)(void *)prj_buf)->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), 4u) &&
+        prj_buf[sizeof(prj_head_t)] < PRJ_SLOTS)
+        lst_slot = (int8_t)prj_buf[sizeof(prj_head_t)];
 }
 
 /* ---------------------------------------------------------------- patterns --- */
@@ -582,6 +921,7 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     memcpy(b->chord_form, ui.chord_form, NTRACK);
     memcpy(b->mute, (const void *)trk_mute, NTRACK);
     memcpy(b->snd, ui.snd, sizeof b->snd);
+    b->sel = ui.sel;
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
 {
@@ -612,25 +952,36 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     ui.tempo = (int16_t)clampi(b->tempo, TEMPO_MIN, TEMPO_MAX);
     ui.root = (uint8_t)(b->root % 12u);
     ui.scale = (uint8_t)(b->scale < NSCALE ? b->scale : 0);
+    ui.sel = (uint8_t)(b->sel < NTRACK ? b->sel : 0);
 }
-static int prj_save(uint32_t k)              /* the pattern playing into its slot, then the whole project */
+static int prj_save(uint32_t k)              /* the loops into the store, the pattern playing into its slot, then the
+                                             * whole project */
 {
-    uint32_t s;
+    uint32_t s, gen;
+    uint8_t nsec;
     int rc;
+    if (!prj_ok || k >= PRJ_SLOTS)
+        return -1;
+    if ((rc = lop_save(k, &gen, &nsec)) != 0)
+        return rc;
     pat_take(&pat_store[pat_cur]);
     pat_dirty = 0;
     prj_take((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
+    ((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->loop_gen = gen;
+    ((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->loop_nsec = nsec;
     if ((rc = prj_write(k, 0)) != 0)
         return rc;
+    prj_has[k] = 1;
+    prj_lgen[k] = gen;
     for (s = 0; s < PAT_SECTS; s++) {
         memcpy(prj_buf + sizeof(prj_head_t), &pat_store[s * PAT_PER], PAT_PER * sizeof(pat_t));
         if ((rc = prj_write(k, 1u + s)) != 0)
             return rc;
     }
-    prj_has[k] = 1;
     prj_cur = (int8_t)k;
     prj_dirty = 0;
     memset(pat_dirtyv, 0, sizeof pat_dirtyv);    /* (every pattern in the flash now) */
+    lst_note(k);
     return 0;
 }
 static int prj_load(uint32_t k)
@@ -650,22 +1001,44 @@ static int prj_load(uint32_t k)
     prj_give(&b);
     prj_cur = (int8_t)k;
     memset(pat_dirtyv, 0, sizeof pat_dirtyv);
-    pat_give(0);                                 /* (a session starts at its pattern 1) */
+    pat_give(b.pat < PAT_SLOTS ? b.pat : 0u);    /* (the pattern it was saved playing) */
     prj_dirty = 0;
-    return 0;
+    rc = lop_load(k, b.loop_gen, b.loop_nsec);
+    lst_note(k);
+    return rc ? -5 : 0;                          /* (-5: loaded, but its loops did not read whole) */
+}
+/* at the start: the last session loaded or saved, loaded again (none, or gone: the start as it is) */
+static void prj_boot(void)
+{
+    char n[12] = "SESSION ";
+    if (lst_slot < 0 || !prj_has[lst_slot])
+        return;
+    if (prj_load((uint32_t)lst_slot) && prj_cur != lst_slot)
+        return;
+    fmt_int(n + 8, lst_slot + 1);
+    say(n, 1500);
 }
 static int prj_copy(uint32_t from, uint32_t to)
 {
-    uint32_t s;
+    uint32_t s, gen;
     int rc;
-    for (s = 0; s < PRJ_SECTS; s++)              /* (each sector read and written again, made for the slot it goes to) */
-        if ((rc = prj_read(from, s)) != 0 && s == 0u)
-            return rc;
-        else if (rc)
+    prj_body_t b;
+    if ((rc = prj_read(from, 0)) != 0)           /* the loops first, copied for the slot they go to */
+        return rc;
+    memcpy(&b, prj_buf + sizeof(prj_head_t), sizeof b);
+    if ((rc = lop_copy(from, b.loop_gen, b.loop_nsec, to, &gen)) != 0)
+        return rc;
+    b.loop_gen = gen;
+    memcpy(prj_buf + sizeof(prj_head_t), &b, sizeof b);
+    if ((rc = prj_write(to, 0)) != 0)
+        return rc;
+    prj_has[to] = 1;
+    prj_lgen[to] = gen;
+    for (s = 1; s < PRJ_SECTS; s++)              /* (each sector read and written again, made for the slot it goes to) */
+        if ((rc = prj_read(from, s)) != 0)
             continue;                            /* (a pattern sector never saved: left empty there too) */
         else if ((rc = prj_write(to, s)) != 0)
             return rc;
-    prj_has[to] = 1;
     return 0;
 }
 static int prj_delete(uint32_t k)
@@ -676,6 +1049,7 @@ static int prj_delete(uint32_t k)
     if (prj_flash_prog(prj_sector(k, 0), &zero, 4u))   /* (the project's magic cleared: no erase, no pause) */
         return -2;
     prj_has[k] = 0;
+    prj_lgen[k] = 0;                             /* (its loops' sectors free) */
     if (prj_cur == (int8_t)k)
         prj_cur = -1;                            /* (what plays stays, no longer saved anywhere) */
     return 0;
@@ -715,6 +1089,10 @@ static void prj_done(int rc, const char *what, uint32_t k)
     fmt_int(n + 8, (int32_t)k + 1);
     if (!rc)
         flash(what, n, C_OK);
+    else if (rc == -4)
+        flash("NO ROOM", "FOR LOOPS", C_BAD);    /* (the loop store full: nothing saved) */
+    else if (rc == -5)
+        flash(what, "LOOPS LOST", C_BAD);        /* (loaded, its loops not) */
     else
         flash(prj_ok ? "FAILED" : "NO FLASH", "", C_BAD);
     ui.force = 1;

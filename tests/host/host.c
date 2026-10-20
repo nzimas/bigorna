@@ -135,9 +135,15 @@ static int prj_flash_read(uint32_t off, void *p, uint32_t n)
     memcpy(p, host_flash + off, n);
     return 0;
 }
+/* (main.c's areas: the sessions and the loop store's first 9 sectors; past the update's staging, its other 22 and
+ * the last session's note) */
+static int host_prj_in(uint32_t off, uint32_t n)
+{
+    return (off >= 0x97000u && off + n <= 0xE0000u) || (off >= 0xE5000u && off + n <= 0xFD000u);
+}
 static int prj_flash_erase(uint32_t off)
 {
-    if (off < PRJ_LO || off + 4096u > PRJ_LO + PRJ_SLOTS * PRJ_SECTS * PRJ_SECT || (off & 4095u))
+    if (!host_prj_in(off, 4096u) || (off & 4095u))
         return -8;
     memset(host_flash + off, 0xFF, 4096u);
     host_erases++;
@@ -146,7 +152,7 @@ static int prj_flash_erase(uint32_t off)
 static int prj_flash_prog(uint32_t off, const void *p, uint32_t n)
 {
     uint32_t i;
-    if (off < PRJ_LO || off + n > PRJ_LO + PRJ_SLOTS * PRJ_SECTS * PRJ_SECT)
+    if (!host_prj_in(off, n))
         return -8;
     for (i = 0; i < n; i++)
         host_flash[off + i] &= ((const uint8_t *)p)[i];
@@ -2128,6 +2134,95 @@ static int cmd_projects(const char *dir)
         btn(B_SAVE, 0);
         EXPECT(ui.page == PG_MAIN && prj_cur == (int32_t)k && prj_has[k], "SAVE: saved into it");
         (void)was;
+    }
+    {   /* the loops with the session (build 38): saved, loaded back whole; every loop full (7 sectors) saved over and
+         * over into one slot; copied; the last session loaded at the start */
+        static loop_t want[NTRACK][NLOOP];
+        uint32_t t, l, i, k, same, j;
+        int rc;
+        for (k = 0; k < PRJ_SLOTS && prj_has[k]; k++)
+            ;
+        lop_clear();
+        loops[2][1].n = 3;
+        loops[2][1].len = 400;
+        loops[2][1].mute = 1;
+        for (i = 0; i < 3u; i++) {
+            loops[2][1].ev[i].step = (uint16_t)(i * 100u);
+            loops[2][1].ev[i].len8 = (uint16_t)(1000u + i);
+            loops[2][1].ev[i].note = (uint8_t)(50u + i);
+            loops[2][1].ev[i].vel = (uint8_t)(90u + i);
+        }
+        loops[2][1].on = 1;
+        ui.sel = 4;
+        memcpy(want, loops, sizeof want);
+        rc = prj_save(k);
+        EXPECT(!rc && prj_lgen[k] && prj_has[k], "a session saved with a loop");
+        lop_clear();
+        ui.sel = 0;
+        rc = prj_load(k);
+        for (t = 0, same = 1; t < NTRACK; t++)
+            for (l = 0; l < NLOOP; l++)
+                same &= loops[t][l].on == want[t][l].on && loops[t][l].n == want[t][l].n &&
+                        loops[t][l].len == want[t][l].len && loops[t][l].mute == want[t][l].mute &&
+                        !memcmp(loops[t][l].ev, want[t][l].ev, loops[t][l].n * sizeof(lev_t));
+        EXPECT(!rc && same && ui.sel == 4u, "loaded: its loop back, length, notes and mute; the track chosen");
+        for (t = 0; t < NTRACK; t++)             /* every loop full: 32 bars, 256 notes */
+            for (l = 0; l < NLOOP; l++) {
+                loop_t *p = &loops[t][l];
+                p->n = LOOP_EV;
+                p->len = LOOP_MAX;
+                p->mute = (uint8_t)(l == 2u);
+                for (i = 0; i < LOOP_EV; i++) {
+                    p->ev[i].step = (uint16_t)(i * 2u);
+                    p->ev[i].len8 = (uint16_t)(1u + (i * 37u + t) % 4096u);
+                    p->ev[i].note = (uint8_t)(24u + (i + t * 3u + l) % 90u);
+                    p->ev[i].vel = (uint8_t)(1u + (i * 7u) % 127u);
+                }
+                p->on = 1;
+            }
+        memcpy(want, loops, sizeof want);
+        for (j = 0, rc = 0; j < 12u && !rc; j++)
+            rc = prj_save(k);
+        EXPECT(!rc && j == 12u, "every loop full: saved into one slot 12 times over (the store reused)");
+        lop_clear();
+        rc = prj_load(k);
+        for (t = 0, same = 1; t < NTRACK; t++)
+            for (l = 0; l < NLOOP; l++)
+                same &= loops[t][l].on && loops[t][l].n == LOOP_EV && loops[t][l].len == LOOP_MAX &&
+                        loops[t][l].mute == want[t][l].mute && !memcmp(loops[t][l].ev, want[t][l].ev, sizeof want[t][l].ev);
+        EXPECT(!rc && same, "every loop full: loaded back whole");
+        {
+            uint32_t to;
+            for (to = 0; to < PRJ_SLOTS && prj_has[to]; to++)
+                ;
+            rc = prj_copy(k, to);
+            EXPECT(!rc && prj_has[to] && prj_lgen[to] && prj_lgen[to] != prj_lgen[k], "copied, its loops with it");
+            EXPECT(!prj_delete(k), "the first deleted");
+            lop_clear();
+            rc = prj_load(to);
+            for (t = 0, same = 1; t < NTRACK; t++)
+                for (l = 0; l < NLOOP; l++)
+                    same &= loops[t][l].n == LOOP_EV && !memcmp(loops[t][l].ev, want[t][l].ev, sizeof want[t][l].ev);
+            EXPECT(!rc && same, "the copy's loops whole, the first deleted");
+            /* the start: the last session (the copy, just loaded) loaded again */
+            lop_clear();
+            prj_cur = -1;
+            prj_scan(1);
+            EXPECT(lst_slot == (int8_t)to, "the last session noted");
+            prj_boot();
+            EXPECT(prj_cur == (int8_t)to && loops[0][0].n == LOOP_EV, "the start: the last session loaded, its loops");
+            /* a session from before (no loops): loaded, the loops emptied */
+            {
+                uint32_t old;
+                for (old = 0; old < PRJ_SLOTS && !prj_has[old]; old++)
+                    ;
+                if (old != to && prj_lgen[old] == 0u) {
+                    rc = prj_load(old);
+                    EXPECT(!rc && !loops[0][0].on && !loops[0][0].n, "a session with no loops: the loops emptied");
+                }
+            }
+        }
+        lop_clear();
     }
     shot(dir, "pat_main");
     printf("projects: %d failures, %u erases\n", fails, host_erases);

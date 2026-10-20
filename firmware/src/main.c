@@ -355,18 +355,22 @@ static void ota_commit(const uint8_t *parm)
 
 /* the projects' flash (projects.c): their area only */
 #define PRJ_AREA_LO 0x00097000u
-#define PRJ_AREA_HI (PRJ_AREA_LO + 72u * 4096u)   /* (8 projects of 9 sectors) */
+#define PRJ_AREA_HI 0x000E0000u                  /* (the sessions; then the loop store's first 9 sectors) */
+#define PRJ_AREA2_LO 0x000E5000u                 /* (past the update's staging: the loop store's other 22, and the
+                                                  * last session's note at 0xFC000) */
+#define PRJ_AREA2_HI 0x000FD000u
+#define PRJ_IN(off, n) (FL_IN(off, n, PRJ_AREA_LO, PRJ_AREA_HI) || FL_IN(off, n, PRJ_AREA2_LO, PRJ_AREA2_HI))
 static int prj_flash_read(uint32_t off, void *p, uint32_t n) { return st_read(off, p, n); }
 static int prj_flash_erase(uint32_t off)
 {
     uint32_t took;
-    if (!FL_IN(off, 0x1000u, PRJ_AREA_LO, PRJ_AREA_HI) || (off & 0xFFFu))
+    if (!PRJ_IN(off, 0x1000u) || (off & 0xFFFu))
         return -8;
     return fl_erase4k_quiet(off, &took);
 }
 static int prj_flash_prog(uint32_t off, const void *p, uint32_t n)
 {
-    if (!FL_IN(off, n, PRJ_AREA_LO, PRJ_AREA_HI))
+    if (!PRJ_IN(off, n))
         return -8;
     return fl_write(off, p, n);
 }
@@ -415,6 +419,8 @@ static void fm1_main(void)
 #endif
     tracks_init();
     ui_init();                                       /* (a sound of each machine for every track) */
+    if (!bootguard.failed)                           /* (after a boot that failed: not, in case it was the session) */
+        prj_boot();                                  /* the last session used, loaded again */
     /* CPU1: after a supply setup that held, on a boot after no failed one, and not barred since power-on. It starts
      * through the mask ROM before it reaches our RAM loop: the PC limit only after (Melodee) */
     if (fm1_core1_boot_allowed(fm1_power_ready, bootguard.failed))

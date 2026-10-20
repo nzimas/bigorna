@@ -297,8 +297,18 @@ copying over one and deleting ask first (NO / YES on PRESETS).
 SAVE held 0.8 s (or HOME held) saves the session playing into its slot at once. If it has never been saved, the
 first empty slot's page shows SAVE NEW? with YES chosen: SAVE saves it there and goes back to the track (PRESETS
 left: NO). With all 16 slots taken, NO FREE SLOT shows.
-A session holds every track's machine, sounds, octave, level, pan, chord mode and mutes, the effects, the tempo, the
-root and scale, and its 16 patterns.
+
+A session holds the whole state of the machine: every track's machine, sounds, octave, level, pan, chord mode and
+mutes, the track chosen, the effects, the tempo, the root and scale, its 16 patterns and the pattern playing, and
+every loop on every track (notes, length, mute). Loading a session gives all of it back; its loops start at the
+next bar if the sequencer is playing. A session saved by build 37 or earlier has no loops: loading it empties them.
+
+The loops are kept in a loop store shared by the 16 sessions (31 sectors of flash, about 125 KB). A session takes
+what its loops need: up to 7 sectors with all 18 loops full (256 notes each). If the store has no room left,
+nothing is saved and NO ROOM FOR LOOPS shows; deleting a session, or saving one with fewer loops, frees room.
+
+The FM-1 starts with the last session loaded or saved (SESSION n shows for a moment). Changes not saved before it
+was switched off are not kept.
 
 ## The screen
 

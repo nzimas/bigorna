@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 38
+
+Added
+- A session now holds its loops: SAVE stores every loop of every track (its notes, length and mute), and LOAD
+  gives them back, starting at the next bar if the sequencer is playing. A session with no loops, or saved by an
+  earlier build, empties the loops when loaded.
+- The loops are kept in a loop store of 31 sectors of flash shared by the 16 sessions; a session takes as many as
+  its loops need (up to 7, every loop full). If the store has no room, nothing is saved and NO ROOM FOR LOOPS
+  shows. New loops are written before the session that points at them, so a save cut off by power loss leaves
+  the session as it was.
+- The FM-1 starts with the last session loaded or saved (SESSION n shows). After a start that failed, it starts
+  empty instead.
+
+Changed
+- A session also keeps the track chosen, and loads at the pattern it was saved playing (was: pattern 1).
+- COPY copies a session's loops with it.
+
 ## Build 37
 
 Added
