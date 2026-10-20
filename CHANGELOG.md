@@ -1,5 +1,24 @@
 # Changelog
 
+## Build 34
+
+Changed
+- The machines renamed: FM TONE is 4-OP, FM DRUM is DRUM, WAVETONE is WAVY, SWARMER is HIVE.
+- No CHORD mode on DRUM: the chord key says NO CHORDS (its light dark), a white key plays its note alone, and a
+  chord step plays its root alone on a DRUM track.
+- 1 CORE on the screen at start-up when CPU1 is held (after a fault on it, until power-off; or after a failed start),
+  and when CPU1 is retired as it plays: the voices then have half the room.
+
+Fixed
+- Clicks and pops with a pad's chords and a kick (heard on build 33): the FM-1 was rendering on one core -- CPU1
+  held since the fault test of build 32, until a power-off. Measured on one core (a kick each beat, a HIVE drone's
+  chord each beat): 65 late halves in 20 s (the audio short: clicks), the worst half 118 %. On two cores: none late.
+- Two chords with a note in common, played legato: letting go the first could let go the second's copy of that
+  note (the first one found), leaving the first's ringing. A note let go is now the oldest held of that note.
+- A voice taken for a new note (all twelve sounding) is the quietest of those releasing (one already fading first),
+  no longer the oldest: often a loud pad's tail, cut in 9 ms.
+- The overload guard fades a tail over ~12 ms (6 before).
+
 ## Build 33
 
 Added

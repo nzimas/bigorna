@@ -18,7 +18,7 @@
 #define NTRACK 6
 typedef char mg_fits[MG_TRACKS == NTRACK ? 1 : -1];
 #define NVOICE 12
-static const char *const ENG_NAME[NENG] = {"FM TONE", "FM DRUM", "WAVETONE", "SWARMER"};
+static const char *const ENG_NAME[NENG] = {"4-OP", "DRUM", "WAVY", "HIVE"};
 static const char *const FLT_NAME[NFLT] = {"MULTI-MODE", "LOWPASS 4", "LEGACY", "COMB-", "COMB+", "EQUALIZER"};
 
 typedef union { ftck_t ft; fdck_t fd; wtck_t wt; swck_t sw; } mck_t;   /* a machine's, cooked */
@@ -140,7 +140,7 @@ static volatile int32_t trk_gain[NTRACK], trk_pl[NTRACK], trk_pr[NTRACK];
 #define COST_NOW() FAR(fm1_ticks)()   /* (from the RAM code too: through a pointer) */
 #define BLK_TICKS ((uint32_t)CTL * 1000000u / FS * FM1_TICKS_PER_US)
 #define BUDGET (BLK_TICKS * 90u / 100u)   /* (82 % until build 28: tails went that the time had room for) */
-#define SHED 8u                  /* blocks of the budget's fade (~6 ms: no click) */
+#define SHED 16u                 /* blocks of the budget's fade (~12 ms: a loud tail without a click; build 34) */
 static uint32_t eng_cost[NENG];
 static uint32_t blk_last, blk_new;
 #if !TELEMETRY
@@ -149,7 +149,7 @@ static uint32_t blk_last, blk_new;
 #if TELEMETRY
 static uint32_t tl_trk[NTRACK], tl_fx, tl_all, tl_n, tl_max, tl_shed;   /* (main.c's report: ticks, summed) */
 #define TL_FX(k, call) { uint32_t c4 = COST_NOW(); call; tl_fxk[k] += COST_NOW() - c4; }
-static uint32_t tl_mach[NENG], tl_chain[NENG], tl_fxk[4], tl_c1, tl_evmax, tl_seqmax, tl_par, tl_parmax;   /* (a machine's render, its chain; CH DL RV CP) */
+static uint32_t tl_mach[NENG], tl_chain[NENG], tl_fxk[4], tl_c1, tl_evmax, tl_seqmax, tl_par, tl_parmax, tl_steal, tl_lost, tl_stealmax;   /* (a machine's render, its chain; CH DL RV CP) */
 #endif
 static uint32_t blk_clock;
 static volatile uint8_t shed_req;
@@ -245,19 +245,29 @@ AINL void voice_silence(uint32_t k)
     vox[k].sounding = 0;
     vox[k].fade = vox[k].fade_n = 0;
 }
-/* a voice for a note on track t: a free one; else the oldest releasing one (any track's); else the track's own
- * oldest held; else the oldest held of all. own: only free ones or the track's own (it is fading for a change) */
+/* a voice for a note on track t: a free one; else the quietest releasing one (any track's; one already fading out
+ * first: build 34 -- the oldest was often a loud pad's tail, faded in 9 ms: a click); else the track's own oldest
+ * held; else the oldest held of all. own: only free ones or the track's own (it is fading for a change) */
 static uint32_t voice_pick(uint32_t t, int own)
 {
     uint32_t k, best = NVOICE, pass;
     for (k = 0; k < NVOICE; k++)
         if (!vox[k].sounding && !vox[k].gate && !vox[k].pend)
             return k;
-    for (pass = 0; pass < 3u && best == NVOICE; pass++)
+    for (k = 0; k < NVOICE; k++) {               /* (the releasing ones: the quietest) */
+        const voice_t *v = &vox[k];
+        int32_t lv = v->fade ? -1 : vmem[k].ch.ae.lv, lb;
+        if (v->pend || v->gate || (own && vox_owner(v) != t))
+            continue;
+        lb = best == NVOICE ? 0 : vox[best].fade ? -1 : vmem[best].ch.ae.lv;
+        if (best == NVOICE || lv < lb || (lv == lb && v->age < vox[best].age))
+            best = k;
+    }
+    for (pass = 1; pass < 3u && best == NVOICE; pass++)
         for (k = 0; k < NVOICE; k++) {
             const voice_t *v = &vox[k];
             uint32_t o = vox_owner(v);
-            if (v->pend || (own && o != t) || (pass == 0u ? v->gate : pass == 1u ? o != t : 0))
+            if (v->pend || (own && o != t) || (pass == 1u ? o != t : 0))
                 continue;
             if (best == NVOICE || v->age < vox[best].age)
                 best = k;
@@ -272,7 +282,7 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
     track_t *y = &trk[t];
     uint32_t best;
     voice_t *v;
-    if (!y->xfade && ck_buf[t][ck_use[t]].mach == ENG_FMD) {   /* an FM DRUM track chokes, as a drum machine's: its
+    if (!y->xfade && ck_buf[t][ck_use[t]].mach == ENG_FMD) {   /* an DRUM track chokes, as a drum machine's: its
                                                               * last hit faded out (~2 ms) as the next strikes,
                                                               * the tails never piling up */
         uint32_t k;
@@ -289,8 +299,12 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
     }
     dk_struck[t] = 1;                            /* (a hit, for the tracks it ducks) */
     best = voice_pick(t, y->xfade != 0);
-    if (best == NVOICE)
+    if (best == NVOICE) {
+#if TELEMETRY
+        tl_lost++;                               /* (no voice at all: the note not played) */
+#endif
         return;
+    }
     v = &vox[best];
     v->note = (uint8_t)note;
     v->gate = 1;
@@ -311,6 +325,11 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
         return;
     }
     if (v->sounding) {
+#if TELEMETRY
+        tl_steal++;                              /* (a voice still sounding taken: faded over FADE) */
+        if ((uint32_t)(vmem[best].ch.ae.lv >> 9) > tl_stealmax)
+            tl_stealmax = (uint32_t)(vmem[best].ch.ae.lv >> 9);   /* (its envelope's level, Q15: the loudest taken) */
+#endif
         if (!v->fade)
             v->fade = FADE;
         v->pend = 1;
@@ -320,15 +339,18 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
 }
 static void note_off(uint32_t t, uint32_t note, uint32_t src)
 {
-    uint32_t k;
-    for (k = 0; k < NVOICE; k++) {
-        voice_t *v = &vox[k];
-        if (v->gate && vox_owner(v) == t && v->note == note && v->src == src) {
-            v->gate = 0;
-            if (!v->pend && !trk[t].xfade)
-                voice_off(t, k);
-            return;
-        }
+    uint32_t k, o = NVOICE;
+    for (k = 0; k < NVOICE; k++) {               /* (the oldest held: two keys can hold the same note -- two chords
+                                                  * with a note in common, legato -- and the first let go is the first
+                                                  * struck, not the new chord's; build 34) */
+        const voice_t *v = &vox[k];
+        if (v->gate && vox_owner(v) == t && v->note == note && v->src == src && (o == NVOICE || v->age < vox[o].age))
+            o = k;
+    }
+    if (o < NVOICE) {
+        vox[o].gate = 0;
+        if (!vox[o].pend && !trk[t].xfade)
+            voice_off(t, o);
     }
 }
 /* a voice's fade over: the note it waited for, on the track it goes to */
@@ -678,7 +700,7 @@ static void seq_soundc(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, cons
 {
     int32_t c[3];
     uint32_t i;
-    if (!f1) {
+    if (!f1 || ck_buf[t][ck_use[t]].mach == ENG_FMD) {   /* (DRUM: the root alone) */
         seq_sound(t, n, vel, len8, lid, lv);
         return;
     }

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * FM TONE: four operators -- C, A, B1, B2 -- after the Digitone II's (manual, A.2.1 and Appendix B).
+ * 4-OP: four operators -- C, A, B1, B2 -- after the Digitone II's (manual, A.2.1 and Appendix B).
  *
  *   ALGO       how the operators are connected (FT_ALG below): who modulates whom, which operator feeds back,
  *              which carriers make outputs X and Y, each output through its operator envelope or direct

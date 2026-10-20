@@ -5,7 +5,7 @@
  * interpolation; a level is chosen from the phase increment so that no harmonic passes ~20 kHz. */
 
 static int16_t wt_ram[WT_TOTAL] POOL;
-static int16_t sc_ram[SC_TOTAL] POOL;            /* the single cycles (FM TONE's HARM, FM DRUM's operators) */
+static int16_t sc_ram[SC_TOTAL] POOL;            /* the single cycles (4-OP's HARM, DRUM's operators) */
 static int16_t sin_ram[1025];                    /* the sine, in RAM too (the FM operators read it every sample) */
 
 static void wt_init(void)

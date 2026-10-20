@@ -24,7 +24,8 @@ def parse(d):
     return {"max": v[0], "mean": v[1], "late": v[2], "voices": v[3], "shed": v[4], "eng": v[5:9],
             "trk": v[9:15], "fx": v[15], "blk": v[16], "blkmax": v[17] if len(v) > 17 else 0,
             "mach": v[18:22], "chain": v[22:26], "fxk": v[26:30], "bench": v[30:38],
-            "c1": v[38:45], "ph": v[45:49]}
+            "c1": v[38:45], "ph": v[45:49], "steal": v[49] if len(v) > 50 else 0, "lost": v[50] if len(v) > 50 else 0,
+            "stealmax": v[51] * 4 if len(v) > 51 else 0}
 
 
 def c1s(r):
@@ -69,6 +70,39 @@ def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "listen"
     rd = Reader(port_name(mido.get_input_names()))
     rd.start()
+    if mode == "chords":                         # a kick each beat on track 1, a pad's triads on track 2 (a chord a
+        secs = float(sys.argv[2]) if len(sys.argv) > 2 else 20.0   # beat, legato), as played live: the counts
+        out = mido.open_output(port_name(mido.get_output_names()))
+        sx = lambda *b: out.send(mido.Message("sysex", data=[0x7D, *b]))
+        sx(0x56, 0, ENG["FMD"], 2)
+        time.sleep(0.3)
+        sx(0x56, 1, ENG["SWM"], 54)
+        time.sleep(0.8)
+        prog = [[48, 52, 55], [45, 48, 52], [41, 45, 48], [43, 47, 50]]
+        rd.label = "chords"
+        held, t0, k = [], time.time(), 0
+        while time.time() - t0 < secs:
+            out.send(mido.Message("note_on", channel=0, note=36, velocity=120))
+            new = prog[k % 4]
+            for n in new:
+                out.send(mido.Message("note_on", channel=1, note=n, velocity=110))
+            time.sleep(0.03)
+            for n in held:                           # (legato: the old chord let go just after)
+                out.send(mido.Message("note_off", channel=1, note=n))
+            out.send(mido.Message("note_off", channel=0, note=36))
+            held = new
+            time.sleep(0.47)
+            k += 1
+        for n in held:
+            out.send(mido.Message("note_off", channel=1, note=n))
+        rd.label = "off"
+        time.sleep(1.0)
+        rs = [r for l, r in rd.log if l == "chords"][3:]
+        print(f"chords: half max {max(r['max'] for r in rs)/10:.1f}%  mean {sum(r['mean'] for r in rs)/len(rs)/10:.1f}%"
+              f"  late {sum(r['late'] for r in rs)}  guard fades {sum(r['shed'] for r in rs)}  voices max {max(r['voices'] for r in rs)}"
+              f"  steals {sum(r['steal'] for r in rs)} (loudest taken at {20 * __import__('math').log10(max(1, max(r['stealmax'] for r in rs)) / 32767):.0f} dB)  no voice {sum(r['lost'] for r in rs)}"
+              f"  CPU1 misreads {rs[-1]['c1'][2]} faults {rs[-1]['c1'][3]} timeouts {rs[-1]['c1'][5]}")
+        return
     if mode == "status":                         # one report, as it comes
         while not rd.log:
             time.sleep(0.2)

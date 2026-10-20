@@ -134,6 +134,10 @@ static void tele_send(void)
     tele_put(f, &n, tl_seqmax * 1000u / BLK_TICKS);
     tele_put(f, &n, tl_par / nb * 1000u / BLK_TICKS);   /* (the voices' phase, both cores: mean, worst) */
     tele_put(f, &n, tl_parmax * 1000u / BLK_TICKS);
+    tele_put(f, &n, tl_steal);                   /* (voices taken while sounding; notes with no voice) */
+    tele_put(f, &n, tl_lost);
+    tele_put(f, &n, tl_stealmax >> 2);
+    tl_steal = tl_lost = tl_stealmax = 0;
     tl_evmax = tl_seqmax = tl_par = tl_parmax = 0;
     audio_worker.max_wait_ticks = 0;
     tl_c1 = 0;
@@ -416,6 +420,9 @@ static void fm1_main(void)
     if (fm1_core1_boot_allowed(fm1_power_ready, bootguard.failed))
         fm1_multicore_start();
     fm1_guard_enable(FM1_GUARD_PC);
+    if (!audio_worker_online)                        /* (CPU1 held: until power-off after a fault, or a failed boot --
+                                                      * half the voices' room. Said, not silent) */
+        say("1 CORE", 4000);
     audio_init();
     usb_start();
     fm1_timer5_start(isr_timer5, 4);

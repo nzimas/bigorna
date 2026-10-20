@@ -110,7 +110,7 @@ def harm(k, n):
 
 
 def fmh_set(k):
-    """FM TONE's HARM steps (the Digitone II's, as its DSP holds them: sine-phase partials at 1/h): 0 the sine;
+    """4-OP's HARM steps (the Digitone II's, as its DSP holds them: sine-phase partials at 1/h): 0 the sine;
     1..7 saw build-ups; 8..13 h1 and the upper of h3..h8; 14..19 odd sets; 20..23 sets of 1, 5, 7, 9, 11; 24..26
     h1 and every third from h4"""
     S = {0: [1]}
@@ -125,7 +125,7 @@ def fmh_set(k):
 
 
 def drum_set(k):
-    """FM DRUM's operator waves (the Digitone II's 33, by their partials, at 1/h): 0 the sine; 1..7 saw
+    """DRUM's operator waves (the Digitone II's 33, by their partials, at 1/h): 0 the sine; 1..7 saw
     build-ups to 8; 8..13 h1 and the upper of h3..h8; 14 h1, 3, 8; 15..22 odd build-ups to 17; 23..26 sets of 1,
     5, 7, 9, 11; 27..32 h1 and every third from 4"""
     if k == 0:
@@ -159,7 +159,7 @@ def single_tables():
         data += single(fmh_set(k))
     for k in range(33):
         data += single(drum_set(k))
-    L = ["/* single cycles (no band-limited levels): FM TONE's 27 HARM waves, then FM DRUM's 33 operator waves,",
+    L = ["/* single cycles (no band-limited levels): 4-OP's 27 HARM waves, then DRUM's 33 operator waves,",
          f" * {SC_LEN} + 1 points each */", f"#define SC_LEN {SC_LEN}u", "#define SC_FMH0 0u", "#define SC_FMH_N 27u",
          "#define SC_DRUM0 27u", "#define SC_DRUM_N 33u", f"#define SC_TOTAL {len(data)}u"]
     return L + arr("SC_DATA", "int16_t", data, 16)
@@ -224,14 +224,14 @@ AATK_TOP = [1250, 1500, 1750, 2000, 2500, 3000, 4000, 5000, 6000, 9000, 12000, 1
 AHOLD_LL = [9.201551, 2.429755, -0.047256, -0.021332]      # AMP HOLD, ms
 ADEC_LL = [10.298888, 2.426723, -0.049505, -0.021872]      # AMP DEC and REL, ms to -60 dB
 FDEC_LL = [10.263682, 5.17158, 1.944747, 0.419187, 0.033418]   # FLTR DEC and REL, ms to -60 dB
-OPATK_LL = [9.899144, 2.445818, -0.039988, -0.022153]      # FM TONE operator attack, ms
+OPATK_LL = [9.899144, 2.445818, -0.039988, -0.022153]      # 4-OP operator attack, ms
 OPDEC_LL = [10.997899, 2.452892, -0.02557, -0.016248]      # .. decay, ms to -60 dB
-LEVV_LP = [-7.45646, -0.55136, 3.69881, 8.75002, -16.55205, 7.27872]   # FM TONE LEV curve / v (0 .. 1 at 127)
+LEVV_LP = [-7.45646, -0.55136, 3.69881, 8.75002, -16.55205, 7.27872]   # 4-OP LEV curve / v (0 .. 1 at 127)
 BITS_LP = [2.77673, -2.60659, 0.81133, -5.21024, 8.4302, -3.55777]     # BIT REDUCTION, bits (v >= 1)
 RVSH_LP = [-2.80771, 5.41741, -8.30061, 10.84599, -8.30429, 2.5842]    # the reverb's shelf coefficient (FREQ)
 DTA_TOP = [0.075, 0.1, 0.125, 0.15, 0.25, 0.3, 0.4, 0.5]    # DTUN 120 .. 127, operator A's ratio added
 DTB_TOP = [0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75]        # .. operator B2's
-SW_ROWS = [0, 16, 32, 64, 96, 127]                          # SWARMER DET: six voices' offsets, cents, at these values
+SW_ROWS = [0, 16, 32, 64, 96, 127]                          # HIVE DET: six voices' offsets, cents, at these values
 SW_CENTS = [[-0.57, -0.33, -0.10, 0.10, 0.32, 0.56], [-4.41, -2.52, -0.78, 0.80, 2.49, 4.30],
             [-9.03, -5.16, -1.60, 1.63, 5.08, 8.77], [-18.96, -10.81, -3.35, 3.41, 10.62, 18.32],
             [-47.79, -27.15, -8.38, 8.51, 26.43, 45.43], [-201.78, -112.44, -34.13, 34.13, 104.41, 176.69]]
@@ -264,11 +264,11 @@ def curve_tables():
     L += arr("T_AATK", "uint32_t", aatk, 8) + arr("T_AHOLD", "uint32_t", ahold, 8) + arr("T_ADEC", "uint32_t", adec, 8)
     L += arr("T_FDEL", "uint32_t", fdel, 8) + arr("T_FDEC", "uint32_t", fdec, 8)
     L += arr("T_OPATK", "uint32_t", opatk, 8) + arr("T_OPDEC", "uint32_t", opdec, 8)
-    L += ["/* FM TONE: the LEV curve (Q15 of 2.205 cycles); DTUN's ratio added to A and B2 (Q16) */"]
+    L += ["/* 4-OP: the LEV curve (Q15 of 2.205 cycles); DTUN's ratio added to A and B2 (Q16) */"]
     L += arr("T_LEV", "uint16_t", lev, 12) + arr("T_DTA", "uint32_t", dta, 8) + arr("T_DTB", "uint32_t", dtb, 8)
     L += ["/* BIT REDUCTION: bits x 256 (31: off); the reverb's shelf coefficient (Q15) */"]
     L += arr("T_BITS", "uint16_t", bits, 12) + arr("T_RVSH", "uint16_t", rvsh, 12)
-    L += ["/* SWARMER DET: each of the six voices' offset, semitones Q16, [v][6] */"]
+    L += ["/* HIVE DET: each of the six voices' offset, semitones Q16, [v][6] */"]
     L += arr("T_SWDET", "int32_t", det, 12)
     return L
 

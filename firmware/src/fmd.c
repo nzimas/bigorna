@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * FM DRUM: an FM engine for drums and percussion, after the Digitone II's (manual, A.2.2; the algorithms and ratios as
+ * DRUM: an FM engine for drums and percussion, after the Digitone II's (manual, A.2.2; the algorithms and ratios as
  * its OS 1.12 shows them). Three parts, summed:
  *
  *   body       three operators (C, A, B) in one of seven algorithms, the pitch swept down from SDEP above TUNE
@@ -69,7 +69,7 @@ static uint32_t fd_ratio16(int32_t v)
     uint32_t th = ((uint32_t)clampi(v, 0, 127) * 256u * 31999u >> 15) + 1u;
     return th * 65536u / 1000u;
 }
-/* FM DRUM's times (the Digitone II's): the decays reach e^-6 in 8 (0.1 p + 0.9 p^4) s (+ 0.67 ms); the holds last 1000
+/* DRUM's times (the Digitone II's): the decays reach e^-6 in 8 (0.1 p + 0.9 p^4) s (+ 0.67 ms); the holds last 1000
  * p^2 ms; the sweep falls to e^-6 in 5 (0.1 p + 0.9 p^4) s. As the factor a block (2^(-8.656 x 32 / N)) */
 static int32_t fd_curve(int32_t v)                          /* 0.1 p + 0.9 p^4, Q16 */
 {

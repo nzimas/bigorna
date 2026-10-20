@@ -979,7 +979,7 @@ static int cmd_projects(const char *dir)
             seq_cond[0][0] = CD_NONE;
             (void)pl_set(0, 0, LK_PID[LK_FREQ], 3);
             (void)pl_set(0, 0, LK_PID[LK_REV], 127);
-            (void)pl_set(0, 0, PG_FD_SYN_TEST, 0);   /* (a machine's own: FM DRUM's TUNE, SYN 1 knob A) */
+            (void)pl_set(0, 0, PG_FD_SYN_TEST, 0);   /* (a machine's own: DRUM's TUNE, SYN 1 knob A) */
             seq_run = 1;
             for (i = 0; i < 4u; i++)
                 mix_block(out);
@@ -1649,6 +1649,64 @@ static int cmd_projects(const char *dir)
             ui.chord_form[t] = 0;
             prj_give(&bb);
             EXPECT(ui.chord_on[t] && ui.chord_form[t] == 1u, "CHORD mode kept with the session");
+            {   /* two chords with notes in common, legato: the first let go, the second's three all held */
+                uint32_t k2 = 0, nh = 0, j, ok = 1;
+                ui.chord_form[t] = 0;
+                while (white_ix(k2) != 5)        /* (the 6th degree: its triad shares two notes with the 1st's) */
+                    k2++;
+                fm1_in.notes |= 1u << kw;
+                ui_input();
+                for (i = 0; i < 4u; i++)
+                    mix_block(out);
+                fm1_in.notes |= 1u << k2;
+                ui_input();
+                for (i = 0; i < 4u; i++)
+                    mix_block(out);
+                fm1_in.notes &= ~(1u << kw);
+                ui_input();
+                for (i = 0; i < 4u; i++)
+                    mix_block(out);
+                for (i = 0; i < NVOICE; i++)
+                    if (vox[i].gate && vox[i].track == t) {
+                        nh++;
+                        for (j = 0, ok &= 0u; j < 3u; j++)
+                            ok |= vox[i].note == ui.key_cn[k2][j];
+                    }
+                EXPECT(nh == 3u, "legato chords with notes in common: the first let go, the second's three held");
+                {   /* (the same note held twice, the newer first in the pool: a note-off lets go the older) */
+                    voice_t w0 = vox[0], w5 = vox[5];
+                    vox[0].gate = vox[5].gate = 1;
+                    vox[0].track = vox[5].track = (uint8_t)t;
+                    vox[0].pend = vox[5].pend = 0;
+                    vox[0].note = vox[5].note = 61;
+                    vox[0].src = vox[5].src = SRC_KEY;
+                    vox[0].age = 1000000u;
+                    vox[5].age = 999000u;
+                    note_off(t, 61, SRC_KEY);
+                    EXPECT(vox[0].gate && !vox[5].gate, "the same note held twice: a note-off lets go the older");
+                    vox[0] = w0;
+                    vox[5] = w5;
+                }
+                fm1_in.notes &= ~(1u << k2);
+                ui_input();
+                for (i = 0; i < 4u; i++)
+                    mix_block(out);
+            }
+            {   /* DRUM: no chords (the key says so; a white key one note) */
+                uint32_t e0 = ui.eng[t], ng2 = 0;
+                ui.eng[t] = ENG_FMD;
+                tap(KEY_GEN);
+                EXPECT(ui.chord_on[t] && str_eq(ui.msg, "NO CHORDS"), "DRUM: the chord key says NO CHORDS");
+                fm1_in.notes |= 1u << kw;
+                ui_input();
+                EXPECT(ui.key_cn[kw][1] == 0u && ui.last_chf[t] == 0u, "DRUM: a white key plays its note alone");
+                fm1_in.notes &= ~(1u << kw);
+                ui_input();
+                (void)ng2;
+                ui.eng[t] = (uint8_t)e0;
+                for (i = 0; i < 8u; i++)
+                    mix_block(out);
+            }
             tap(KEY_GEN);
             EXPECT(!ui.chord_on[t], "the 1st black key again: CHORD mode off");
             seq_note[t][si] = 0;
@@ -2009,7 +2067,7 @@ static int cmd_od(void)
     return 0;
 }
 
-/* host duck [LEVEL] [WAV]: a kick (DRIVEN KICK) on track 1 each beat, a reverb locked on its first step; a SWARMER pad
+/* host duck [LEVEL] [WAV]: a kick (DRIVEN KICK) on track 1 each beat, a reverb locked on its first step; a HIVE pad
  * (SWARM DRONE) held on track 2, two notes, its SC SOURCE T1 at SC LEVEL (0 .. 100, default 70): the pad's duck over a
  * beat (dB, each 25 ms), rendered to WAV */
 static int cmd_duck(int lvl, const char *wav)

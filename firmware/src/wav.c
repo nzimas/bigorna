@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * WAVETONE: two oscillators and a noise, after the Digitone II's (manual, A.2.3).
+ * WAVY: two oscillators and a noise, after the Digitone II's (manual, A.2.3).
  *
  *   TUN1/2     each oscillator's pitch (semitones from the note); OFS1/2 a further offset in hertz (the beating
  *              the same at every pitch); DRIF a slow random drift of both
@@ -64,7 +64,7 @@ static void wt_cook(wtck_t *c, const sound_t *s)
     c->nlev = clampi(p[WT_NLEV], 0, 127) * Q15 / 127;
     c->ntype = (uint8_t)clampi(p[WT_NTYP], 0, 2);
     c->nchar = clampi(p[WT_CHAR], 0, 127);
-    {   /* GRAIN's odds 0.0001 + (0.992 - p)^2: white at 0, sparse at the top (as FM DRUM's GRAN) */
+    {   /* GRAIN's odds 0.0001 + (0.992 - p)^2: white at 0, sparse at the top (as DRUM's GRAN) */
         int32_t d = 32512 - c->nchar * Q15 / 127;
         c->gran = maxi(7, (int32_t)(((int64_t)d * d) >> 14) + 7);
     }
@@ -178,8 +178,8 @@ FAST static void wt_render(wtv_t *v, const wtck_t *c, int32_t note16, int32_t *o
     }
 }
 
-/* ------------------------------------------------------------ SWARMER --- */
-/* SWARMER: a main oscillator and a swarm of six around it (manual, A.2.4).
+/* ------------------------------------------------------------ HIVE --- */
+/* HIVE: a main oscillator and a swarm of six around it (manual, A.2.4).
  *   TUNE   semitones from the note
  *   SWRM, MAIN  the swarm's and the main oscillator's waveforms (a position along PRIM)
  *   DET    how far the six are spread about the main pitch: the Digitone II's spread, asymmetric, about 19 cents for

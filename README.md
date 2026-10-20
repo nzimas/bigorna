@@ -1,7 +1,7 @@
 # Bigorna
 
-An alternative firmware for the M-VAVE FM-1 after the synthesis of the Elektron Digitone II: six tracks, the FM
-TONE, FM DRUM, WAVETONE and SWARMER machines, their filters, envelopes and send effects. Built on Tonitor.
+An alternative firmware for the M-VAVE FM-1 after the synthesis of the Elektron Digitone II: six tracks, the 4-OP,
+DRUM, WAVY and HIVE machines, their filters, envelopes and send effects. Built on Tonitor.
 Unofficial: not made, endorsed or supported by M-VAVE or Elektron. Installing it may void any warranty.
 
 Build and install (as Tonitor's): `./setup.sh` once, then `./build.sh` (writes `build/bigorna.fwsc`), then

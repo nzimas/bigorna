@@ -430,7 +430,7 @@ static void r_machine(sound_t *s, gctx_t *g)
     level(s, 106);
 }
 
-/* FM TONE */
+/* 4-OP */
 static void r_fm_bass(sound_t *s, gctx_t *g)
 {
     fm_base(s);
@@ -499,7 +499,7 @@ static void r_fb_drone(sound_t *s, gctx_t *g)
     level(s, 108);
 }
 
-/* WAVETONE */
+/* WAVY */
 static void r_chord_stab(sound_t *s, gctx_t *g)
 {
     wt_base(s);
@@ -580,7 +580,7 @@ static void r_radio(sound_t *s, gctx_t *g)
     level(s, 104);
 }
 
-/* SWARMER */
+/* HIVE */
 static void r_sub_swarm(sound_t *s, gctx_t *g)
 {
     sw_base(s);

@@ -1,16 +1,16 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * BIGORNA -- a firmware for the M-VAVE FM-1 after the synthesis of the Elektron Digitone II: six tracks,
- * the FM TONE, FM DRUM, WAVETONE and SWARMER machines, their filters, envelopes and effects.
+ * the 4-OP, DRUM, WAVY and HIVE machines, their filters, envelopes and effects.
  * One compilation unit (the HAL is header-only); the order matters.
  *
  * Built on TONITOR (Nuno Zimas), itself built on Felucca (Leo Kuroshita, Hügelton Instruments) and SLOOP
  * (isod89), GPL-3.0: the HAL, the boot, the USB stack, the update entry and loader, the rescue mode. */
 #include <stdint.h>
 #ifndef FW_ID
-#define FW_ID "FM-1_8033"         /* the package identity (tools/build.py sets it) */
+#define FW_ID "FM-1_8034"         /* the package identity (tools/build.py sets it) */
 #endif
 #ifndef FW_VERSION
-#define FW_VERSION "BUILD 33"
+#define FW_VERSION "BUILD 34"
 #endif
 #define FW_NAME "BIGORNA"
 #define FELUCCA_ID FW_ID

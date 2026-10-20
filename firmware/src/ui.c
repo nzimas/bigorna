@@ -2,7 +2,7 @@
  * The panel and the screen (after TONITOR's ui.c: its panel map, its bands, its dial, its scale page).
  *
  *   FX SEL ENV LFO EDIT GLO   the top row: tracks 1 to 6 (lit: the chosen one; the others glow while they sound)
- *   PRESETS (knob)            the track's machine: FM TONE, FM DRUM, WAVETONE, SWARMER (each track keeps a sound of
+ *   PRESETS (knob)            the track's machine: 4-OP, DRUM, WAVY, HIVE (each track keeps a sound of
  *                             each, so turning back finds it) -- on the track's view only: on the EDIT pages it moves
  *                             through them, on the effects' pages the half shown
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
@@ -737,7 +737,7 @@ static void step_hear(uint32_t n)                /* (the step held: its note, or
     ui.step_heard = (uint8_t)n;
     ui.step_hn[0] = ui.step_hn[1] = ui.step_hn[2] = 0;
     if (n) {
-        uint32_t i = (uint32_t)white_ix(ui.step_key), f1 = seq_chf[ui.sel][i];
+        uint32_t i = (uint32_t)white_ix(ui.step_key), f1 = ui.eng[ui.sel] == ENG_FMD ? 0u : seq_chf[ui.sel][i];
         int32_t c[3] = {(int32_t)n, 0, 0};
         if (f1)
             chord_of((int32_t)n, f1 - 1u, c);
@@ -904,6 +904,12 @@ static void ui_input(void)
     int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u);
     (void)rel;
     pat_poll();                                      /* (a pattern switched as the sequencer took it in) */
+    {   /* CPU1 retired as it plays (a fault, a stall, a misread): said, once */
+        static uint8_t was_on;
+        if (was_on && !audio_worker_online)
+            say("1 CORE", 4000);
+        was_on = (uint8_t)audio_worker_online;
+    }
     {   /* the scale, for the sequencer's MUTATE and MIDI FX */
         uint32_t m = 0, q;
         for (q = 0; q < SCALE_N[ui.scale]; q++)
@@ -1338,7 +1344,9 @@ static void ui_input(void)
     for (k = 0; ch && k < NKEY; k++) {
         if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_GEN && ui.page == PG_MAIN) {   /* CHORD mode on or
                                                                          * off; SHIFT: the next form (and on) */
-            if (sh) {
+            if (ui.eng[ui.sel] == ENG_FMD)
+                say("NO CHORDS", 1000);          /* (DRUM: none) */
+            else if (sh) {
                 if (ui.chord_on[ui.sel])
                     ui.chord_form[ui.sel] = (uint8_t)((ui.chord_form[ui.sel] + 1u) % CHF_N);
                 ui.chord_on[ui.sel] = 1;
@@ -1402,7 +1410,8 @@ static void ui_input(void)
                 continue;
             }
             {   /* the note, or with CHORD mode on the track its chord (the form chosen), from the key's note */
-                uint32_t f1 = ui.chord_on[ui.sel] ? ui.chord_form[ui.sel] + 1u : 0u, j, nn = f1 ? 3u : 1u;
+                uint32_t f1 = ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD ? ui.chord_form[ui.sel] + 1u : 0u, j,
+                         nn = f1 ? 3u : 1u;   /* (DRUM: never chords) */
                 int32_t c[3] = {(int32_t)note, 0, 0};
                 if (f1)
                     chord_of((int32_t)note, f1 - 1u, c);
@@ -1478,9 +1487,10 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (!step_view() && k == KEY_GEN && ui.page == PG_MAIN) {   /* (the CHORD key: lit while on, dim off) */
-            fm1_led_key(14u + k, ui.chord_on[ui.sel]);
-            led_dim_key(14u + k, 1);
+        if (!step_view() && k == KEY_GEN && ui.page == PG_MAIN) {   /* (the CHORD key: lit while on, dim off; DRUM:
+                                                                     * dark) */
+            fm1_led_key(14u + k, ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD);
+            led_dim_key(14u + k, ui.eng[ui.sel] != ENG_FMD);
             continue;
         }
         if (step_view() && k == KEY_GEN) {           /* (the phrase key: dim, lit as it makes one) */
@@ -1549,7 +1559,8 @@ static void draw_number(void)
             char pn[8] = "P";
             fmt_int(pn + 1, (seq_pend == 1u && (fm1_ms / 300u) & 1u ? seq_pend_k : pat_cur) + 1);
             cv_text(4, 2, &FONT_S, pn, pat_dirty ? RGB(255, 140, 0) : C_WHITE);
-            if (ui.chord_on[ui.sel])                 /* (CHORD mode: its form, left, under the pattern) */
+            if (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD)   /* (CHORD mode: its form, left, under the
+                                                                      * pattern; DRUM: none) */
                 cv_text(4, 6 + FONT_S.h, &FONT_S, CH_ABBR[ui.chord_form[ui.sel] % CHF_N], TRACK_COL[ui.sel]);
             if (ui.rec || ui.lrec) {                 /* (recording, right, under the octave: REC or LOOP in red;
                                                       * armed: ARM) */
@@ -2116,7 +2127,8 @@ static void ui_draw(void)
     {
         int32_t pk = pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec +
                      (seq_pend == 1u ? 1024 + (int32_t)((fm1_ms / 300u) & 1u) * 2048 : 0) +
-                     (ui.oct[ui.sel] + 3) * 4096 + (ui.chord_on[ui.sel] ? (ui.chord_form[ui.sel] + 1) * 32768 : 0);   /* (the
+                     (ui.oct[ui.sel] + 3) * 4096 +
+                     (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD ? (ui.chord_form[ui.sel] + 1) * 32768 : 0);   /* (the
                                                       * octave and the chord shown: drawn again as they change) */
         if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pk) {
             ui.shown_prj = pk;
@@ -2145,8 +2157,8 @@ static void ui_draw(void)
     ui.force = 0;
 }
 
-/* the start: on each track a sound of each machine; tracks 1 .. 3 on FM DRUM (a kick, a snare, a hat), 4 FM TONE,
- * 5 WAVETONE, 6 SWARMER */
+/* the start: on each track a sound of each machine; tracks 1 .. 3 on DRUM (a kick, a snare, a hat), 4 4-OP,
+ * 5 WAVY, 6 HIVE */
 static void ui_init(void)
 {
     static const uint8_t ENG0[NTRACK] = {ENG_FMD, ENG_FMD, ENG_FMD, ENG_FMT, ENG_WAV, ENG_SWM};
