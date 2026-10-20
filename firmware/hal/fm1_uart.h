@@ -53,6 +53,25 @@ FM1_INLINE void fm1_uart1_midi_init(volatile uint8_t *ring, uint32_t len)
     FM1_UT1_CON0 |= 1u;                                /* UTEN last */
 }
 
+/* a diagnosis: PH8 (the jack's RX) sampled for us microseconds -- the share of the time it read high (%) and how
+ * often it changed -- and UART1's CON0 and DMA count as they are now */
+FM1_INLINE void fm1_uart1_probe(uint32_t us, uint32_t *high_pct, uint32_t *changes, uint32_t *con0, uint32_t *cnt)
+{
+    volatile uint32_t *in = (volatile uint32_t *)0x501C4u;   /* (PORTH IN) */
+    uint32_t t0 = fm1_ticks(), last = *in >> 8 & 1u, hi = 0, n = 0, ch = 0;
+    while ((uint32_t)(fm1_ticks() - t0) < us * FM1_TICKS_PER_US) {
+        uint32_t b = *in >> 8 & 1u;
+        ch += b != last;
+        last = b;
+        hi += b;
+        n++;
+    }
+    *high_pct = hi * 100u / (n ? n : 1u);
+    *changes = ch;
+    *con0 = FM1_UT1_CON0 & 0x1FFFFFu;
+    *cnt = FM1_UT1_HRXCNT & 0xFFFFu;
+}
+
 FM1_INLINE uint32_t fm1_uart1_rx_take(void)
 {
     FM1_UT1_CON0 |= 0x80u;                             /* RDC: latch the count */

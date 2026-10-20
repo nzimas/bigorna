@@ -327,7 +327,8 @@ written to the flash as it is left.
 ### MIDI
 
 MIDI goes over the USB cable, both ways (the FM-1 shows up as FM-1 Bigorna), and comes in through the FM-1's 3.5 mm
-MIDI IN jack (TRS; a Type A or Type B adapter, as the sending device needs). The settings follow the Model:Cycles'
+MIDI IN jack (TRS Type A: a Type A cable or adapter from the other device's 5-pin MIDI OUT; tested with a Roland
+TRS-to-DIN cable from a Digitone II). The settings follow the Model:Cycles'
 MIDI CONFIG:
 
 | Part | Setting | Values | Start value |
@@ -345,7 +346,8 @@ MIDI CONFIG:
 | SEND | NOTES, CC: send notes and CCs out | ON / OFF | OFF |
 | PORTS | USB IN, TRS IN: take MIDI from USB, from the jack | ON / OFF | ON |
 
-Clock in. With CLK IN on and a clock arriving, the FM-1 follows it: the tempo is the average of the last 24 pulses
+Clock in. The sending device has to send its transport (start and stop) as well as its clock; on Elektron machines
+these are two settings, CLOCK SEND and TRANSPORT SEND. With CLK IN on and a clock arriving, the FM-1 follows it: the tempo is the average of the last 24 pulses
 (one beat), and the sequencer is held to the pulses themselves, so it never drifts from the master and the jitter of
 the cable does not add up. START starts the sequencer from step 1 on the next pulse; CONTINUE starts it from the song
 position last received (each track where it would be by then on its clock and length, the loops too); STOP stops

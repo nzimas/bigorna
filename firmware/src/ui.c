@@ -732,7 +732,30 @@ static void midi_take(void)
             memset(mlearn, 0, sizeof mlearn);
             ui.learn_dirty = 1;
         }
-        else if (a == 6u) {                      /* (the report: the state, then each binding and its parameter's
+        else if (a == 7u) {                      /* (the MIDI inputs' report, F0 7D 5C: the TRS jack's bytes and
+                                                  * drops, the clock's pulses and interval, the settings, PLAY) */
+            uint8_t f[40];
+            uint32_t n = 0, v[9], i;
+            v[0] = um.bytes;
+            v[1] = um.drops;
+            v[2] = xk_n;
+            v[3] = xk_iv / 100u;
+            v[4] = mcfg.clk_in | (uint32_t)mcfg.trs_in << 1 | (uint32_t)mcfg.usb_in << 2 | (uint32_t)mcfg.rcv_note << 3;
+            v[5] = seq_run;
+            v[6] = (uint32_t)fx_bpm10;
+            v[7] = mi_w;
+            v[8] = (uint32_t)midi_slave();
+            fm1_uart1_probe(60000u, &v[1], &v[7], &v[3], &v[6]);   /* (PH8 for 60 ms, the UART: in place of
+                                                  * the drops, the share high; of mi_w, the changes) */
+            f[n++] = 0xF0; f[n++] = 0x7D; f[n++] = 0x5C;
+            for (i = 0; i < 9u; i++) {           /* (each 21 bits, three bytes) */
+                f[n++] = (uint8_t)(v[i] >> 14 & 0x7Fu);
+                f[n++] = (uint8_t)(v[i] >> 7 & 0x7Fu);
+                f[n++] = (uint8_t)(v[i] & 0x7Fu);
+            }
+            f[n++] = 0xF7;
+            ota_wire_send(f, n);
+        } else if (a == 6u) {                    /* (the report: the state, then each binding and its parameter's
                                                   * value now) */
             uint8_t f[8 + 8 * NLEARN];
             uint32_t n = 0, i;
