@@ -72,6 +72,7 @@
 <a href="#sessions-save">Sessions (SAVE)</a>
 <a href="#global-setup-shift-save">GLOBAL SETUP (SHIFT + SAVE)</a>
 <a href="#midi" class="sub">MIDI</a>
+<a href="#tested-with" class="sub">Tested with</a>
 <a href="#midi-learn" class="sub">MIDI LEARN</a>
 <a href="#the-screen">The screen</a>
 <a href="#rescue">Rescue</a>
@@ -269,6 +270,14 @@
 </table>
 <p>The CCs a keyboard or a DAW sends for other things are left out: 32, 38, 64 to 69 (pedals), 96 to 101. A value from 0 to 127 is spread over the parameter's whole range.</p>
 <p>Program changes 0 to 15 choose the session's patterns 1 to 16, in time as the patterns' grid does.</p>
+<h3 id="tested-with">Tested with</h3>
+<p>MIDI has been tested on the FM-1 with:</p>
+<ul>
+<li><b>Elektron Digitone II, into the TRS MIDI IN jack</b> (a Roland TRS-to-DIN cable, Type A, from the Digitone II's 5-pin MIDI OUT): the FM-1 follows its clock, starts and stops with it, and its keyboard plays the FM-1's tracks by channel (track 6 on channel 6). The Digitone II needs, in SETTINGS &gt; MIDI CONFIG: SYNC &gt; CLOCK SEND and TRANSPORT SEND on; PORT CONFIG &gt; OUTPUT TO MIDI (or MIDI+USB), TRIG KEY DEST INT + EXT, OUTPUT CH TRK CH (or AUTO CH, which the FM-1 takes on its AUTO channel). On the FM-1: GLOBAL SETUP &gt; MIDI &gt; SYNC &gt; CLK IN on.</li>
+<li><b>A computer over USB</b> (macOS): notes, CCs, and MIDI LEARN with CCs as the M-VAVE SMC Mixer sends them in MIDI mode.</li>
+</ul>
+<p>A controller cannot be plugged straight into the FM-1's USB-C port: both are USB devices, and USB needs a computer (a host) between them. A controller with a 5-pin MIDI OUT goes into the TRS jack.</p>
+<p>This list grows as more gear is tried.</p>
 <h3 id="midi-learn">MIDI LEARN</h3>
 <p>The 4th black key (the step view off) turns MIDI LEARN on or off; it is lit while on, and MIDI LEARN shows in the name band. With it on, the EDIT pages and the effects' pages (SEQ) show CC instead of the page count, and in each row, where the value goes, the CC learned for it in amber, or — if none. PRESETS moves through the page's rows, A to H (the half shown follows); OCT− and OCT+ turn the pages as before.</p>
 <ul>

@@ -385,6 +385,23 @@ from 0 to 127 is spread over the parameter's whole range.
 
 Program changes 0 to 15 choose the session's patterns 1 to 16, in time as the patterns' grid does.
 
+### Tested with
+
+MIDI has been tested on the FM-1 with:
+
+- **Elektron Digitone II, into the TRS MIDI IN jack** (a Roland TRS-to-DIN cable, Type A, from the Digitone II's 5-pin
+  MIDI OUT): the FM-1 follows its clock, starts and stops with it, and its keyboard plays the FM-1's tracks by
+  channel (track 6 on channel 6). The Digitone II needs, in SETTINGS > MIDI CONFIG: SYNC > CLOCK SEND and TRANSPORT
+  SEND on; PORT CONFIG > OUTPUT TO MIDI (or MIDI+USB), TRIG KEY DEST INT + EXT, OUTPUT CH TRK CH (or AUTO CH, which the
+  FM-1 takes on its AUTO channel). On the FM-1: GLOBAL SETUP > MIDI > SYNC > CLK IN on.
+- **A computer over USB** (macOS): notes, CCs, and MIDI LEARN with CCs as the M-VAVE SMC Mixer sends them in MIDI
+  mode.
+
+A controller cannot be plugged straight into the FM-1's USB-C port: both are USB devices, and USB needs a computer
+(a host) between them. A controller with a 5-pin MIDI OUT goes into the TRS jack.
+
+This list grows as more gear is tried.
+
 ### MIDI LEARN
 
 The 4th black key (the step view off) turns MIDI LEARN on or off; it is lit while on, and MIDI LEARN shows in the
