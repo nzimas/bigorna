@@ -191,7 +191,9 @@ Over the way, some of these are drawn too:
 The role of each track's sound (as the phrase generator reads it) keeps the result coherent: a kick keeps the
 bar's first step and takes no leaps, no gap and few ratchets; a drone (HIVE's pads and drones, dark washes) is
 left alone. The track's loops are broken up with its steps: the same way, from the same beat, with the same gap,
-so a loop stays with the pattern while the key is held, and both carry on in step when it is let go.
+so a loop stays with the pattern while the key is held, and both carry on in step when it is let go. At the first
+step after, the notes the break left sounding stop, and the loops' notes due to be sounding then (a held chord, a
+pad) start again for the rest of their length.
 
 ## The effects (SEQ)
 

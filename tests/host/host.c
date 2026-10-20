@@ -1578,6 +1578,59 @@ static int cmd_projects(const char *dir)
         for (i = 0; i < NSTEP; i++)
             seq_note[0][i] = 0;
     }
+    {   /* let go of BREAK (build 43): the notes it left sounding go, and the loop's chord due to be sounding then
+         * comes back at once, for the rest of its length -- not a bar later */
+        int32_t out[2 * CTL];
+        uint32_t i, c, k, ok = 1, g, ph, want, n;
+        loop_t *lp = &loops[1][0];
+        for (i = 0; i < NSTEP; i++)
+            seq_note[1][i] = 0;
+        for (c = 0; c < 4u; c++)                 /* (four chords, each held a bar) */
+            for (i = 0; i < 3u; i++) {
+                lev_t *e = &lp->ev[c * 3u + i];
+                e->step = (uint16_t)(c * 16u);
+                e->len8 = 16u * 8u;
+                e->note = (uint8_t)(57u + c * 2u + i * 4u);
+                e->vel = 100;
+            }
+        lp->n = 12;
+        lp->len = 64;
+        lp->mute = 0;
+        lp->cur = 0;
+        lp->kick = 0;
+        lp->anchor = 0;
+        lp->on = 1;
+        seq_run = 1;
+        while (seq_gcount != 20u)
+            mix_block(out);
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        key(KEY_TRIG, 1);
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        brk_keep = 0;
+        while (seq_gcount != 52u)                /* (two bars broken up: let go in the 4th chord's bar) */
+            mix_block(out);
+        key(KEY_TRIG, 0);
+        for (c = 0; c < 20u; c++) {
+            g = seq_gcount;
+            while (seq_gcount == g)
+                mix_block(out);
+            mix_block(out);
+            ph = (seq_gcount - lp->anchor) % lp->len;
+            want = 57u + (ph / 16u) * 2u;
+            for (k = 0, n = 0; k < SEQ_HOLD; k++)
+                if (sq_note[1][k]) {
+                    n++;
+                    ok &= sq_note[1][k] == want || sq_note[1][k] == want + 4u || sq_note[1][k] == want + 8u;
+                }
+            ok &= n == 3u;
+        }
+        EXPECT(ok, "let go of BREAK: the loop's chord due then sounds at once, and only it");
+        lp->on = 0;
+        lp->n = 0;
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+    }
     {   /* the looper: SHIFT + REC armed; the first note starts it; REC ends it at the nearest step; it plays */
         int32_t out[2 * CTL];
         uint32_t kw[16], k, i, n0, n2, found;

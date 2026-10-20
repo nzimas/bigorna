@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 43
+
+Fixed
+- After BREAK, a loop sounded out of place until its next notes came round: the notes the break had started (a
+  chord from another bar, held for its full length) kept sounding, and the loop's own notes that should have been
+  sounding at that point did not come back. At the first step after the key is let go, the notes the break left
+  sounding on its tracks are now let go (its echoes and ratchets dropped), and each loop's notes due to be sounding
+  then start again for what is left of their length.
+
 ## Build 42
 
 Changed

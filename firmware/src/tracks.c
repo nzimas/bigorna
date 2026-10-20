@@ -775,6 +775,7 @@ static uint32_t brk_seen, brk_r, brk_n16;
 static uint8_t brk_rec, brk_prev = 0xFF, brk_w, brk_sw, brk_chop[8], brk_gap, brk_lay, brk_fresh;
 static uint8_t brk_lfresh[NTRACK];               /* (each track's loops, a bit each: their anchors still to take) */
 static uint16_t brk_lanc[NTRACK][3];             /* (.. and the anchors, in the loop's steps; build 41) */
+static uint8_t brk_was, brk_rest;                /* (the tracks the break played on; let go, the ones to put back) */
 static uint8_t brk_anchor[NTRACK];
 static uint8_t brk_rt[NTRACK], brk_fl[NTRACK];   /* (a step's: its ratchet, flam, velocity %) */
 static uint8_t brk_vp[NTRACK] = {100, 100, 100, 100, 100, 100};
@@ -819,9 +820,27 @@ static void brk_draw(void)                       /* a plan: the way, its window,
 static void brk_tick(void)                       /* (each of the tempo's 16ths, playing) */
 {
     if (!brk_mask) {
+        uint32_t t, i;
         brk_shown = 0xFF;
+        for (t = 0; brk_was && t < NTRACK; t++) {   /* let go (build 43): the notes the break left sounding on its
+                                                  * tracks let go, its echoes and ratchets dropped -- and the loops'
+                                                  * notes due to be sounding now played again (loop_step) */
+            if (!(brk_was >> t & 1u))
+                continue;
+            for (i = 0; i < SEQ_HOLD; i++)
+                if (sq_note[t][i]) {
+                    note_off(t, sq_note[t][i], SRC_SEQ);
+                    sq_note[t][i] = 0;
+                }
+            memset(fxq[t], 0, sizeof fxq[t]);
+            rt_left[t] = 0;
+        }
+        brk_rest = brk_was;
+        brk_was = 0;
         return;
     }
+    if (brk_shown != 0xFFu)
+        brk_was |= (uint8_t)(brk_mask & ~brk_keep);
     if (brk_seed != brk_seen) {                  /* pressed: a plan */
         brk_seen = brk_seed;
         brk_r = brk_seed | 1u;
@@ -1068,6 +1087,15 @@ static void loop_step(void)
                 p->cur = (uint16_t)lo;
                 continue;
             }
+            if (brk_rest >> t & 1u) {             /* (the first step after a break: its notes sounding now, again,
+                                                  * for what is left of them) */
+                uint32_t i;
+                for (i = 0; !p->mute && i < p->n; i++) {
+                    uint32_t d = (ph + p->len - p->ev[i].step) % p->len;
+                    if (d && d * 8u < p->ev[i].len8)
+                        seq_sound(t, p->ev[i].note, p->ev[i].vel, p->ev[i].len8 - d * 8u, 0, 0);
+                }
+            }
             if (!ph)
                 p->cur = 0;
             while (p->cur < p->n && p->ev[p->cur].step < ph)
@@ -1076,6 +1104,7 @@ static void loop_step(void)
                 if (!p->mute)
                     seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
         }
+    brk_rest = 0;
 }
 /* a pattern's steps whole, as the sequencer plays them (projects.c fills one, the ISR takes it in) */
 typedef struct {
