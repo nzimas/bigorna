@@ -13,7 +13,7 @@ if [ ! -x .venv/bin/python ]; then
     python3 -m venv .venv
 fi
 .venv/bin/pip install --quiet --upgrade pip
-.venv/bin/pip install --quiet Pillow mido python-rtmidi
+.venv/bin/pip install --quiet Pillow mido python-rtmidi fonttools
 echo "setup: python environment ready (.venv)"
 
 if [ ! -x "${JIELI_TOOLCHAIN:-$HOME/.jieli/toolchain}/pi32v2/bin/clang" ]; then

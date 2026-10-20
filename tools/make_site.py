@@ -21,6 +21,7 @@ DOCS = ROOT / "docs"
 REPO = "https://github.com/nzimas/bigorna"
 # the stylesheet's address changes with it, so browsers never keep an old one
 CSS_V = hashlib.sha256((Path(__file__).resolve().parent.parent / "docs/css/site.css").read_bytes()).hexdigest()[:10]
+LOGO_V = hashlib.sha256((Path(__file__).resolve().parent.parent / "docs/assets/logo-dark.svg").read_bytes()).hexdigest()[:10]   # (the images are cached too)
 
 
 def slug(text):
@@ -147,7 +148,7 @@ def page(title, current, body, desc, head=""):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <meta name="description" content="{desc}">
-<link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+<link rel="icon" href="assets/mark.svg?v={LOGO_V}" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Big+Shoulders+Display:wght@700;800&display=swap" rel="stylesheet">
@@ -157,7 +158,7 @@ def page(title, current, body, desc, head=""):
 <div class="layout">
   <aside class="side">
     <div class="top">
-      <a class="brand" href="./"><img src="assets/logo-dark.svg" alt="Bigorna" width="519" height="60"></a>
+      <a class="brand" href="./"><img src="assets/logo-dark.svg?v={LOGO_V}" alt="Bigorna" width="780" height="68"></a>
       <button class="menu-btn" type="button" aria-label="Menu" aria-controls="site-nav" aria-expanded="false"><span></span><span></span><span></span></button>
     </div>
     <nav id="site-nav" aria-label="Site">
@@ -202,7 +203,7 @@ def page(title, current, body, desc, head=""):
 def fragments():
     src = ROOT / "site"
     (DOCS / "index.html").write_text(page(
-        "Bigorna — a firmware for the M-VAVE FM-1", "Home", (src / "home.html").read_text(),
+        "Bigorna — a firmware for the M-VAVE FM-1", "Home", (src / "home.html").read_text().replace("{LOGO_V}", LOGO_V),
         "Bigorna: a firmware for the M-VAVE FM-1 for rhythmic noise, power noise, industrial and IDM, after the "
         "Elektron Digitone II."))
     (DOCS / "screens.html").write_text(page(

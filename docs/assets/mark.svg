@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 120 68" width="120" height="68">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -7.75 155.5 75.5" width="156" height="76">
   <title>Bigorna</title>
-  <path fill="#d2d5da" d="M0,13 L34,6 L112,6 L112,20 L86,22 L79,38 L94,47 L94,54 L34,54 L34,47 L49,38 L42,22 L22,20 Z"/>
+  <path fill="none" stroke="#d2d5da" stroke-width="6.000" stroke-linejoin="miter" transform="translate(3.75 -7.50) scale(1.2500)" d="M0,13 L34,6 L112,6 L112,20 L86,22 L79,38 L94,47 L94,54 L34,54 L34,47 L49,38 L42,22 L22,20 Z"/>
 </svg>
