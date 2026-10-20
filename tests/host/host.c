@@ -1495,6 +1495,89 @@ static int cmd_projects(const char *dir)
         for (i = 0; i < NSTEP; i++)
             seq_note[0][i] = 0;
     }
+    {   /* BREAK on the loops (build 41): a loop on track 2 the shape of track 1's steps; under BREAK on every track,
+         * at each step the loop plays the step the pattern plays -- during the break and after it */
+        int32_t out[2 * CTL];
+        uint32_t i, last, k, n1, both = 0, same = 1, after = 1, moved = 0, phase;
+        loop_t *lp = &loops[1][0];
+        ui.sel = 0;
+        ui.page = PG_MAIN;
+        ui.sv = 0;
+        seq_len[0] = seq_len[1] = 0;
+        seq_dir[0] = DIR_FWD;
+        seq_div[0] = SEQ_DIV1;
+        for (i = 0; i < NSTEP; i++) {
+            seq_note[0][i] = (uint8_t)(48u + i);
+            seq_vel[0][i] = 100;
+            seq_glen[0][i] = 0;                  /* (1/8 of a step: over by the next) */
+            seq_cond[0][i] = CD_NONE;
+            seq_rtg[0][i] = 0;
+            seq_mut[0][i] = 0;
+            seq_mfx[0][i] = MFX_OFF;
+            seq_chf[0][i] = 0;
+            memset((void *)seq_lid[0][i], PL_NONE, NPL);
+            seq_note[1][i] = 0;
+            lp->ev[i].step = (uint16_t)i;
+            lp->ev[i].len8 = 1;
+            lp->ev[i].note = (uint8_t)(72u + i);
+            lp->ev[i].vel = 100;
+        }
+        lp->n = 16;
+        lp->len = 16;
+        lp->mute = 0;
+        lp->cur = 0;
+        lp->kick = 0;
+        lp->anchor = 0;
+        lp->on = 1;
+        seq_run = 1;
+        while (seq_pos[0] != 6u)
+            mix_block(out);
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        key(KEY_TRIG, 1);
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        brk_keep = 0;                            /* (both tracks: drums, no kick -- no leaps, the same rules) */
+        brk_kick = 0;
+        brk_drum = 0x3F;
+        for (phase = 0; phase < 2u; phase++) {
+            if (phase)
+                key(KEY_TRIG, 0);
+            for (i = 0, last = seq_pos[0]; i < (phase ? 32u : 64u); i++) {
+                uint32_t s0 = seq_sounded[0], s1 = seq_sounded[1], n0 = 0;
+                while (seq_pos[0] == last)
+                    mix_block(out);
+                last = seq_pos[0];
+                for (k = 0, n1 = 0; k < SEQ_HOLD; k++)
+                    if (sq_note[1][k] >= 72u && sq_note[1][k] < 88u)
+                        n1 = sq_note[1][k];
+                if (seq_sounded[0] > s0)
+                    n0 = seq_played[0];
+                if ((seq_sounded[0] > s0) != (seq_sounded[1] > s1)) {
+                    same = phase ? same : 0;
+                    after &= !phase;
+                    continue;
+                }
+                if (seq_sounded[0] == s0)
+                    continue;
+                both++;
+                if (phase)
+                    after &= n0 - 48u == last && n1 - 72u == last;
+                else {
+                    same &= n0 - 48u == n1 - 72u;
+                    moved += n0 - 48u != last;
+                }
+            }
+        }
+        EXPECT(both > 40u && moved > 0u, "BREAK on every track: the pattern broken up");
+        EXPECT(same, "BREAK: the loop plays the step the pattern plays, every step");
+        EXPECT(after, "let go: the pattern and the loop on their own steps, together");
+        lp->on = 0;
+        lp->n = 0;
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        for (i = 0; i < NSTEP; i++)
+            seq_note[0][i] = 0;
+    }
     {   /* the looper: SHIFT + REC armed; the first note starts it; REC ends it at the nearest step; it plays */
         int32_t out[2 * CTL];
         uint32_t kw[16], k, i, n0, n2, found;

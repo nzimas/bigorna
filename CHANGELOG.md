@@ -1,5 +1,13 @@
 # Changelog
 
+## Build 41
+
+Changed
+- BREAK takes in the loops of the tracks under it. A loop is broken up as its track's steps are: the same way,
+  from the same beat, with the same gap before the bar's end, so loop and pattern stay together while the key is
+  held. Each loop's own position runs on underneath, as the steps' does: let go, both carry on in step. A drone's
+  loops, like its steps, are left alone.
+
 ## Build 40
 
 Fixed
