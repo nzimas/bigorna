@@ -72,6 +72,7 @@
 <a href="#sessions-save">Sessions (SAVE)</a>
 <a href="#global-setup-shift-save">GLOBAL SETUP (SHIFT + SAVE)</a>
 <a href="#midi" class="sub">MIDI</a>
+<a href="#midi-learn" class="sub">MIDI LEARN</a>
 <a href="#the-screen">The screen</a>
 <a href="#rescue">Rescue</a>
 </nav>
@@ -87,6 +88,7 @@
 <tr><td>1st black key</td><td>CHORD mode on or off</td></tr>
 <tr><td>2nd black key</td><td>MUTE mode on or off</td></tr>
 <tr><td>3rd black key</td><td>BREAK, while held; SHIFT + it: on every track</td></tr>
+<tr><td>4th black key</td><td>MIDI LEARN on or off</td></tr>
 <tr><td>Black key before the last</td><td>EDIT: the sound's pages</td></tr>
 <tr><td>3rd black key from the right</td><td>STEP: the step view</td></tr>
 <tr><td>Last black key</td><td>SHIFT</td></tr>
@@ -225,15 +227,15 @@
 <h2 id="patterns-arp">Patterns (ARP)</h2>
 <p>A session has 16 patterns: every track's steps, lengths, clocks and directions. ARP shows the PATTERNS grid; the white keys are the 16 patterns (dim; the one playing brighter). A key let go soon loads its pattern — while the sequencer plays, at the end of the chosen track's steps. Held 0.8 s, copies it; another held 0.8 s pastes it there; SHIFT and held 0.8 s empties it. ARP held saves the pattern playing. A pattern keeps its edits when another is loaded, until the session is saved or loaded.</p>
 <h2 id="sessions-save">Sessions (SAVE)</h2>
-<p>16 sessions are kept in the FM-1's flash. SAVE shows the list; PRESETS moves through it, SAVE opens a session's page: LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE. SAVE runs the row chosen, or moves the focus to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not saved, saving over another session, copying over one and deleting ask first (NO / YES on PRESETS).</p>
+<p>16 sessions are kept in the FM-1's flash. SAVE shows the list; PRESETS moves through it, SAVE opens a session's page: BACK, LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE (it opens on LOAD; SAVE on BACK goes back to the list). SAVE runs the row chosen, or moves the focus to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not saved, saving over another session, copying over one and deleting ask first (NO / YES on PRESETS).</p>
 <p>SAVE held 0.8 s (or HOME held), outside the sessions' pages, saves the session playing into its slot at once. If it has never been saved, the first empty slot's page shows SAVE NEW? with YES chosen: SAVE saves it there and goes back to the track (PRESETS left: NO). With all 16 slots taken, NO FREE SLOT shows.</p>
 <p>A session holds the whole state of the machine: every track's machine, sounds, octave, level, pan, chord mode and mutes, the track chosen, the effects, the tempo, the root and scale, its 16 patterns and the pattern playing, and every loop on every track (notes, length, mute). Loading a session gives all of it back; its loops start at the next bar if the sequencer is playing. A session saved by build 37 or earlier has no loops: loading it empties them.</p>
 <p>The loops are kept in a loop store shared by the 16 sessions (31 sectors of flash, about 125 KB). A session takes what its loops need: up to 7 sectors with all 18 loops full (256 notes each). If the store has no room left, nothing is saved and NO ROOM FOR LOOPS shows; deleting a session, or saving one with fewer loops, frees room.</p>
 <p>The FM-1 starts with the last session loaded or saved (SESSION n shows for a moment). Changes not saved before it was switched off are not kept.</p>
 <h2 id="global-setup-shift-save">GLOBAL SETUP (SHIFT + SAVE)</h2>
-<p>SHIFT + SAVE (outside the sessions' pages) opens GLOBAL SETUP: the settings of the machine rather than of a session. They are kept in the FM-1's flash and read at every start. PRESETS moves through a list and SAVE goes into the entry chosen; on a setting, SAVE moves the focus to its value, PRESETS changes it and SAVE sets it. SHIFT + SAVE leaves a value as it was, or goes back a level; from the top it leaves GLOBAL SETUP, as a track's button does. Changes are written to the flash as it is left.</p>
+<p>SHIFT + SAVE (outside the sessions' pages) opens GLOBAL SETUP: the settings of the machine rather than of a session. They are kept in the FM-1's flash and read at every start. PRESETS moves through a list and SAVE goes into the entry chosen; on a setting, SAVE moves the focus to its value, PRESETS changes it and SAVE sets it. SHIFT + SAVE leaves a value as it was, or goes back a level; from the top it leaves GLOBAL SETUP, as a track's button does. Every level below the top begins with BACK: SAVE on it goes back a level (a level opens on the entry below BACK). Changes are written to the flash as it is left.</p>
 <h3 id="midi">MIDI</h3>
-<p>MIDI goes over the USB cable, both ways (the FM-1 shows up as FM-1 Bigorna), and comes in through the FM-1's 3.5 mm MIDI IN jack (TRS; a Type A or Type B adapter, as the sending device needs). The settings follow the Model:Cycles' MIDI CONFIG:</p>
+<p>MIDI goes over the USB cable, both ways (the FM-1 shows up as FM-1 Bigorna), and comes in through the FM-1's 3.5 mm MIDI IN jack (TRS Type A: a Type A cable or adapter from the other device's 5-pin MIDI OUT; tested with a Roland TRS-to-DIN cable from a Digitone II). The settings follow the Model:Cycles' MIDI CONFIG:</p>
 <table>
 <tr><th>Part</th><th>Setting</th><th>Values</th><th>Start value</th></tr>
 <tr><td>SYNC</td><td>CLK IN: follow a MIDI clock, and its START, CONTINUE and STOP</td><td>ON / OFF</td><td>OFF</td></tr>
@@ -249,7 +251,7 @@
 <tr><td>SEND</td><td>NOTES, CC: send notes and CCs out</td><td>ON / OFF</td><td>OFF</td></tr>
 <tr><td>PORTS</td><td>USB IN, TRS IN: take MIDI from USB, from the jack</td><td>ON / OFF</td><td>ON</td></tr>
 </table>
-<p>Clock in. With CLK IN on and a clock arriving, the FM-1 follows it: the tempo is the average of the last 24 pulses (one beat), and the sequencer is held to the pulses themselves, so it never drifts from the master and the jitter of the cable does not add up. START starts the sequencer from step 1 on the next pulse; CONTINUE starts it from the song position last received (each track where it would be by then on its clock and length, the loops too); STOP stops it. PLAY on the FM-1 starts on the master's next pulse. The TEMPO page (PLAY held) shows EXT TEMPO and the master's. If no pulse comes for half a second, the FM-1 goes back to its own tempo.</p>
+<p>Clock in. The sending device has to send its transport (start and stop) as well as its clock; on Elektron machines these are two settings, CLOCK SEND and TRANSPORT SEND. With CLK IN on and a clock arriving, the FM-1 follows it: the tempo is the average of the last 24 pulses (one beat), and the sequencer is held to the pulses themselves, so it never drifts from the master and the jitter of the cable does not add up. START starts the sequencer from step 1 on the next pulse; CONTINUE starts it from the song position last received (each track where it would be by then on its clock and length, the loops too); STOP stops it. PLAY on the FM-1 starts on the master's next pulse. The TEMPO page (PLAY held) shows EXT TEMPO and the master's. If no pulse comes for half a second, the FM-1 goes back to its own tempo.</p>
 <p>Clock out. With CLK OUT on, the FM-1 sends 24 pulses a beat from its sequencer, stopped too, so a slave can lock to the tempo before it starts. PLAY sends a song position of 0, START and the first pulse together, as step 1 plays; stopping sends STOP. A pulse is placed to within one audio block (0.73 ms); USB then delivers it in its own 1 ms frames.</p>
 <p>Notes. A note received on a track's IN channel plays that track; on the AUTO channel, the track chosen. Notes on the chosen track are recorded (REC, the looper) as the keys are. With SEND NOTES on, every note a track plays (its steps, ratchets and MIDI FX, its loops, the keys, notes received) is sent on its OUT channel with its velocity, and its note off when it ends. A muted track sends nothing; stopping the sequencer sends the note offs still due.</p>
 <p>CCs. Received on a track's channel (or AUTO), and sent on its OUT channel with SEND CC as its knobs turn: the level is CC 7, the pan CC 10, the mute CC 94 (0 to 63 plays, 64 to 127 mutes), and each page's eight parameters (A to H, as the knobs show them) these CCs, whichever machine the track plays:</p>
@@ -267,6 +269,13 @@
 </table>
 <p>The CCs a keyboard or a DAW sends for other things are left out: 32, 38, 64 to 69 (pedals), 96 to 101. A value from 0 to 127 is spread over the parameter's whole range.</p>
 <p>Program changes 0 to 15 choose the session's patterns 1 to 16, in time as the patterns' grid does.</p>
+<h3 id="midi-learn">MIDI LEARN</h3>
+<p>The 4th black key (the step view off) turns MIDI LEARN on or off; it is lit while on, and MIDI LEARN shows in the name band. With it on, the EDIT pages and the effects' pages (SEQ) show CC instead of the page count, and in each row, where the value goes, the CC learned for it in amber, or — if none. PRESETS moves through the page's rows, A to H (the half shown follows); OCT− and OCT+ turn the pages as before.</p>
+<ul>
+<li>SAVE: the chosen row waits for a CC (WAIT). The next CC to come in, from USB or the jack, on any channel, is learned for it, and its number shows. SAVE again stops waiting.</li>
+<li>SHIFT + SAVE: the chosen row's CC forgotten.</li>
+</ul>
+<p>A CC learned for a sound's parameter turns it on the track it was learned on; one learned for an effect's turns it for all (COMP's SC SOURCE and SC LEVEL: on the track it was learned on). A CC and channel are learned for one parameter at a time, and a parameter has one CC: learning again moves it. A learned CC comes before the CC map above, on its channel; it needs RECEIVE CC on. Up to 64 are kept, in the flash with GLOBAL SETUP, written when MIDI LEARN is turned off.</p>
 <p>The jack takes notes, CCs, program changes, the clock, START, CONTINUE, STOP and the song position, as USB does (not SysEx). With both inputs on, the two are merged; a clock should come from one of them only.</p>
 <h2 id="the-screen">The screen</h2>
 <p>Few words, very large type, high contrast, and a colour for each track. The track's view shows the track's number, its machine and its sound's family; at the top left the pattern playing (orange with changes not saved) and the chord form; at the top right the octave and, while recording, REC or LOOP.</p>
