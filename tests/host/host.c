@@ -621,7 +621,12 @@ static int cmd_projects(const char *dir)
     shot(dir, "prj_main_dirty");
     btn(B_SAVE, 0);
     btn(B_SAVE, 0);                              /* slot 3's page (the list stays on it) */
-    turn(EN_PRESET, -9);                         /* LOAD */
+    EXPECT(pj.row == PR_LOAD, "a session's page opens on LOAD");
+    turn(EN_PRESET, -9);                         /* (BACK, at the top) */
+    EXPECT(pj.row == PR_BACK, "BACK at the top of a session's page");
+    btn(B_SAVE, 0);
+    EXPECT(ui.page == PG_PRJ, "SAVE on BACK: the list again");
+    btn(B_SAVE, 0);                              /* (slot 3's page again: on LOAD) */
     btn(B_SAVE, 0);
     EXPECT(pj.ask == PQ_LOAD, "LOAD with changes not saved asks first");
     shot(dir, "prj_ask_load");
@@ -632,7 +637,7 @@ static int cmd_projects(const char *dir)
     btn(B_SAVE, 0);
     btn(B_SAVE, 0);
     turn(EN_PRESET, -9);
-    turn(EN_PRESET, 2);                          /* COPY */
+    turn(EN_PRESET, 3);                          /* COPY (BACK, LOAD, SAVE, COPY) */
     btn(B_SAVE, 0);
     EXPECT(pj.ask == PQ_COPYTO && pj.to == 3u, "COPY asks where to");
     turn(EN_PRESET, 2);                          /* to 6 */
@@ -2793,6 +2798,87 @@ static int cmd_projects(const char *dir)
             mcfg = D;
             setup_load();
             EXPECT(!mcfg.rcv_cc && mcfg.usb_in && mcfg.trs_in, "build 46's settings read, both inputs on");
+        }
+        {   /* BACK at the top of GLOBAL SETUP's levels (build 48) */
+            ui.page = PG_MAIN;
+            btn(B_SAVE, 1);
+            btn(B_SAVE, 0);                      /* (MIDI: on SYNC, BACK above) */
+            EXPECT(set.lvl == 1u && set.pc == 1u, "MIDI opens on its first part");
+            turn(EN_PRESET, -1);
+            ui_draw();
+            shot(dir, "setup_back");
+            btn(B_SAVE, 0);
+            EXPECT(set.lvl == 0u, "SAVE on BACK: GLOBAL SETUP's top");
+            btn(B_SAVE, 0);
+            btn(B_SAVE, 0);                      /* (SYNC: on CLK IN) */
+            EXPECT(set.lvl == 2u && set.row == 1u && set.part == 0u, "SYNC opens on CLK IN");
+            turn(EN_PRESET, -3);
+            btn(B_SAVE, 0);
+            EXPECT(set.lvl == 1u && set.pc == 1u, "SAVE on BACK: MIDI's parts, on SYNC");
+            btn(B_SAVE, 1);
+            btn(B_SAVE, 1);
+            ui_input();
+        }
+        {   /* MIDI LEARN (build 48): the 4th black key; a sound's parameter and an effect's learned from a controller's
+             * CCs; a CC learned before the map; SHIFT + SAVE clears; off, kept in the flash */
+            uint32_t fl, kk;
+            sound_t *sn;
+            memset(mlearn, 0, sizeof mlearn);
+            mcfg = D;
+            ui.page = PG_MAIN;
+            ui.sv = 0;
+            ui.sel = 2;
+            for (kk = 0; kk < NKEY; kk++)
+                ;
+            key(KEY_MOD, 1);
+            key(KEY_MOD, 0);
+            EXPECT(ui.learn && !key_plays(KEY_MOD), "the 4th black key: MIDI LEARN on");
+            key(KEY_EDIT, 1);
+            key(KEY_EDIT, 0);
+            sn = cur();
+            fl = pages_n(sn) - 5u;               /* (FLTR 1) */
+            ui.edit_pg = (uint8_t)fl;
+            turn(EN_PRESET, 4);                  /* (E: FREQ) */
+            EXPECT(ui.lsel == 4u && ui.ehalf == 1u, "PRESETS: the row (E), the half shown with it");
+            btn(B_SAVE, 0);
+            EXPECT(ui.listen, "SAVE: waiting for a CC");
+            ui_draw();
+            shot(dir, "learn_wait");
+            midi_in_q[mi_w++ % MQ] = 0xBu | 0xB8u << 8 | 74u << 16 | 10u << 24;   /* (channel 9, CC 74) */
+            ui_input();
+            EXPECT(!ui.listen && learn_of(LK_SND, 2, PG_FLT1 * 8u + 4u) >= 0 && ui.learn_dirty, "CC 74 learned for FREQ");
+            turn(EN_PRESET, 1);                  /* (F: RESO) */
+            btn(B_SAVE, 0);
+            midi_in_q[mi_w++ % MQ] = 0xBu | 0xB8u << 8 | 71u << 16 | 10u << 24;
+            ui_input();
+            ui_draw();
+            shot(dir, "learn_edit");
+            midi_in_q[mi_w++ % MQ] = 0xBu | 0xB8u << 8 | 74u << 16 | 127u << 24;
+            ui_input();
+            EXPECT(ui.snd[2][ui.eng[2]].flt[4] == 127, "CC 74 on channel 9 turns track 3's FREQ");
+            btn(B_SEQ, 0);                       /* (CHORUS) */
+            EXPECT(ui.page == PG_FXP && ui.lsel == 0u, "the effects' pages: the rows from A");
+            btn(B_SAVE, 0);
+            midi_in_q[mi_w++ % MQ] = 0xBu | 0xB0u << 8 | (uint32_t)MIDI_CC[PG_FLT1 * 8u] << 16 | 5u << 24;
+            ui_input();                          /* (CC 50 on channel 1: the map's -- track 1's FLTR 1 A -- learned) */
+            ui_draw();
+            shot(dir, "learn_fx");
+            kk = ui.snd[0][ui.eng[0]].flt[0];
+            midi_in_q[mi_w++ % MQ] = 0xBu | 0xB0u << 8 | (uint32_t)MIDI_CC[PG_FLT1 * 8u] << 16 | 100u << 24;
+            ui_input();
+            EXPECT(fx_ch[0] == 100u && ui.snd[0][ui.eng[0]].flt[0] == kk,
+                   "a learned CC sets its parameter (CHORUS DEPTH), not the map's");
+            btn(B_SAVE, 1);
+            EXPECT(learn_of(LK_FX, 2, 0) < 0 && ui.page == PG_FXP, "SHIFT + SAVE: the binding cleared");
+            key(KEY_MOD, 1);
+            key(KEY_MOD, 0);
+            EXPECT(!ui.learn && !ui.learn_dirty, "the 4th black key again: MIDI LEARN off");
+            memset(mlearn, 0, sizeof mlearn);
+            setup_load();
+            EXPECT(learn_of(LK_SND, 2, PG_FLT1 * 8u + 4u) >= 0 && learn_of(LK_SND, 2, PG_FLT1 * 8u + 5u) >= 0 &&
+                   learn_of(LK_FX, 2, 0) < 0, "the bindings kept in the flash, read back");
+            ui.page = PG_MAIN;
+            memset(mlearn, 0, sizeof mlearn);
         }
         mcfg = D;
         setup_write();

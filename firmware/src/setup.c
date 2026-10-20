@@ -3,7 +3,8 @@
  * opens it (outside the sessions' pages); a track's button leaves it. Its sections -- MIDI, for now -- then each
  * one's parts, then their rows, as the sessions' pages go: PRESETS through them, SAVE into one; on a row SAVE moves
  * the focus to its value, PRESETS changes it, SAVE sets it; SHIFT + SAVE leaves a value as it was, or goes back a
- * level (from the top, out). Left, what changed is written to the flash.
+ * level (from the top, out). Each level below the top begins with BACK (build 48): SAVE on it goes back a level; a
+ * level opens on the entry below it. Left, what changed is written to the flash.
  *
  *   MIDI   SYNC       CLK IN, CLK OUT (the clock and the transport), PCH IN, PCH OUT (program changes)   ON / OFF
  *          IN CHAN    TRACK 1 .. 6, AUTO (the chosen track), PCH                               OFF, 1 .. 16
@@ -13,7 +14,9 @@
  *          PORTS      USB IN, TRS IN (the 3.5 mm MIDI IN jack; build 47)                       ON / OFF
  * (the Model:Cycles' names, short enough for the pages' type; midi.c does what they say) */
 
-#define SET_SECT 0x000FD000u
+#define SET_SECT 0x000FD000u                     /* (its record: the MIDI settings, then MIDI LEARN's bindings -- from
+                                                  * build 48; builds 46 and 47 wrote the settings alone) */
+#define SET_LEN (sizeof(midi_cfg_t) + sizeof mlearn)
 #define SET_MAGIC 0x31434742u   /* "BGC1" */
 enum { SK_ONOFF, SK_CHAN, SK_CHAN1 };            /* (a value: ON / OFF; OFF, 1 .. 16; 1 .. 16) */
 typedef struct { const char *name; uint8_t off, kind; } set_row_t;
@@ -40,7 +43,8 @@ static const char *const SET_SECTION[1] = {"MIDI"};
 
 static struct {
     uint8_t lvl;                 /* 0 the sections, 1 a section's parts, 2 a part's rows */
-    uint8_t sec, part, row;
+    uint8_t sec, part, row;      /* (part: the part entered; on its list pc, 0 BACK; row: 0 BACK, then the rows) */
+    uint8_t pc;
     uint8_t edit;                /* the focus on the row's value .. */
     int16_t val;                 /* .. as it is being set */
     uint8_t dirty;               /* changed since read from the flash */
@@ -53,10 +57,11 @@ static void setup_write(void)
 {
     if (!prj_ok)
         return;
-    memset(prj_buf, 0, sizeof(prj_head_t) + sizeof(midi_cfg_t));
+    memset(prj_buf, 0, sizeof(prj_head_t) + SET_LEN);
     memcpy(prj_buf + sizeof(prj_head_t), &mcfg, sizeof mcfg);
-    prj_head_fill(SET_MAGIC, 0, sizeof(midi_cfg_t));
-    if (!prj_flash_erase(SET_SECT) && !prj_flash_prog(SET_SECT, prj_buf, sizeof(prj_head_t) + sizeof(midi_cfg_t)))
+    memcpy(prj_buf + sizeof(prj_head_t) + sizeof mcfg, mlearn, sizeof mlearn);
+    prj_head_fill(SET_MAGIC, 0, SET_LEN);
+    if (!prj_flash_erase(SET_SECT) && !prj_flash_prog(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN))
         set.dirty = 0;
 }
 static void setup_load(void)                     /* (the start: the settings as last left, or the defaults) */
@@ -66,13 +71,24 @@ static void setup_load(void)                     /* (the start: the settings as 
     const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
     uint32_t i, len;
     mcfg = D;
-    if (!prj_ok || prj_flash_read(SET_SECT, prj_buf, sizeof(prj_head_t) + sizeof(midi_cfg_t)))
+    memset(mlearn, 0, sizeof mlearn);
+    if (!prj_ok || prj_flash_read(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN))
         return;
-    len = prj_head_ok(h, SET_MAGIC, 0, sizeof(midi_cfg_t)) ? sizeof(midi_cfg_t)
+    len = prj_head_ok(h, SET_MAGIC, 0, SET_LEN) ? SET_LEN
+          : prj_head_ok(h, SET_MAGIC, 0, sizeof(midi_cfg_t)) ? sizeof(midi_cfg_t)   /* (build 47's: no bindings) */
           : prj_head_ok(h, SET_MAGIC, 0, MIDI_CFG46) ? MIDI_CFG46 : 0u;   /* (build 46's: no PORTS -- both on) */
     if (!len || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
         return;
-    memcpy(&c, prj_buf + sizeof(prj_head_t), len);
+    memcpy(&c, prj_buf + sizeof(prj_head_t), len < sizeof c ? len : sizeof c);
+    if (len == SET_LEN) {                        /* (the bindings: each whole, or none) */
+        memcpy(mlearn, prj_buf + sizeof(prj_head_t) + sizeof c, sizeof mlearn);
+        for (i = 0; i < NLEARN; i++) {
+            learn_t *l = &mlearn[i];
+            if (l->kind > LK_FX || !l->ch || l->ch > 16u || l->cc > 127u || l->track >= NTRACK ||
+                l->id >= (l->kind == LK_FX ? NFXP * 8u : MIDI_NPAR))
+                l->kind = LK_NONE;
+        }
+    }
     for (i = 0; i < SET_NPART; i++) {            /* (each value in its range, or the default) */
         uint32_t r;
         for (r = 0; r < SET_PART[i].n; r++) {
@@ -125,16 +141,21 @@ static void setup_press(int sh)
     }
     if (set.lvl == 0u) {
         set.lvl = 1;
-        set.part = 0;
-    } else if (set.lvl == 1u) {
+        set.pc = 1;
+    } else if (set.lvl == 1u && !set.pc)         /* (BACK) */
+        set.lvl = 0;
+    else if (set.lvl == 1u) {
         set.lvl = 2;
-        set.row = 0;
+        set.part = (uint8_t)(set.pc - 1u);
+        set.row = 1;
         set.edit = 0;
-    } else if (!set.edit) {
+    } else if (!set.edit && !set.row)            /* (BACK) */
+        set.lvl = 1;
+    else if (!set.edit) {
         set.edit = 1;
-        set.val = *set_ptr(&SET_PART[set.part].rows[set.row]);
+        set.val = *set_ptr(&SET_PART[set.part].rows[set.row - 1u]);
     } else {
-        uint8_t *p = set_ptr(&SET_PART[set.part].rows[set.row]);
+        uint8_t *p = set_ptr(&SET_PART[set.part].rows[set.row - 1u]);
         set.edit = 0;
         if (*p != (uint8_t)set.val) {
             *p = (uint8_t)set.val;
@@ -147,11 +168,11 @@ static void setup_preset(int32_t s)
     if (set.lvl == 0u)
         set.sec = (uint8_t)clampi((int32_t)set.sec + s, 0, (int32_t)NELEM(SET_SECTION) - 1);
     else if (set.lvl == 1u)
-        set.part = (uint8_t)clampi((int32_t)set.part + s, 0, (int32_t)SET_NPART - 1);
+        set.pc = (uint8_t)clampi((int32_t)set.pc + s, 0, (int32_t)SET_NPART);
     else if (!set.edit)
-        set.row = (uint8_t)clampi((int32_t)set.row + s, 0, (int32_t)SET_PART[set.part].n - 1);
+        set.row = (uint8_t)clampi((int32_t)set.row + s, 0, (int32_t)SET_PART[set.part].n);
     else {
-        const set_row_t *r = &SET_PART[set.part].rows[set.row];
+        const set_row_t *r = &SET_PART[set.part].rows[set.row - 1u];
         set.val = (int16_t)clampi(set.val + s, set_lo(r), set_hi(r));
     }
 }
@@ -191,7 +212,8 @@ static void set_line(uint32_t r, const char *name, const char *val, int chosen, 
 static void setup_draw(void)
 {
     uint32_t n, sel, top, r;
-    int32_t key = set.lvl * 1000000 + set.sec * 100000 + set.part * 10000 + set.row * 100 + set.edit * 50 + set.val;
+    int32_t key = set.lvl * 1000000 + set.sec * 100000 + set.part * 10000 + set.pc * 1000 + set.row * 100 +
+                  set.edit * 50 + set.val;
     char t[20];
     if (!ui.force && ui.shown_page == PG_SET && key == set.shown)
         return;
@@ -202,13 +224,13 @@ static void setup_draw(void)
         sel = set.sec;
     } else if (set.lvl == 1u) {
         set_title(SET_SECTION[set.sec]);
-        n = SET_NPART;
-        sel = set.part;
+        n = SET_NPART + 1u;                      /* (BACK, then the parts) */
+        sel = set.pc;
     } else {
         str_cpy(t, "MIDI ", sizeof t);
         str_cpy(t + 5, SET_PART[set.part].name, sizeof t - 5);
         set_title(t);
-        n = SET_PART[set.part].n;
+        n = SET_PART[set.part].n + 1u;           /* (BACK, then the rows) */
         sel = set.row;
     }
     top = n <= 5u || sel < 2u ? 0u : sel > n - 3u ? n - 5u : sel - 2u;
@@ -221,10 +243,12 @@ static void setup_draw(void)
         }
         if (set.lvl == 0u)
             set_line(r, SET_SECTION[i], 0, i == sel, 0);
+        else if (!i)
+            set_line(r, "BACK", 0, i == sel, 0);
         else if (set.lvl == 1u)
-            set_line(r, SET_PART[i].name, 0, i == sel, 0);
+            set_line(r, SET_PART[i - 1u].name, 0, i == sel, 0);
         else {
-            const set_row_t *w = &SET_PART[set.part].rows[i];
+            const set_row_t *w = &SET_PART[set.part].rows[i - 1u];
             set_text(w, set.edit && i == sel ? set.val : *set_ptr(w), v);
             set_line(r, w->name, v, i == sel, set.edit && i == sel);
         }

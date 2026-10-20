@@ -43,6 +43,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | 1st black key | CHORD mode on or off |
 | 2nd black key | MUTE mode on or off |
 | 3rd black key | BREAK, while held; SHIFT + it: on every track |
+| 4th black key | MIDI LEARN on or off |
 | Black key before the last | EDIT: the sound's pages |
 | 3rd black key from the right | STEP: the step view |
 | Last black key | SHIFT |
@@ -294,7 +295,7 @@ loaded, until the session is saved or loaded.
 ## Sessions (SAVE)
 
 16 sessions are kept in the FM-1's flash. SAVE shows the list; PRESETS moves through it, SAVE opens a session's page:
-LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE. SAVE runs the row chosen, or moves the focus to its value (PRESETS
+BACK, LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE (it opens on LOAD; SAVE on BACK goes back to the list). SAVE runs the row chosen, or moves the focus to its value (PRESETS
 changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not saved, saving over another session,
 copying over one and deleting ask first (NO / YES on PRESETS).
 
@@ -319,7 +320,8 @@ was switched off are not kept.
 SHIFT + SAVE (outside the sessions' pages) opens GLOBAL SETUP: the settings of the machine rather than of a session.
 They are kept in the FM-1's flash and read at every start. PRESETS moves through a list and SAVE goes into the entry
 chosen; on a setting, SAVE moves the focus to its value, PRESETS changes it and SAVE sets it. SHIFT + SAVE leaves a
-value as it was, or goes back a level; from the top it leaves GLOBAL SETUP, as a track's button does. Changes are
+value as it was, or goes back a level; from the top it leaves GLOBAL SETUP, as a track's button does. Every level
+below the top begins with BACK: SAVE on it goes back a level (a level opens on the entry below BACK). Changes are
 written to the flash as it is left.
 
 ### MIDI
@@ -380,6 +382,23 @@ The CCs a keyboard or a DAW sends for other things are left out: 32, 38, 64 to 6
 from 0 to 127 is spread over the parameter's whole range.
 
 Program changes 0 to 15 choose the session's patterns 1 to 16, in time as the patterns' grid does.
+
+### MIDI LEARN
+
+The 4th black key (the step view off) turns MIDI LEARN on or off; it is lit while on, and MIDI LEARN shows in the
+name band. With it on, the EDIT pages and the effects' pages (SEQ) show CC instead of the page count, and in each
+row, where the value goes, the CC learned for it in amber, or -- if none. PRESETS moves through the page's rows, A to
+H (the half shown follows); OCT− and OCT+ turn the pages as before.
+
+- SAVE: the chosen row waits for a CC (WAIT). The next CC to come in, from USB or the jack, on any channel, is
+  learned for it, and its number shows. SAVE again stops waiting.
+- SHIFT + SAVE: the chosen row's CC forgotten.
+
+A CC learned for a sound's parameter turns it on the track it was learned on; one learned for an effect's turns it
+for all (COMP's SC SOURCE and SC LEVEL: on the track it was learned on). A CC and channel are learned for one
+parameter at a time, and a parameter has one CC: learning again moves it. A learned CC comes before the CC map
+above, on its channel; it needs RECEIVE CC on. Up to 64 are kept, in the flash with GLOBAL SETUP, written when MIDI
+LEARN is turned off.
 
 The jack takes notes, CCs, program changes, the clock, START, CONTINUE, STOP and the song position, as USB does
 (not SysEx). With both inputs on, the two are merged; a clock should come from one of them only.

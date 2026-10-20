@@ -1061,8 +1061,9 @@ static int prj_delete(uint32_t k)
 
 /* -------------------------------------------------------------- the pages --- */
 /* the rows of a session's page: the operations, then the values */
-enum { PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_ROOT, PR_SCALE, PR_N };
-static const char *const PR_NAME[PR_N] = {"LOAD", "SAVE", "COPY", "DELETE", "TEMPO", "ROOT", "SCALE"};
+enum { PR_BACK, PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_ROOT, PR_SCALE, PR_N };   /* (BACK at the top:
+                                                  * SAVE on it, the list again; build 48) */
+static const char *const PR_NAME[PR_N] = {"BACK", "LOAD", "SAVE", "COPY", "DELETE", "TEMPO", "ROOT", "SCALE"};
 enum { PQ_NONE, PQ_LOAD, PQ_SAVE, PQ_DELETE, PQ_COPYTO, PQ_COPYOVER, PQ_SAVENEW };
 static struct {
     uint8_t slot[2];             /* the slot chosen on each list (projects, patterns) */
@@ -1149,7 +1150,7 @@ static void prj_press(int sh)
     }
     if (list) {                                  /* a slot: its page */
         ui.page = PG_PRJD;
-        pj.row = 0;
+        pj.row = PR_LOAD;                        /* (the page opens on LOAD, BACK above it) */
         pj.ask = PQ_NONE;
         pj.edit = 0;
         return;
@@ -1201,6 +1202,9 @@ static void prj_press(int sh)
         return;
     }
     switch (pj.row) {
+    case PR_BACK:
+        ui.page = PG_PRJ;
+        break;
     case PR_LOAD:
         if (!pg_has(k)) {
             say("EMPTY", 900);
@@ -1516,7 +1520,7 @@ static void draw_prj_page(void)
             continue;
         }
         prj_value(i, v, sizeof v);
-        prj_field(r, i, v, i == PR_DELETE ? C_BAD : i < PR_TEMPO && !pg_has(k) && i != PR_SAVE ? C_GREY : C_WHITE,
+        prj_field(r, i, v, i == PR_DELETE ? C_BAD : i < PR_TEMPO && !pg_has(k) && i != PR_SAVE && i != PR_BACK ? C_GREY : C_WHITE,
                   i == pj.row, pj.edit && i == pj.row);
     }
 }

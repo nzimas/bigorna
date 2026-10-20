@@ -128,6 +128,9 @@ static struct {
     uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode, and its form (CH_*) */
     uint8_t mute_mode;           /* MUTE mode (the 2nd black key): the tracks' buttons mute, held 1 s solo (build 35) */
     uint8_t brk, brk_shown;      /* BREAK (the 3rd black key held): the tracks under it; the way last said (build 37) */
+    uint8_t learn, lsel, listen; /* MIDI LEARN (the 4th black key, build 48): on; the row chosen on the page (0 .. 7);
+                                  * waiting for a CC for it */
+    uint8_t learn_dirty;         /* (bindings changed: written as MIDI LEARN goes off) */
     uint8_t tb_down, tb_long;    /* .. a track's button held (a bit each), held long enough: soloed */
     uint8_t solo;                /* .. the track soloed (0xFF none), and the mutes before it (a bit each: held again,
                                   * they come back) */
@@ -197,7 +200,7 @@ static struct {
     int32_t shown_rows[4];
     uint8_t shown_step;          /* (the EDIT page: the step held it showed, 0xFF none) */
     int8_t shown_touch;
-    uint8_t shown_page, shown_half, shown_sub;
+    uint8_t shown_page, shown_half, shown_sub, shown_learn;
     int32_t shown_prj;           /* (the pattern shown at the top left, its changes, the octave and chord) */
     uint32_t meter_at;
     uint8_t force;
@@ -212,6 +215,9 @@ static const char *const CPN[NCP] = {"THRESHOLD", "ATTACK", "RELEASE", "RATIO", 
 #define CMP_LVL 0xFFu
 static const uint8_t CMP_SLOT[NCP] = {CP_THR, CP_ATK, CP_REL, CP_RAT, CP_MUP, CP_MIX, CMP_SRC, CMP_LVL};
 static uint16_t row_tint;                        /* (draw_row: a row's name and value in this colour, 0 none) */
+static uint8_t row_learn;                        /* (draw_row: MIDI LEARN's -- the value a CC's, amber, no bar) */
+#define C_LEARN RGB(255, 170, 40)                /* (a CC number, not a value) */
+#define C_LEARN_ON RGB(170, 70, 0)               /* (.. on the chosen row's white) */
 enum { FXP_CHR, FXP_CMP, FXP_DEL, FXP_REV, NFXP };   /* (the effects' pages, in turn) */
 static const char *const FXT[NFXP] = {"CHORUS", "COMP", "DELAY", "REVERB"};
 #define C_SEND RGB(140, 190, 255)
@@ -230,6 +236,9 @@ static void setup_preset(int32_t s);
 static void setup_draw(void);
 static void setup_poll(void);
 static void midi_cc_in(uint32_t t, uint32_t cc, uint32_t v);
+static void setup_write(void);
+static int learn_cc(uint32_t ch, uint32_t cc, uint32_t v);
+static void learn_take(uint32_t ch, uint32_t cc);
 static void midi_poll(void);
 static void pat_switch(uint32_t k);
 static void phrase_brk_roles(void);   /* (phrase.c: BREAK's kicks, drums and drones, from the tracks' sounds) */
@@ -302,8 +311,9 @@ static int step_view(void);
 static int key_plays(uint32_t k)
 {
     return k != KEY_SHIFT && k != KEY_EDIT && k != KEY_STEP &&
-           ((k != KEY_GEN && k != KEY_TRK && k != KEY_TRIG) || step_view()) &&
-           /* (out of the step view the 1st black key is CHORD mode's, the 2nd MUTE mode's, the 3rd BREAK) */
+           ((k != KEY_GEN && k != KEY_TRK && k != KEY_TRIG && k != KEY_MOD) || step_view()) &&
+           /* (out of the step view the 1st black key is CHORD mode's, the 2nd MUTE mode's, the 3rd BREAK, the 4th
+            * MIDI LEARN) */
            (ui.scale == 0 || white_ix(k) >= 0);
 }
 /* a note in the scale (and the root); the next one up or down from n, d times */
@@ -729,6 +739,12 @@ static void midi_take(void)
         for (t = 0; t < NTRACK; t++)
             if (mcfg.in_ch[t] == ch)
                 m |= 1u << t;
+        if (cin == 0xBu && ui.listen) {          /* MIDI LEARN waiting: this CC, from either input, any channel */
+            learn_take(ch, d1);
+            continue;
+        }
+        if (cin == 0xBu && mcfg.rcv_cc && learn_cc(ch, d1, d2))   /* (a CC learned: its parameter, before the map) */
+            continue;
         if (cin == 0xBu) {
             for (t = 0; mcfg.rcv_cc && t < NTRACK; t++)
                 if (m >> t & 1u)
@@ -762,6 +778,22 @@ static void midi_take(void)
         }
     }
 }
+/* a parameter of track t's sound (page id, knob j) from a CC's value, over its whole range; 0 if there is none */
+static int snd_cc_set(uint32_t t, uint32_t id, uint32_t j, uint32_t v)
+{
+    sound_t *s = &ui.snd[t][ui.eng[t]];
+    par_t p;
+    if (id < 4u && id >= pages_n(s) - 5u)        /* (a SYN page this machine has not) */
+        return 0;
+    par_get(s, id, j, &p);
+    if (p.kind == PK_NONE || p.hi <= p.lo)
+        return 0;
+    par_put(s, id, j, p.lo + (int32_t)((v * (uint32_t)(p.hi - p.lo) + 63u) / 127u));
+    if (id == PG_FLT2 && j == 6u)
+        s->flt[F_TYPE] = (uint8_t)(s->fmach == FLT_LEG ? s->flt[F_TYPE] != 0 : s->flt[F_TYPE]);
+    mark(t);
+    return 1;
+}
 /* a CC received for track t: its level (7), pan (10), mute (94), or a parameter of its sound (MIDI_CC) */
 static uint8_t midi_lv_sent[NTRACK], midi_pn_sent[NTRACK], midi_mu_sent[NTRACK];
 static void midi_cc_in(uint32_t t, uint32_t cc, uint32_t v)
@@ -778,18 +810,8 @@ static void midi_cc_in(uint32_t t, uint32_t cc, uint32_t v)
         trk_mute[t] = (uint8_t)(v >= 64u);
         midi_mu_sent[t] = trk_mute[t];
     } else if (MIDI_PAR[cc] != 0xFFu) {
-        sound_t *s = &ui.snd[t][ui.eng[t]];
-        uint32_t id = MIDI_PAR[cc] / 8u, j = MIDI_PAR[cc] % 8u;
-        par_t p;
-        if (id < 4u && id >= pages_n(s) - 5u)    /* (a SYN page this machine has not) */
+        if (!snd_cc_set(t, MIDI_PAR[cc] / 8u, MIDI_PAR[cc] % 8u, v))
             return;
-        par_get(s, id, j, &p);
-        if (p.kind == PK_NONE || p.hi <= p.lo)
-            return;
-        par_put(s, id, j, p.lo + (int32_t)((v * (uint32_t)(p.hi - p.lo) + 63u) / 127u));
-        if (id == PG_FLT2 && j == 6u)
-            s->flt[F_TYPE] = (uint8_t)(s->fmach == FLT_LEG ? s->flt[F_TYPE] != 0 : s->flt[F_TYPE]);
-        mark(t);
     } else
         return;
     prj_dirty = 1;
@@ -829,6 +851,142 @@ static void midi_poll(void)
                 midi_main_send(0xB0u | (ch - 1u), CC_MUTE, trk_mute[t] ? 127u : 0u);
         }
     }
+}
+
+/* ------------------------------------------------------- MIDI LEARN --- */
+/* (build 48; midi.c's mlearn) the parameter the page's chosen row is: a sound's (EDIT) or an effect's (SEQ); 0 none */
+static int learn_here(uint32_t *kind, uint32_t *track, uint32_t *id)
+{
+    if (ui.page == PG_EDIT) {
+        par_t p;
+        uint32_t pg = page_id(cur(), ui.edit_pg);
+        par_get(cur(), pg, ui.lsel, &p);
+        if (p.kind == PK_NONE || p.hi <= p.lo)
+            return 0;
+        *kind = LK_SND;
+        *id = pg * 8u + ui.lsel;
+    } else if (ui.page == PG_FXP) {
+        if (ui.lsel >= fx_n())
+            return 0;
+        *kind = LK_FX;
+        *id = ui.fx_pg * 8u + ui.lsel;
+    } else
+        return 0;
+    *track = ui.sel;
+    return 1;
+}
+static int learn_fx_own(uint32_t id)             /* (an effect's row that is a track's own: COMP's SC rows) */
+{
+    return id / 8u == FXP_CMP && CMP_SLOT[id % 8u] >= CMP_SRC;
+}
+static int learn_is(const learn_t *l, uint32_t kind, uint32_t track, uint32_t id)
+{
+    return l->kind == kind && l->id == id && (kind == LK_FX && !learn_fx_own(id) ? 1 : l->track == track);
+}
+static int learn_of(uint32_t kind, uint32_t track, uint32_t id)   /* the binding of a parameter: its index, or -1 */
+{
+    uint32_t i;
+    for (i = 0; i < NLEARN; i++)
+        if (learn_is(&mlearn[i], kind, track, id))
+            return (int)i;
+    return -1;
+}
+/* a CC as MIDI LEARN waited for it: bound to the chosen row's parameter (taken from whatever it was bound to) */
+static void learn_take(uint32_t ch, uint32_t cc)
+{
+    uint32_t kind, track, id, i, f = NLEARN;
+    char m[12] = "CC ";
+    ui.listen = 0;
+    ui.force = 1;
+    if (!learn_here(&kind, &track, &id))
+        return;
+    for (i = 0; i < NLEARN; i++) {
+        learn_t *l = &mlearn[i];
+        if (l->kind && ((l->ch == ch && l->cc == cc) || learn_is(l, kind, track, id)))
+            l->kind = LK_NONE;                   /* (a CC one parameter, a parameter one CC) */
+        if (!l->kind && f == NLEARN)
+            f = i;
+    }
+    if (f == NLEARN) {
+        say("LEARN FULL", 1500);
+        return;
+    }
+    mlearn[f].ch = (uint8_t)ch;
+    mlearn[f].cc = (uint8_t)cc;
+    mlearn[f].kind = (uint8_t)kind;
+    mlearn[f].track = (uint8_t)track;
+    mlearn[f].id = (uint8_t)id;
+    ui.learn_dirty = 1;
+    fmt_int(m + 3, (int32_t)cc);
+    say(m, 1200);
+}
+/* a CC received: its learned parameter set, over its range (1); not learned, 0 */
+static int learn_cc(uint32_t ch, uint32_t cc, uint32_t v)
+{
+    uint32_t i;
+    int hit = 0;
+    for (i = 0; i < NLEARN; i++) {
+        const learn_t *l = &mlearn[i];
+        if (!l->kind || l->ch != ch || l->cc != cc)
+            continue;
+        hit = 1;
+        if (l->kind == LK_SND)
+            snd_cc_set(l->track % NTRACK, l->id / 8u, l->id % 8u, v);
+        else {                                   /* (an effect: its page and, for COMP's SC rows, its track, for the
+                                                  * moment; the value as its kind reads) */
+            uint8_t pg = ui.fx_pg, sel = ui.sel;
+            uint32_t k = l->id % 8u;
+            ui.fx_pg = (uint8_t)(l->id / 8u % NFXP);
+            ui.sel = (uint8_t)(l->track % NTRACK);
+            if (k < fx_n()) {
+                uint32_t kd = fx_kind(k);
+                fx_put(k, kd == 3u ? (int32_t)((v * (fx_list_n(k) - 1u) + 63u) / 127u)
+                          : ui.fx_pg == FXP_DEL && k == DL_X ? (int32_t)(v >= 64u) : (int32_t)v);
+                fx_cook_all();
+            }
+            ui.fx_pg = pg;
+            ui.sel = sel;
+        }
+        prj_dirty = 1;
+        ui.force = 1;
+    }
+    return hit;
+}
+/* the 4th black key: MIDI LEARN on or off (off: the bindings, if changed, into the flash) */
+static void learn_toggle(void)
+{
+    ui.learn = (uint8_t)!ui.learn;
+    ui.listen = 0;
+    ui.lsel = (uint8_t)(ui.ehalf * 4u);
+    if (!ui.learn && ui.learn_dirty) {
+        setup_write();
+        ui.learn_dirty = 0;
+    }
+    say(ui.learn ? "MIDI LEARN" : "LEARN OFF", 900);
+    ui.force = 1;
+}
+/* SAVE on a page, MIDI LEARN on: wait for a CC for the chosen row (again: not); SHIFT + SAVE, its binding cleared */
+static void learn_save(int sh)
+{
+    uint32_t kind, track, id;
+    int i;
+    ui.force = 1;
+    if (!learn_here(&kind, &track, &id)) {
+        ui.listen = 0;
+        say("NOT HERE", 900);
+        return;
+    }
+    if (sh) {
+        ui.listen = 0;
+        if ((i = learn_of(kind, track, id)) >= 0) {
+            mlearn[i].kind = LK_NONE;
+            ui.learn_dirty = 1;
+            say("CC CLEARED", 900);
+        }
+        return;
+    }
+    ui.listen = (uint8_t)!ui.listen;
+    say(ui.listen ? "TURN A KNOB" : "NOT LEARNED", ui.listen ? 60000u : 900u);
 }
 
 /* a key let go: the notes it sounds (a chord: its three) */
@@ -1107,7 +1265,7 @@ static void ui_input(void)
             ui.fx_pg = 0;
         } else if (++ui.fx_pg >= NFXP)
             ui.page = PG_MAIN;
-        ui.ehalf = 0;
+        ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
         ui.force = 1;
     }
     /* SAVE: on the sessions' pages, their own at once, as pressed (held, nothing more: a long press must not save in
@@ -1119,6 +1277,9 @@ static void ui_input(void)
             ui.save_down = 0;
         } else if (ui.page == PG_SET) {          /* GLOBAL SETUP's own (setup.c) */
             setup_press(sh);
+            ui.save_down = 0;
+        } else if (ui.learn && (ui.page == PG_EDIT || ui.page == PG_FXP)) {   /* MIDI LEARN: the row's CC (build 48) */
+            learn_save(sh);
             ui.save_down = 0;
         } else if (sh) {                         /* SHIFT + SAVE: GLOBAL SETUP (build 46) */
             setup_open();
@@ -1370,14 +1531,16 @@ static void ui_input(void)
     }
     if (btn_bit(press, B_OCTDN) || btn_bit(press, B_OCTUP)) {
         int d = btn_bit(press, B_OCTUP) ? 1 : -1;
+        ui.listen = 0;                               /* (MIDI LEARN: another page, nothing waited for) */
+        ui.lsel = 0;
         if (ui.page == PG_EDIT) {                    /* the page before / after (its A .. D) */
             uint32_t n = pages_n(cur());
             ui.edit_pg = (uint8_t)((ui.edit_pg + n + (uint32_t)(d + (int)n)) % n);
-            ui.ehalf = 0;
+            ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
             ui.force = 1;
         } else if (ui.page == PG_FXP) {              /* CHORUS, COMP, DELAY, REVERB */
             ui.fx_pg = (uint8_t)((ui.fx_pg + NFXP + (uint32_t)(d + (int)NFXP)) % NFXP);
-            ui.ehalf = 0;
+            ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
             ui.force = 1;
         } else {
             char m[8] = "OCT  ";
@@ -1396,6 +1559,12 @@ static void ui_input(void)
         ui.tempo = (int16_t)clampi(ui.tempo + s, 10, 300);
         tempo_apply();
         prj_dirty = 1;
+        ui.force = 1;
+    } else if ((s = e_pre) != 0 && ui.learn && (ui.page == PG_EDIT || ui.page == PG_FXP) && !step_page()) {
+        ui.lsel = (uint8_t)clampi((int32_t)ui.lsel + s, 0, 7);   /* MIDI LEARN: PRESETS the row, A .. H (the half
+                                                  * shown follows it) */
+        ui.ehalf = (uint8_t)(ui.lsel / 4u);
+        ui.listen = 0;
         ui.force = 1;
     } else if ((s = e_pre) != 0 && (ui.page == PG_EDIT || ui.page == PG_FXP || step_page())) {   /* EDIT, the effects: PRESETS the page's
                                                                           * half, right E .. H, left A .. D (never the
@@ -1468,7 +1637,7 @@ static void ui_input(void)
     }
     if ((ch & keys) >> KEY_EDIT & 1u) {              /* EDIT: the parameter pages, up or down */
         ui.page = ui.page == PG_EDIT ? PG_MAIN : PG_EDIT;
-        ui.ehalf = 0;
+        ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
         if (ui.edit_pg >= pages_n(cur()))
             ui.edit_pg = 0;
         ui.force = 1;
@@ -1594,6 +1763,11 @@ static void ui_input(void)
             ui.force = 1;
             continue;
         }
+        if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_MOD &&
+            (ui.page == PG_MAIN || ui.page == PG_EDIT || ui.page == PG_FXP)) {   /* MIDI LEARN on or off */
+            learn_toggle();
+            continue;
+        }
         if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_TRK && ui.page == PG_MAIN) {   /* MUTE mode on or
                                                                          * off (the mutes stay as they are) */
             ui.mute_mode = (uint8_t)!ui.mute_mode;
@@ -1617,7 +1791,7 @@ static void ui_input(void)
         if (((ch & keys) >> k & 1u) && step_view() && k == KEY_MOD) {   /* MOD on or off (TRIG off) */
             ui.mod = (uint8_t)!ui.mod;
             ui.trig = 0;
-            ui.ehalf = 0;
+            ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
             say(ui.mod ? "MOD ON" : "MOD OFF", 700);
             ui.force = 1;
             continue;
@@ -1625,7 +1799,7 @@ static void ui_input(void)
         if (((ch & keys) >> k & 1u) && step_view() && k == KEY_TRIG) {   /* TRIG on or off (MOD off) */
             ui.trig = (uint8_t)!ui.trig;
             ui.mod = 0;
-            ui.ehalf = 0;
+            ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
             say(ui.trig ? "TRIG ON" : "TRIG OFF", 700);
             ui.force = 1;
             continue;
@@ -1732,6 +1906,11 @@ static void ui_leds(void)
             fm1_led_key(14u + k, white_ix(k) == pat_clip_from || (seq_pend == 1u && white_ix(k) == seq_pend_k)
                                      ? (fm1_ms / 250u) & 1u   /* (the one copied, the one waiting to play: blink) */
                                      : white_ix(k) == (int32_t)pat_cur && seq_pend != 1u);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (!step_view() && k == KEY_MOD) {     /* (the MIDI LEARN key: lit while on, dim) */
+            fm1_led_key(14u + k, ui.learn);
             led_dim_key(14u + k, 1);
             continue;
         }
@@ -1915,13 +2094,16 @@ static void draw_row(uint32_t r, const char *name, const char *val, int32_t frac
     cv_begin(240, 47, bg);
     if (name[0]) {
         cv_text(6, 1 + (FONT_M.h - fn->h) / 2, fn, name, touched ? C_BLACK : row_tint ? row_tint : RGB(200, 200, 200));
-        cv_text(234 - text_w(fv, val), 1 + (FONT_M.h - fv->h) / 2, fv, val, touched || !row_tint ? fg : row_tint);
-        cv_rect(6, 38, 228, 6, touched ? C_GREY : RGB(60, 60, 60));
-        if (bip) {
-            int32_t x0 = 120, x1 = 6 + frac * 228 / 1000;
-            cv_rect(x1 < x0 ? x1 : x0, 38, absi(x1 - x0) + 2, 6, touched ? C_BLACK : col);
-        } else
-            cv_rect(6, 38, frac * 228 / 1000, 6, touched ? C_BLACK : col);
+        cv_text(234 - text_w(fv, val), 1 + (FONT_M.h - fv->h) / 2, fv, val,
+                row_learn ? (touched ? C_LEARN_ON : C_LEARN) : touched || !row_tint ? fg : row_tint);
+        if (!row_learn) {                        /* (MIDI LEARN: no value, so no bar) */
+            cv_rect(6, 38, 228, 6, touched ? C_GREY : RGB(60, 60, 60));
+            if (bip) {
+                int32_t x0 = 120, x1 = 6 + frac * 228 / 1000;
+                cv_rect(x1 < x0 ? x1 : x0, 38, absi(x1 - x0) + 2, 6, touched ? C_BLACK : col);
+            } else
+                cv_rect(6, 38, frac * 228 / 1000, 6, touched ? C_BLACK : col);
+        }
     }
     cv_blit(0, 52 + 47 * r);
 }
@@ -1930,9 +2112,11 @@ static void draw_edit_page(void)
     const sound_t *s = cur();
     uint32_t id = page_id(s, ui.edit_pg), j, st = step_held() ? (uint32_t)white_ix(ui.step_key) : 0xFFu;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
+    int lrn = ui.learn && st >= NSTEP;           /* (MIDI LEARN: the CCs, not the values) */
     int full = ui.force || ui.shown_page != PG_EDIT || ui.shown_half != ui.half || ui.shown_sub != ui.edit_pg ||
-               ui.shown_step != st;
+               ui.shown_step != st || ui.shown_learn != lrn;
     ui.shown_step = (uint8_t)st;
+    ui.shown_learn = (uint8_t)lrn;
     if (full) {
         char t1[16], t2[16];
         page_title(s, id, t1);
@@ -1945,7 +2129,36 @@ static void draw_edit_page(void)
         fmt_int(t2 + str_len(t2), ui.edit_pg + 1);  /* 3/8 */
         str_cpy(t2 + str_len(t2), "/", 2);
         fmt_int(t2 + str_len(t2), (int32_t)pages_n(s));
+        if (lrn)                                 /* (MIDI LEARN: CC in the page count's place -- the column shows
+                                                  * CCs) */
+            str_cpy(t2, "CC", 8);
         draw_rows_title(t1, t2, TRACK_COL[ui.sel]);
+    }
+    if (lrn) {
+        for (j = 0; j < 4u; j++) {
+            uint32_t k = j + 4u * ui.half;
+            par_t p;
+            char b[8];
+            int cc = learn_of(LK_SND, ui.sel, id * 8u + k), w = ui.listen && k == ui.lsel;
+            int32_t key = 1000000 + (cc >= 0 ? mlearn[cc].cc : 200) + (k == ui.lsel) * 1000 + w * 2000;
+            if (!full && ui.shown_rows[j] == key)
+                continue;
+            par_get(s, id, k, &p);
+            if (w)
+                str_cpy(b, "WAIT", 6);
+            else if (cc >= 0)
+                fmt_int(b, mlearn[cc].cc);
+            else
+                str_cpy(b, p.kind == PK_NONE ? "" : "--", 4);
+            row_learn = 1;
+            draw_row(j, p.kind == PK_NONE ? "" : p.name, b, 0, 0, k == ui.lsel && p.kind != PK_NONE, TRACK_COL[ui.sel]);
+            row_learn = 0;
+            ui.shown_rows[j] = key;
+        }
+        ui.shown_touch = -1;
+        ui.shown_half = ui.half;
+        ui.shown_sub = ui.edit_pg;
+        return;
     }
     for (j = 0; j < 4u; j++) {
         par_t p;
@@ -1999,9 +2212,36 @@ static void draw_fx_page(void)
     uint32_t j;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
     uint32_t sub = ui.fx_pg + 100u + (ui.fx_pg == FXP_CMP ? 10u * ui.sel : 0u);   /* (COMP: the chosen track's too) */
-    int full = ui.force || ui.shown_page != PG_FXP || ui.shown_half != ui.half || ui.shown_sub != sub;
+    int lrn = ui.learn;                          /* (MIDI LEARN: the CCs, not the values) */
+    int full = ui.force || ui.shown_page != PG_FXP || ui.shown_half != ui.half || ui.shown_sub != sub ||
+               ui.shown_learn != lrn;
+    ui.shown_learn = (uint8_t)lrn;
     if (full)
-        draw_rows_title(FXT[ui.fx_pg], ui.half ? "E-H" : "A-D", C_SEND);
+        draw_rows_title(FXT[ui.fx_pg], lrn ? "CC" : ui.half ? "E-H" : "A-D", C_SEND);
+    if (lrn) {
+        for (j = 0; j < 4u; j++) {
+            uint32_t k = j + 4u * ui.half;
+            char b[8];
+            int has = k < fx_n(), cc = has ? learn_of(LK_FX, ui.sel, ui.fx_pg * 8u + k) : -1, w = ui.listen && k == ui.lsel;
+            int32_t key = 1000000 + (cc >= 0 ? mlearn[cc].cc : 200) + (k == ui.lsel) * 1000 + w * 2000;
+            if (!full && ui.shown_rows[j] == key)
+                continue;
+            if (w)
+                str_cpy(b, "WAIT", 6);
+            else if (cc >= 0)
+                fmt_int(b, mlearn[cc].cc);
+            else
+                str_cpy(b, has ? "--" : "", 4);
+            row_learn = 1;
+            draw_row(j, has ? fx_name(k) : "", b, 0, 0, k == ui.lsel && has, C_SEND);
+            row_learn = 0;
+            ui.shown_rows[j] = key;
+        }
+        ui.shown_touch = -1;
+        ui.shown_half = ui.half;
+        ui.shown_sub = (uint8_t)sub;
+        return;
+    }
     for (j = 0; j < 4u; j++) {
         uint32_t k = j + 4u * ui.half;
         char b[16];
@@ -2327,6 +2567,10 @@ static void ui_draw(void)
     }
     if (ui.mute_mode && !msg) {                      /* (MUTE mode: said in the band while it is on) */
         c = "MUTE MODE";
+        msg = 1;
+    }
+    if (ui.learn && !msg) {                          /* (MIDI LEARN too) */
+        c = "MIDI LEARN";
         msg = 1;
     }
     int32_t px;

@@ -55,6 +55,15 @@ static void midi_cc_init(void)
     }
 }
 
+/* MIDI LEARN (build 48; ui.c learns and applies them, setup.c keeps them): a CC from a controller -- its channel and
+ * number, as it came -- bound to a parameter: a sound's (page id x 8 + knob, on the track it was learned on) or an
+ * effect's (its page x 8 + row: CHORUS, COMP, DELAY, REVERB; COMP's SC rows on the track it was learned on). A CC
+ * learned comes before MIDI_CC's map */
+#define NLEARN 64u
+enum { LK_NONE, LK_SND, LK_FX };
+typedef struct { uint8_t ch, cc, kind, track, id; } learn_t;
+static learn_t mlearn[NLEARN];
+
 /* ------------------------------------------------------------ out --- */
 /* the audio ISR's: a USB-MIDI packet (usb.c's ring, the one producer); the main loop's go through mq, which the
  * audio ISR empties into it at each block's start */
