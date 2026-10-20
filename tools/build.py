@@ -34,10 +34,12 @@ APP_SLOT = fm1pkg_make.APP_SLOT
 LOADER_LOAD = 0x01C0A800
 LOADER_NAME = b"usb_hid_ota.bin"    # the file name the SPL looks for
 DOCKER_IMAGE = os.environ.get("JIELI_DOCKER_IMAGE", "debian:bookworm-slim")
+# the update loader: always -Os, as proven (an -O2 loader never answered), whatever the app is built with
+LDR_CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
 CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
-BUILD = 30                           # the build number: the version (build 1, build 2, ..), one more each build
+BUILD = 31                           # the build number: the version (build 1, build 2, ..), one more each build
 PRODUCT = f"FM-1_8{BUILD:03d}"      # package identity: FM-1_8 and the build, three digits
 VERSION = f"BUILD {BUILD}"
 
@@ -116,7 +118,7 @@ def ldr_wrap(image):
 def build_loader():
     LDR.mkdir(parents=True, exist_ok=True)
     src = FW / "loader"
-    flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
+    flags = [*LDR_CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
     tc_all(("cc", "-c", src / "crt0_ldr.S", "-o", LDR / "crt0_ldr.o"),
            ("cc", *flags, "-c", src / "loader.c", "-o", LDR / "loader.o"))
     elf = LDR / "loader.elf"
@@ -252,12 +254,16 @@ def main():
     global PRODUCT, VERSION
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", type=int, metavar="N", help="build number (default: BUILD in this file)")
+    ap.add_argument("--telemetry", action="store_true", help="a diagnostic build: the audio's time over USB-MIDI (tools/telelog.py)")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
     n = a.build if a.build is not None else BUILD
     if not 1 <= n <= 999:
         raise SystemExit(f"--build {n}: 1 .. 999")
     PRODUCT, VERSION = f"FM-1_8{n:03d}", f"BUILD {n}"
+    if a.telemetry:
+        CFLAGS.append("-DTELEMETRY=1")
+        VERSION += " T"
     name = "bigorna.fwsc"
     fm1pkg_make.SDK = a.sdk or os.environ.get("AC79_SDK", str(Path.home() / "fw-AC79_AIoT_SDK"))
     fm1pkg_make.sdk_file("uboot.boot")          # fail early without the SDK

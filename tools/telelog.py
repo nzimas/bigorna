@@ -1,41 +1,163 @@
 # SPDX-License-Identifier: GPL-3.0-only
-# Tonitor: reads a diagnostic build's timing reports (firmware built with TELEMETRY 1) from the FM-1 over USB-MIDI.
-# Run with the venv: .venv/bin/python tools/telelog.py
-import re, sys, time
+# BIGORNA: reads a diagnostic build's timing reports (python3 tools/build.py --telemetry) from the FM-1 over USB-MIDI,
+# and plays a test on it: a kick on track 1 each beat, then 1, 2, 3 .. notes of a pad on track 2.
+#   .venv/bin/python tools/telelog.py [listen | pads [MAXNOTES] [SECONDS]]
+# Each report (0.2 s): the I2S halves' highest and mean load, late halves, voices sounding, tails let go (the guard's
+# x 100), each machine's voice cost, each track's and the effects' time a block, all in 1/1000 of the time there was.
+import re, sys, time, threading
 import mido
-EV = ["ON", "OFF", "ENGINE", "STOP", "LOOP_REC", "LOOP_PLAY", "LOOP_CLEAR", "LOOP_SET", "LOOPS", "LOOP_TRK", "LOOP_XP"]
-names = [n for n in mido.get_input_names() if re.search(r"fm-1|tonitor|felucca", n, re.I)]
-if not names:
-    print("no FM-1 port among", mido.get_input_names(), flush=True)
-    sys.exit(1)
-print("listening on", names[0], flush=True)
-t0 = time.time()
-quiet_peak = 0
-with mido.open_input(names[0]) as port:
-    for m in port:
-        if m.type != "sysex" or len(m.data) < 7 or m.data[0] != 0x7D or m.data[1] != 0x54:
-            continue
-        d = m.data[2:]
-        mx = d[0] << 7 | d[1]
-        lates = d[2]
-        gap = (d[3] << 7 | d[4]) / 100.0
-        ec = d[5:9]
-        trims = d[9]
-        ents = d[10:]
-        t = time.time() - t0
-        line = f"{t:8.2f}s  max {mx:3d}%  late {lates:2d}  max gap {gap:5.2f} ms  voice costs FM {ec[0]}% ANIMA {ec[1]}% CALIGULA {ec[2]}% RUSSOLO {ec[3]}%  tails trimmed {trims}"
-        out = []
-        for i in range(0, len(ents) - 13, 14):
-            e = ents[i:i + 14]
-            pct = e[0] << 7 | e[1]
-            ev = e[5] | e[6] << 7 | e[7] << 14 | e[8] << 21
-            evs = [EV[b] for b in range(len(EV)) if ev >> b & 1]
-            if ev >> 20 & 1: evs.append("loop-notes")
-            if ev >> 21 & 1: evs.append("wrap")
-            out.append(f"    half #{e[12] | e[13] << 7}: {pct}%{' LATE' if e[2] else ''} gap {(e[3] << 7 | e[4]) / 100:.2f} ms,"
-                       f" {e[9]} struck, {e[10]} voices, layers sounding {''.join(str(k + 1) for k in range(6) if e[11] >> k & 1) or '-'}  {' '.join(evs)}")
-        beat = int(t) // 5 != int(t - 0.2) // 5
-        if mx >= 80 or lates or gap > 6.5 or out or beat or trims:
-            print(line, flush=True)
-            for o in out:
-                print(o, flush=True)
+
+ENG = {"FMT": 0, "FMD": 1, "WAV": 2, "SWM": 3}
+
+
+def port_name(names):
+    n = [x for x in names if re.search(r"fm-1|bigorna", x, re.I)]
+    if not n:
+        raise SystemExit(f"no FM-1 port among {names}")
+    return n[0]
+
+
+def parse(d):
+    v = [d[i] << 7 | d[i + 1] for i in range(0, len(d) - 1, 2)]
+    if len(v) < 17:
+        return None
+    return {"max": v[0], "mean": v[1], "late": v[2], "voices": v[3], "shed": v[4], "eng": v[5:9],
+            "trk": v[9:15], "fx": v[15], "blk": v[16], "blkmax": v[17] if len(v) > 17 else 0,
+            "mach": v[18:22], "chain": v[22:26], "fxk": v[26:30], "bench": v[30:38]}
+
+
+def line(r):
+    e = r["eng"]
+    return (f"half max {r['max']/10:5.1f}% mean {r['mean']/10:5.1f}%  late {r['late']:2d}  voices {r['voices']:2d}  "
+            f"shed {r['shed']:4d} | block {r['blk']/10:5.1f}% (max {r['blkmax']/10:5.1f}) tracks "
+            + " ".join(f"{t/10:4.1f}" for t in r["trk"]) + f"  fx {r['fx']/10:4.1f} | voice FMT {e[0]/10:.1f} "
+            f"FMD {e[1]/10:.1f} WAV {e[2]/10:.1f} SWM {e[3]/10:.1f}")
+
+
+class Reader(threading.Thread):
+    def __init__(self, name):
+        super().__init__(daemon=True)
+        self.name_, self.label, self.log = name, "", []
+
+    def run(self):
+        with mido.open_input(self.name_) as port:
+            for m in port:
+                if m.type != "sysex" or len(m.data) < 4 or m.data[0] != 0x7D or m.data[1] != 0x54:
+                    continue
+                r = parse(m.data[2:])
+                if r:
+                    self.log.append((self.label, r))
+                    print(f"{self.label:10s} {line(r)}", flush=True)
+
+
+def main():
+    mode = sys.argv[1] if len(sys.argv) > 1 else "listen"
+    rd = Reader(port_name(mido.get_input_names()))
+    rd.start()
+    if mode == "bench":                          # the chip's costs, measured at start-up: cycles (360 MHz) a step
+        while not rd.log:
+            time.sleep(0.2)
+        b = rd.log[-1][1]["bench"]
+        names = ["loop + add", "loop + 4 adds", "loop + store", "loop + 4 stores", "loop + load", "loop + 4 loads",
+                 "loop + branch", "loop + 2 mul64"]
+        for nm, t in zip(names, b):
+            print(f"{nm:18s} {t * 360 / 24 / 4096:6.2f} cycles")
+        return
+    if mode == "listen":
+        while True:
+            time.sleep(1)
+    out = mido.open_output(port_name(mido.get_output_names()))
+    if mode == "arr":                            # the arrangement: kick, a pad triad, hats, a lead, a bass
+        secs = float(sys.argv[2]) if len(sys.argv) > 2 else 8.0
+        sx = lambda *b: out.send(mido.Message("sysex", data=[0x7D, *b]))
+        for t, (m, r) in enumerate([("FMD", 2), ("SWM", 54), ("FMD", 8), ("FMT", 30), ("FMT", 29)]):
+            sx(0x56, t, ENG[m], r)
+            time.sleep(0.3)
+        time.sleep(0.5)
+        triad = [48, 55, 63]
+        for n in triad:
+            out.send(mido.Message("note_on", channel=1, note=n, velocity=110))
+        rd.label = "arr"
+        step, k, t0 = 0.125, 0, time.time()
+        lead = [72, 75, 79, 82, 79, 75, 70, 67]
+        bass = [36, 36, 48, 36, 39, 36, 43, 34]
+        while time.time() - t0 < secs:
+            on = []
+            if k % 4 == 0:
+                on.append((0, 36, 120))
+            on.append((2, 60, 90))
+            if k % 2 == 0:
+                on.append((3, lead[(k // 2) % 8], 100))
+                on.append((4, bass[(k // 2) % 8], 110))
+            for ch, n, v in on:
+                out.send(mido.Message("note_on", channel=ch, note=n, velocity=v))
+            time.sleep(0.04)
+            for ch, n, v in on:
+                if ch != 3 and ch != 4:
+                    out.send(mido.Message("note_off", channel=ch, note=n))
+            time.sleep(step - 0.08)
+            for ch, n, v in on:
+                if ch == 3 or ch == 4:
+                    out.send(mido.Message("note_off", channel=ch, note=n))
+            time.sleep(0.04)
+            k += 1
+        for n in triad:
+            out.send(mido.Message("note_off", channel=1, note=n))
+        rd.label = "off"
+        time.sleep(1.0)
+        rs = [r for l, r in rd.log if l == "arr"][5:]
+        av = lambda key, i: sum(r[key][i] for r in rs) / len(rs) / 10
+        print(f"\narrangement: half max {max(r['max'] for r in rs)/10:.1f}%  mean {sum(r['mean'] for r in rs)/len(rs)/10:.1f}%"
+              f"  block max {max(r['blkmax'] for r in rs)/10:.1f}%  sheds {sum(r['shed'] for r in rs)}  late {sum(r['late'] for r in rs)}"
+              f"  voices max {max(r['voices'] for r in rs)}")
+        print("  tracks " + " ".join(f"{av('trk', i):4.1f}" for i in range(6)) + f"  fx {sum(r['fx'] for r in rs)/len(rs)/10:.1f}")
+        print("  machine FMT %.1f FMD %.1f WAV %.1f SWM %.1f | chain FMT %.1f FMD %.1f WAV %.1f SWM %.1f | chorus %.1f delay %.1f "
+              "reverb %.1f comp %.1f" % tuple([av("mach", i) for i in range(4)] + [av("chain", i) for i in range(4)] +
+                                              [av("fxk", i) for i in range(4)]))
+        return
+    maxn = int(sys.argv[2]) if len(sys.argv) > 2 else 4
+    secs = float(sys.argv[3]) if len(sys.argv) > 3 else 4.0
+    sx = lambda *b: out.send(mido.Message("sysex", data=[0x7D, *b]))
+    for t in range(6):
+        out.send(mido.Message("control_change", channel=t, control=123, value=0))
+    sx(0x56, 0, ENG["FMD"], 2)                   # track 1: DRIVEN KICK
+    time.sleep(0.3)
+    sx(0x56, 1, ENG["SWM"], 54)                  # track 2: SWARM DRONE
+    time.sleep(0.5)
+    notes = [48, 55, 60, 63, 67, 70]
+    held = []
+    beat = 0.5
+
+    def kick(until):
+        while time.time() < until:
+            out.send(mido.Message("note_on", channel=0, note=36, velocity=120))
+            time.sleep(0.05)
+            out.send(mido.Message("note_off", channel=0, note=36))
+            time.sleep(beat - 0.05)
+    for k in range(maxn + 1):
+        if k:
+            n = notes[k - 1]
+            out.send(mido.Message("note_on", channel=1, note=n, velocity=110))
+            held.append(n)
+        rd.label = f"kick+{k}"
+        kick(time.time() + secs)
+    for n in held:
+        out.send(mido.Message("note_off", channel=1, note=n))
+    rd.label = "off"
+    time.sleep(1.5)
+    print("\nsummary (the reports past the first second of each part):")
+    for k in range(maxn + 1):
+        rs = [r for l, r in rd.log if l == f"kick+{k}"][5:]
+        if rs:
+            print(f"kick+{k}: half max {max(r['max'] for r in rs)/10:5.1f}%  mean {sum(r['mean'] for r in rs)/len(rs)/10:5.1f}%"
+                  f"  block max {max(r['blkmax'] for r in rs)/10:5.1f}%  sheds {sum(r['shed'] for r in rs)}  late {sum(r['late'] for r in rs)}"
+                  f"  track 1 {sum(r['trk'][0] for r in rs)/len(rs)/10:4.1f}%  track 2 {sum(r['trk'][1] for r in rs)/len(rs)/10:4.1f}%"
+                  f"  fx {sum(r['fx'] for r in rs)/len(rs)/10:4.1f}%")
+            av = lambda key, i: sum(r[key][i] for r in rs if len(r[key]) > i) / len(rs) / 10
+            print("        machine FMT %.1f FMD %.1f WAV %.1f SWM %.1f | chain FMT %.1f FMD %.1f WAV %.1f SWM %.1f | "
+                  "chorus %.1f delay %.1f reverb %.1f comp %.1f" % tuple([av("mach", i) for i in range(4)] +
+                  [av("chain", i) for i in range(4)] + [av("fxk", i) for i in range(4)]))
+
+
+if __name__ == "__main__":
+    main()

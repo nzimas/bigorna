@@ -94,7 +94,7 @@ static void wt_off(wtv_t *v, const wtck_t *c)
 /* phase distortion: the phase bent so that the first half of the wave takes bp of the cycle (Q16); m1, m2:
  * 2^31 / bp and 2^31 / (1 - bp), once a block */
 typedef struct { uint32_t bp, m1, m2; } pd_t;
-static void pd_set(pd_t *d, int32_t bp)
+FAST static void pd_set(pd_t *d, int32_t bp)
 {
     d->bp = (uint32_t)bp;
     d->m1 = 0x80000000u / (uint32_t)bp;
@@ -110,7 +110,7 @@ AINL uint32_t wt_pd(uint32_t ph, const pd_t *d)
     return 0x80000000u + (x - d->bp) * d->m2;
 }
 
-static void wt_render(wtv_t *v, const wtck_t *c, int32_t note16, int32_t *out)
+FAST static void wt_render(wtv_t *v, const wtck_t *c, int32_t note16, int32_t *out)
 {
     uint32_t inc[2], i, k, sync16;
     morph_t m[2];
@@ -233,7 +233,7 @@ static void sw_on(swv_t *v, int fresh, uint32_t seed)
     for (k = 0; k < 7u; k++)
         v->ph[k] = rnd_next(&v->rn);                      /* (free running: a swarm never starts in step) */
 }
-static void sw_render(swv_t *v, const swck_t *c, int32_t note16, int32_t *out)
+FAST static void sw_render(swv_t *v, const swck_t *c, int32_t note16, int32_t *out)
 {
     uint32_t inc[7], i, k;
     morph_t ms, mm;
@@ -255,13 +255,54 @@ static void sw_render(swv_t *v, const swck_t *c, int32_t note16, int32_t *out)
     morph_set(&mm, WV_PRIM0, WV_PRIM_N, c->main, inc[6]);
     gs = c->gs;
     gm = c->gm;
-    for (i = 0; i < CTL; i++) {
-        int32_t s = 0;
-        for (k = 0; k < 6u; k++) {
-            v->ph[k] += inc[k];
-            s += morph_rd(&ms, v->ph[k]);
+    {   /* (each of the six through the block, its phase in a register; the two waves summed apart, crossfaded once a
+         * sample on the sums: the same as crossfading each, but one multiply, not six) */
+        int32_t sa[CTL], sb[CTL];
+        const int16_t *ta = ms.a, *tb = ms.b;
+        uint32_t sh = ms.sh, ish = 32u - ms.sh;
+        for (i = 0; i < CTL;) {
+            REP4({
+                sa[i] = sb[i] = 0;
+            })
         }
-        v->ph[6] += inc[6];
-        out[i] = mulq15(s, gs) + mulq15(morph_rd(&mm, v->ph[6]), gm);
+        for (k = 0; k < 6u; k++) {
+            uint32_t ph = v->ph[k], dp = inc[k];
+            if (ms.x)
+                for (i = 0; i < CTL;) {
+                    REP4({
+                        uint32_t j;
+                        int32_t f;
+                        ph += dp;
+                        j = ph >> sh;
+                        f = (int32_t)((ph << ish) >> 17);
+                        sa[i] += ta[j] + (((ta[j + 1u] - ta[j]) * f) >> 15);
+                        sb[i] += tb[j] + (((tb[j + 1u] - tb[j]) * f) >> 15);
+                    })
+                }
+            else
+                for (i = 0; i < CTL;) {
+                    REP4({
+                        uint32_t j;
+                        int32_t f;
+                        ph += dp;
+                        j = ph >> sh;
+                        f = (int32_t)((ph << ish) >> 17);
+                        sa[i] += ta[j] + (((ta[j + 1u] - ta[j]) * f) >> 15);
+                    })
+                }
+            v->ph[k] = ph;
+        }
+        if (ms.x)
+            for (i = 0; i < CTL;) {
+                REP4({
+                    sa[i] += (int32_t)(((int64_t)(sb[i] - sa[i]) * ms.x) >> 15);
+                })
+            }
+        for (i = 0; i < CTL;) {
+            REP4({
+                v->ph[6] += inc[6];
+                out[i] = mulq15(sa[i], gs) + mulq15(morph_rd(&mm, v->ph[6]), gm);
+            })
+        }
     }
 }

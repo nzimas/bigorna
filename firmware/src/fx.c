@@ -38,7 +38,7 @@ static inline int32_t mu_dec(uint8_t b)
     int32_t m = MULAW_DEC[b & 0x7Fu];
     return b & 0x80u ? -m : m;
 }
-static inline uint8_t mu_enc(int32_t x)
+AINL uint8_t mu_enc(int32_t x)
 {
     uint32_t a = (uint32_t)(x < 0 ? -x : x);
     if (a < 4u)
@@ -103,7 +103,7 @@ AINL int32_t dl_rd(const uint8_t *ln, uint32_t p8)
     return a + (((mu_dec(ln[i1]) - a) * (int32_t)(p8 & 255u)) >> 8);
 }
 /* a block: in (mono) into the lines; the repeats added to l and r and into rvin */
-static void dl_block(const int32_t *in, int32_t *l, int32_t *r, int32_t *rvin)
+FAST static void dl_block(const int32_t *in, int32_t *l, int32_t *r, int32_t *rvin)
 {
     uint32_t i, k;
     int32_t fb = dlc.fb, hp = dlc.hp, lp = dlc.lp, vol = dlc.vol, rev = dlc.rev, tw = dlc.tw, pl = dlc.pl, pr = dlc.pr;
@@ -149,7 +149,7 @@ static void dl_block(const int32_t *in, int32_t *l, int32_t *r, int32_t *rvin)
 
 /* --------------------------------------------------------------- chorus --- */
 #define CH_N 2048u
-static int16_t ch_line[CH_N] DLYMEM;     /* (in the RAM beside the code; zeroed by fx_init) */
+static int16_t ch_line[CH_N];            /* (zeroed by fx_init; the RAM beside the code is the audio's code's now) */
 static struct { uint32_t w, lfo; int32_t hp; } ch;
 static volatile struct { int32_t depth8, inc, hp, wdth, del, rev, vol; } chc;
 static void ch_cook(const uint8_t *p)
@@ -170,37 +170,39 @@ AINL int32_t ch_tap(uint32_t d8)
                                                                      * a crackle under the sweep) */
     return a + (((b - a) * (int32_t)(p & 255u)) >> 8);
 }
-static void ch_block(const int32_t *in, int32_t *l, int32_t *r, int32_t *dlin, int32_t *rvin)
+FAST static void ch_block(const int32_t *in, int32_t *l, int32_t *r, int32_t *dlin, int32_t *rvin)
 {
     uint32_t i, base = 6u * 441u * 256u / 10u;            /* 6 ms */
     int32_t d = chc.depth8, w = chc.wdth, vol = chc.vol;
     if (!vol && !chc.del && !chc.rev)
         return;
-    for (i = 0; i < CTL; i++) {
-        int32_t x = in[i], a, b, m, s;
-        if (chc.hp)
-            x -= lp8(&ch.hp, x, chc.hp);
-        ch_line[ch.w] = (int16_t)clampi(x, -32767, 32767);
-        ch.lfo += (uint32_t)chc.inc;
-        a = ch_tap(base + (uint32_t)mulq15(sinr(ch.lfo) + Q15, d) / 2u + 256u);
-        b = ch_tap(base + (uint32_t)mulq15(sinr(ch.lfo + 0x40000000u) + Q15, d) / 2u + 256u);
-        ch.w = (ch.w + 1u) & (CH_N - 1u);
-        m = (a + b) >> 1;
-        s = (a - b) >> 1;
-        a = m + mulq15(s, w);                             /* WDTH: from both in the middle to apart */
-        b = m - mulq15(s, w);
-        l[i] += mulq15(a, vol);
-        r[i] += mulq15(b, vol);
-        dlin[i] += mulq15(m, chc.del);
-        rvin[i] += mulq15(m, chc.rev);
+    for (i = 0; i < CTL;) {
+        REP4({
+            int32_t x = in[i], a, b, m, s;
+            if (chc.hp)
+                x -= lp8(&ch.hp, x, chc.hp);
+            ch_line[ch.w] = (int16_t)clampi(x, -32767, 32767);
+            ch.lfo += (uint32_t)chc.inc;
+            a = ch_tap(base + (uint32_t)mulq15(sinr(ch.lfo) + Q15, d) / 2u + 256u);
+            b = ch_tap(base + (uint32_t)mulq15(sinr(ch.lfo + 0x40000000u) + Q15, d) / 2u + 256u);
+            ch.w = (ch.w + 1u) & (CH_N - 1u);
+            m = (a + b) >> 1;
+            s = (a - b) >> 1;
+            a = m + mulq15(s, w);                             /* WDTH: from both in the middle to apart */
+            b = m - mulq15(s, w);
+            l[i] += mulq15(a, vol);
+            r[i] += mulq15(b, vol);
+            dlin[i] += mulq15(m, chc.del);
+            rvin[i] += mulq15(m, chc.rev);
+        })
     }
 }
 
 /* --------------------------------------------------------------- reverb --- */
-#define RV_F 48550               /* 44100 / 29761, Q15 */
+#define RV_F 24275               /* 22050 / 29761, Q15: the tank runs at half the rate (build 31: half the time) */
 #define RV_SMAX 5120             /* the lines' largest stretch, Q12 (1.25) */
-#define RV_EXC 24                /* the modulated allpasses' excursion, samples */
-#define RV_PREMAX 14880u         /* PRE up to 337 ms */
+#define RV_EXC 12                /* the modulated allpasses' excursion, samples (at 22.05 kHz) */
+#define RV_PREMAX 7440u          /* PRE up to 337 ms (at 22.05 kHz) */
 static const uint16_t RV_DIF[4] = {142, 107, 379, 277};
 static const uint16_t RV_TANK[8] = {672, 4453, 1800, 3720, 908, 4217, 2656, 3163};
 static const int16_t RV_DIFG[4] = {24576, 24576, 20480, 20480};
@@ -218,31 +220,31 @@ static struct {
     uint32_t tank_base[8], tank_total;
     int32_t ihp, ilp, shelf_l, shelf_r, fb_l, fb_r;
     uint32_t lfo, lfo2;
-    int32_t scale;
+    int32_t scale, pyl, pyr;     /* (pyl, pyr: the tank's last output, for the step back up to 44.1 kHz) */
     int ok;
 } rv;
 static volatile struct { int32_t scale_t, decay, shelf_a, shelf_g, hp, lp, vol; uint32_t pre; } rvc;
 
-static inline int32_t rvm(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b + (1 << 14)) >> 15); }
-static inline void rv_write(rv_line *l, int32_t x)
+AINL int32_t rvm(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b + (1 << 14)) >> 15); }
+AINL void rv_write(rv_line *l, int32_t x)
 {
     l->buf[l->w] = (int16_t)clampi(x, -32768, 32767);
     if (++l->w >= l->len)
         l->w = 0;
 }
-static inline int32_t rv_tap(const rv_line *l, uint32_t d)
+AINL int32_t rv_tap(const rv_line *l, uint32_t d)
 {
     uint32_t i = l->w + l->len - 1u - d;
     if (i >= l->len)
         i -= l->len;
     return l->buf[i];
 }
-static inline int32_t rv_tapf(const rv_line *l, uint32_t d, int32_t frac)
+AINL int32_t rv_tapf(const rv_line *l, uint32_t d, int32_t frac)
 {
     int32_t a = rv_tap(l, d), b = rv_tap(l, d + 1u);
     return a + (((b - a) * frac) >> 8);
 }
-static inline int32_t rv_allpass(rv_line *l, int32_t x, int32_t g, uint32_t d)
+AINL int32_t rv_allpass(rv_line *l, int32_t x, int32_t g, uint32_t d)
 {
     int32_t dl_ = rv_tap(l, d - 1u), w = x + rvm(g, dl_);
     rv_write(l, w);
@@ -255,17 +257,20 @@ static void rv_cook(const uint8_t *p)
 {
     int32_t dec = clampi(p[RV_DEC], 0, 127), v = clampi(p[RV_PRE], 0, 127), e, rt8;
     uint32_t loop_q16;
-    rvc.pre = (uint32_t)((37 + v * v * 16128 / 16129) * 147 / 160);   /* (48 kHz samples as 44.1 kHz) */
+    rvc.pre = (uint32_t)((37 + v * v * 16128 / 16129) * 147 / 320);   /* (48 kHz samples as 22.05 kHz) */
     rvc.scale_t = 3072 + dec * 2048 / 127;                    /* the lines x 0.75 .. 1.25 with DEC */
     /* the decay time, Q8 seconds: 0.46 x 1.0259^v (2^(v x 0.03695)), past 116 on to 46 s */
     rt8 = dec <= 116 ? (int32_t)((118u * exp2_q16(dec * 2422)) >> 16)
                      : (int32_t)((2336u * exp2_q16((dec - 116) * 15400)) >> 16);
     /* a trip round the tank takes T and loses 60 dB x T / RT over two stages: each 2^(-60 / 6.02 / 2 x T / RT) */
-    loop_q16 = (uint32_t)(((uint64_t)rv.tank_total * (uint32_t)rvc.scale_t * 97391u) >> 28);   /* T, Q16 s */
+    loop_q16 = (uint32_t)(((uint64_t)rv.tank_total * (uint32_t)rvc.scale_t * 194783u) >> 28);  /* T, Q16 s (2^32 / 22050) */
     e = (int32_t)(((int64_t)loop_q16 * 326565) >> 16);       /* 4.983 T, Q16 */
     e = e * 256 / maxi(rt8, 1);                               /* / RT */
     rvc.decay = dec >= 127 ? 32760 : clampi((int32_t)(exp2_q16(-e) >> 1), 1000, 32700);
-    rvc.shelf_a = T_RVSH[clampi(p[RV_FREQ], 0, 127)];
+    {   /* (the table's one-pole is 44.1 kHz's: at half the rate, the same corner is 1 - (1 - a)^2) */
+        int32_t a = T_RVSH[clampi(p[RV_FREQ], 0, 127)];
+        rvc.shelf_a = clampi(2 * a - a * a / Q15, 0, Q15);
+    }
     rvc.shelf_g = clampi(p[RV_GAIN], 0, 127) * Q15 / 127;
     rvc.hp = p[RV_HPF] ? lp1_coef(hz_of_oct(bw_oct(p[RV_HPF]))) : 0;
     rvc.lp = p[RV_HPF] + p[RV_LPF] < 127 ? lp1_coef(hz_of_oct(bw_oct(p[RV_HPF] + p[RV_LPF]))) : Q15;
@@ -291,7 +296,7 @@ static void rv_init(void)
 }
 static void rv_block(const int32_t *in, int32_t *ol, int32_t *or_)
 {
-    uint32_t i, k, d[8], dl_[7], dr[7], pre = rvc.pre;
+    uint32_t k, d[8], dl_[7], dr[7], pre = rvc.pre;
     int32_t dec = rvc.decay, sa = rvc.shelf_a, sg = rvc.shelf_g, vol = rvc.vol, s;
     if (!rv.ok || !vol)
         return;
@@ -310,58 +315,76 @@ static void rv_block(const int32_t *in, int32_t *ol, int32_t *or_)
         if (dr[k] >= d[RV_TAPR_LINE[k]])
             dr[k] = d[RV_TAPR_LINE[k]] - 1u;
     }
-    for (i = 0; i < CTL; i++) {
-        int32_t x, a, b, yl = 0, yr = 0;
-        uint32_t e1, e2;
-        rv.lfo += 48700u;
-        rv.lfo2 += 61900u;
-        e1 = (uint32_t)((sinr(rv.lfo) + Q15) * RV_EXC);
-        e2 = (uint32_t)((sinr(rv.lfo2 + 0x40000000u) + Q15) * RV_EXC);
-        x = in[i] >> 1;                                   /* the input: HPF, LPF, PRE, the diffusers */
-        if (rvc.hp)
-            x -= lp8(&rv.ihp, x, rvc.hp);
-        rv_write(&rv.pre, lp8(&rv.ilp, x, rvc.lp));
-        x = rv_tap(&rv.pre, pre);
-        for (k = 0; k < 4u; k++)
-            x = rv_allpass(&rv.dif[k], x, RV_DIFG[k], rv.dif[k].len - 2u);
-        a = x + rvm(rv.fb_r, dec);
-        {
-            rv_line *l = &rv.tank[0];
-            uint32_t dd = d[0] - RV_EXC + (e1 >> 16);
-            int32_t dly = rv_tapf(l, dd, (int32_t)((e1 >> 8) & 255u)), w = a + rvm(-22938, dly);
-            rv_write(l, w);
-            a = dly - rvm(-22938, w);
+    {   /* the tank at 22.05 kHz: two input samples a step (each filtered at 44.1 kHz, then their mean), the output
+         * back up between steps; the LFOs at the block's ends, a line between */
+        uint32_t lf0 = rv.lfo, lg0 = rv.lfo2, j;
+        int32_t e1a, e1b, e2a, e2b;
+        rv.lfo += 97400u * (CTL / 2u);
+        rv.lfo2 += 123800u * (CTL / 2u);
+        e1a = (int32_t)(((uint32_t)(sinr(lf0) + Q15) * RV_EXC) >> 4);   /* (excursion, samples Q12) */
+        e1b = (int32_t)(((uint32_t)(sinr(rv.lfo) + Q15) * RV_EXC) >> 4);
+        e2a = (int32_t)(((uint32_t)(sinr(lg0 + 0x40000000u) + Q15) * RV_EXC) >> 4);
+        e2b = (int32_t)(((uint32_t)(sinr(rv.lfo2 + 0x40000000u) + Q15) * RV_EXC) >> 4);
+        for (j = 0; j < CTL / 2u; j++) {
+            int32_t x, x2, a, b, yl = 0, yr = 0;
+            uint32_t e1, e2;
+            e1 = (uint32_t)(e1a + (e1b - e1a) * (int32_t)(j + 1u) / (int32_t)(CTL / 2u)) << 4;   /* (Q16, as before) */
+            e2 = (uint32_t)(e2a + (e2b - e2a) * (int32_t)(j + 1u) / (int32_t)(CTL / 2u)) << 4;
+            x = in[2u * j] >> 1;                          /* the input: HPF, LPF (at 44.1 kHz), PRE, the diffusers */
+            x2 = in[2u * j + 1u] >> 1;
+            if (rvc.hp) {
+                x -= lp8(&rv.ihp, x, rvc.hp);
+                x2 -= lp8(&rv.ihp, x2, rvc.hp);
+            }
+            x = lp8(&rv.ilp, x, rvc.lp);
+            x2 = lp8(&rv.ilp, x2, rvc.lp);
+            rv_write(&rv.pre, (x + x2) >> 1);
+            x = rv_tap(&rv.pre, pre);
+            for (k = 0; k < 4u; k++)
+                x = rv_allpass(&rv.dif[k], x, RV_DIFG[k], rv.dif[k].len - 2u);
+            a = x + rvm(rv.fb_r, dec);
+            {
+                rv_line *l = &rv.tank[0];
+                uint32_t dd = d[0] - RV_EXC + (e1 >> 16);
+                int32_t dly = rv_tapf(l, dd, (int32_t)((e1 >> 8) & 255u)), w = a + rvm(-22938, dly);
+                rv_write(l, w);
+                a = dly - rvm(-22938, w);
+            }
+            rv_write(&rv.tank[1], a);
+            a = rv_tap(&rv.tank[1], d[1]);
+            rv.shelf_l += rvm(a - rv.shelf_l, sa);        /* the shelf: below FREQ kept, above it x GAIN */
+            a = rvm(rv.shelf_l + rvm(a - rv.shelf_l, sg), dec);
+            a = rv_allpass(&rv.tank[2], a, 16384, d[2]);
+            rv_write(&rv.tank[3], a);
+            b = rv_tap(&rv.tank[3], d[3]);
+            a = x + rvm(rv.fb_l, dec);
+            rv.fb_l = b;
+            {
+                rv_line *l = &rv.tank[4];
+                uint32_t dd = d[4] - RV_EXC + (e2 >> 16);
+                int32_t dly = rv_tapf(l, dd, (int32_t)((e2 >> 8) & 255u)), w = a + rvm(-22938, dly);
+                rv_write(l, w);
+                a = dly - rvm(-22938, w);
+            }
+            rv_write(&rv.tank[5], a);
+            a = rv_tap(&rv.tank[5], d[5]);
+            rv.shelf_r += rvm(a - rv.shelf_r, sa);
+            a = rvm(rv.shelf_r + rvm(a - rv.shelf_r, sg), dec);
+            a = rv_allpass(&rv.tank[6], a, 16384, d[6]);
+            rv_write(&rv.tank[7], a);
+            rv.fb_r = rv_tap(&rv.tank[7], d[7]);
+            for (k = 0; k < 7u; k++) {
+                int32_t tl = rv_tap(&rv.tank[RV_TAPL_LINE[k]], dl_[k]), tr = rv_tap(&rv.tank[RV_TAPR_LINE[k]], dr[k]);
+                yl += RV_TAP_SIGN[k] > 0 ? tl : -tl;
+                yr += RV_TAP_SIGN[k] > 0 ? tr : -tr;
+            }
+            ol[2u * j] += rvm((rv.pyl + yl) >> 1, vol);  /* (back up: between the last step and this) */
+            or_[2u * j] += rvm((rv.pyr + yr) >> 1, vol);
+            ol[2u * j + 1u] += rvm(yl, vol);
+            or_[2u * j + 1u] += rvm(yr, vol);
+            rv.pyl = yl;
+            rv.pyr = yr;
         }
-        rv_write(&rv.tank[1], a);
-        a = rv_tap(&rv.tank[1], d[1]);
-        rv.shelf_l += rvm(a - rv.shelf_l, sa);            /* the shelf: below FREQ kept, above it x GAIN */
-        a = rvm(rv.shelf_l + rvm(a - rv.shelf_l, sg), dec);
-        a = rv_allpass(&rv.tank[2], a, 16384, d[2]);
-        rv_write(&rv.tank[3], a);
-        b = rv_tap(&rv.tank[3], d[3]);
-        a = x + rvm(rv.fb_l, dec);
-        rv.fb_l = b;
-        {
-            rv_line *l = &rv.tank[4];
-            uint32_t dd = d[4] - RV_EXC + (e2 >> 16);
-            int32_t dly = rv_tapf(l, dd, (int32_t)((e2 >> 8) & 255u)), w = a + rvm(-22938, dly);
-            rv_write(l, w);
-            a = dly - rvm(-22938, w);
-        }
-        rv_write(&rv.tank[5], a);
-        a = rv_tap(&rv.tank[5], d[5]);
-        rv.shelf_r += rvm(a - rv.shelf_r, sa);
-        a = rvm(rv.shelf_r + rvm(a - rv.shelf_r, sg), dec);
-        a = rv_allpass(&rv.tank[6], a, 16384, d[6]);
-        rv_write(&rv.tank[7], a);
-        rv.fb_r = rv_tap(&rv.tank[7], d[7]);
-        for (k = 0; k < 7u; k++) {
-            int32_t tl = rv_tap(&rv.tank[RV_TAPL_LINE[k]], dl_[k]), tr = rv_tap(&rv.tank[RV_TAPR_LINE[k]], dr[k]);
-            yl += RV_TAP_SIGN[k] > 0 ? tl : -tl;
-            yr += RV_TAP_SIGN[k] > 0 ? tr : -tr;
-        }
-        ol[i] += rvm(yl, vol);
-        or_[i] += rvm(yr, vol);
     }
 }
 
@@ -395,16 +418,18 @@ static void cp_cook(const uint8_t *p)
     cpc.rel = cp_step(112896u, clampi(p[CP_REL], 0, 127) * 3945);     /* 10 ms x 200^(v / 127) */
     cpc.mix = clampi(p[CP_MIX], 0, 127) * Q15 / 127;
 }
-static void cp_block(int32_t *l, int32_t *r)
+FAST static void cp_block(int32_t *l, int32_t *r)
 {
     uint32_t i;
     int32_t g0 = cp.g ? cp.g : Q16, g1, dg, db, gain, gr;
-    for (i = 0; i < CTL; i++) {                  /* the mix's level: its peaks at once, falling at RELEASE */
-        int32_t a = absi((l[i] + r[i]) >> 1) << 8;
-        if (a > cp.env)
-            cp.env = a;
-        else
-            cp.env += (int32_t)(((int64_t)(a - cp.env) * (int32_t)cpc.rel) >> 24);
+    for (i = 0; i < CTL;) { /* the mix's level: its peaks at once, falling at RELEASE */
+        REP4({
+            int32_t a = absi((l[i] + r[i]) >> 1) << 8;
+            if (a > cp.env)
+                cp.env = a;
+            else
+                cp.env += (int32_t)(((int64_t)(a - cp.env) * (int32_t)cpc.rel) >> 24);
+        })
     }
     /* the gain: over the threshold, the ratio's share taken off; the makeup on */
     db = cp.env > 256 ? (log2_q16((uint32_t)cp.env) - (23 << 16)) * 602 / 100 : -(96 << 16);   /* (dBFS, Q16) */
@@ -413,11 +438,13 @@ static void cp_block(int32_t *l, int32_t *r)
     gain = cpc.mup - cp.gr;
     g1 = (int32_t)exp2_q16(gain * 100 / 602);
     dg = (g1 - g0) / (int32_t)CTL;
-    for (i = 0; i < CTL; i++) {
-        int32_t g = g0 + dg * (int32_t)(i + 1u);
-        int32_t wl = (int32_t)(((int64_t)l[i] * g) >> 16), wr = (int32_t)(((int64_t)r[i] * g) >> 16);
-        l[i] += mulq15(wl - l[i], cpc.mix);
-        r[i] += mulq15(wr - r[i], cpc.mix);
+    for (i = 0; i < CTL;) {
+        REP4({
+            int32_t g = g0 + dg * (int32_t)(i + 1u);
+            int32_t wl = (int32_t)(((int64_t)l[i] * g) >> 16), wr = (int32_t)(((int64_t)r[i] * g) >> 16);
+            l[i] += mulq15(wl - l[i], cpc.mix);
+            r[i] += mulq15(wr - r[i], cpc.mix);
+        })
     }
     cp.g = g1;
 }
@@ -430,27 +457,29 @@ typedef struct {
     int32_t env, hit;            /* the level, the hit's (x 256) */
     uint16_t since;              /* blocks since the hit */
 } dk_t;
-static void dk_feed(dk_t *d, const int32_t *x, int struck)   /* a block of the track's signal; struck: a note began */
+FAST static void dk_feed(dk_t *d, const int32_t *x, int struck)   /* a block of the track's signal; struck: a note began */
 {
     uint32_t i;
     if (struck) {
         d->since = 0;
         d->hit = 0;
     }
-    for (i = 0; i < CTL; i++) {
-        int32_t a = absi(x[i]) << 8;
-        if (d->since < 40u && a > d->hit)       /* (the hit: its peak, over its first ~30 ms) */
-            d->hit = a;
-        if (a > d->env)                          /* (its level after: followed, falling no faster than RELEASE) */
-            d->env = a;
-        else
-            d->env -= (int32_t)(((int64_t)d->env * (int32_t)cpc.rel) >> 24);
+    for (i = 0; i < CTL;) {
+        REP4({
+            int32_t a = absi(x[i]) << 8;
+            if (d->since < 40u && a > d->hit)       /* (the hit: its peak, over its first ~30 ms) */
+                d->hit = a;
+            if (a > d->env)                          /* (its level after: followed, falling no faster than RELEASE) */
+                d->env = a;
+            else
+                d->env -= (int32_t)(((int64_t)d->env * (int32_t)cpc.rel) >> 24);
+        })
     }
     if (d->since < 0xFFFFu)
         d->since++;
 }
 /* how far the duck goes now, Q15: all of it at the hit's peak, none 12 dB below it (in dB between) */
-static int32_t dk_e(const dk_t *d)
+FAST static int32_t dk_e(const dk_t *d)
 {
     int32_t r;
     if (d->hit < 256 || d->env < 256)

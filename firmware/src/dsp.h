@@ -14,13 +14,27 @@
 /* big zero-initialised buffers go to the pool (app.ld: 336 KiB beside the 96 KiB of .data / .bss) */
 /* always inline: the audio's RAM code (FAST) may not call into the flash */
 #define AINL static inline __attribute__((always_inline))
+/* a per-sample loop unrolled by 4 (for (i = 0; i < CTL;) { REP4({ ... }) }, CTL a multiple of 4): on this chip a
+ * loop's step, its branch back, costs ~7 cycles and an add 1 (build 31, measured); -Os ignores clang's unroll pragma */
+#define REP4(...) { __VA_ARGS__ } i++; { __VA_ARGS__ } i++; { __VA_ARGS__ } i++; { __VA_ARGS__ } i++;
+/* RAM code and the flash are beyond the 23-bit call's range, each way: such a call goes through a pointer the
+ * compiler cannot fold back (as the flash driver's FL_FAR) */
+AINL void *far_ptr(void *p) { void *volatile q = p; return q; }
+#define FAR(fn) ((__typeof__(&fn))far_ptr((void *)&fn))
 #ifdef HOST
 #define POOL
 #define FAST                     /* (the host: no RAM code) */
 #define DLYMEM
 #else
 #define POOL __attribute__((section(".pool")))
+#ifndef FAST_RAM
+#define FAST_RAM 1               /* 1: the audio's hot path (FAST) runs from RAM (app.ld .fast_text) */
+#endif
+#if FAST_RAM
 #define FAST __attribute__((section(".fast_text"), noinline))   /* run from RAM (app.ld): the audio's hottest code */
+#else
+#define FAST                     /* (in the flash, as before build 31) */
+#endif
 #define DLYMEM __attribute__((section(".dly_mem")))   /* data in the RAM beside the code (app.ld .dly): the delay's */
 #endif
 
@@ -46,7 +60,7 @@ AINL int32_t absi(int32_t x) { return x < 0 ? -x : x; }
 AINL int32_t maxi(int32_t a, int32_t b) { return a > b ? a : b; }
 
 /* 2^(x / 65536), Q16 in and out; x from -16 to +15 octaves */
-static inline uint32_t exp2_q16(int32_t x)
+AINL uint32_t exp2_q16(int32_t x)
 {
     int32_t i = x >> 16;
     uint32_t f = (uint32_t)x & 0xFFFFu, k = f >> 8, a = EXP2_FRAC[k];
@@ -61,7 +75,7 @@ static inline uint32_t exp2_q16(int32_t x)
 }
 
 /* log2(x), x > 0 an integer; Q16 result */
-static inline int32_t log2_q16(uint32_t x)
+AINL int32_t log2_q16(uint32_t x)
 {
     int32_t e = 0;
     uint32_t f, k;
@@ -102,7 +116,7 @@ AINL int32_t sin_ph(uint32_t ph)
 }
 
 /* integer square root of a 32-bit value */
-static inline uint32_t isqrt32(uint32_t x)
+AINL uint32_t isqrt32(uint32_t x)
 {
     uint32_t r = 0, b = 1u << 30;
     while (b > x)
@@ -147,10 +161,10 @@ AINL uint32_t hz8_inc(int32_t hz8)
     return (uint32_t)(((uint64_t)(uint32_t)hz8 * 24933460u) >> 16);   /* x (2^32 / FS) / 256, as Q16 */
 }
 /* .. and back: Hz Q8 of a phase increment */
-static inline int32_t inc_hz8(uint32_t inc) { return (int32_t)(((uint64_t)inc * 11289600u) >> 32); }   /* x FS * 256 / 2^32 */
+AINL int32_t inc_hz8(uint32_t inc) { return (int32_t)(((uint64_t)inc * 11289600u) >> 32); }   /* x FS * 256 / 2^32 */
 
 /* the state-variable filter's g = tan(pi f / FS), Q24, for f in Hz (integer) */
-static inline int32_t svf_g(int32_t hz)
+AINL int32_t svf_g(int32_t hz)
 {
     uint32_t x, i, f8;
     hz = clampi(hz, 16, TANG_FMAX);
@@ -162,7 +176,7 @@ static inline int32_t svf_g(int32_t hz)
     return (int32_t)(TAN_G[i] + (((TAN_G[i + 1u] - TAN_G[i]) * f8) >> 8));
 }
 
-static inline int32_t mul24(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 24); }
+AINL int32_t mul24(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 24); }
 /* rounded, for the filters' integrators: a floor's bias, summed by an integrator at a low cutoff, is DC */
 AINL int32_t mulr16(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b + (1 << 15)) >> 16); }
 AINL int32_t mulr24(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b + (1 << 23)) >> 24); }
@@ -171,7 +185,7 @@ AINL int32_t mulr24(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b + (
  * (one 32-bit divide), then per sample. a1 Q16, a2 a3 k Q24. */
 typedef struct { int32_t ic1, ic2; } svf_t;
 typedef struct { int32_t a1, a2, a3, k; } svf_c;
-static void svf_coef(svf_c *c, int32_t hz, int32_t q12)   /* q in Q12, 0.5 .. 25 */
+AINL void svf_coef(svf_c *c, int32_t hz, int32_t q12)   /* q in Q12, 0.5 .. 25 */
 {
     int32_t g = svf_g(hz), den;
     q12 = clampi(q12, 2048, 25 * 4096);
@@ -207,7 +221,7 @@ AINL uint32_t rnd_next(rnd_t *r)
     r->s = x;
     return x;
 }
-static inline void rnd_seed(rnd_t *r, uint32_t seed)
+AINL void rnd_seed(rnd_t *r, uint32_t seed)
 {
     uint32_t i;
     r->s = seed * 2654435761u + 0x6A09E667u;
@@ -218,10 +232,10 @@ static inline void rnd_seed(rnd_t *r, uint32_t seed)
 }
 AINL int32_t rnd_q15(rnd_t *r) { return (int32_t)(rnd_next(r) >> 17); }               /* 0 .. 32767 */
 AINL int32_t rnd_bi(rnd_t *r) { return (int32_t)(rnd_next(r) >> 16) - 32768; }        /* -32768 .. 32767 */
-static inline int32_t rnd_below(rnd_t *r, int32_t n) { return n <= 1 ? 0 : (int32_t)(((uint64_t)rnd_next(r) * (uint32_t)n) >> 32); }
-static inline int rnd_chance(rnd_t *r, int32_t p_pct) { return rnd_below(r, 1000) < p_pct * 10; }   /* p in percent */
+AINL int32_t rnd_below(rnd_t *r, int32_t n) { return n <= 1 ? 0 : (int32_t)(((uint64_t)rnd_next(r) * (uint32_t)n) >> 32); }
+AINL int rnd_chance(rnd_t *r, int32_t p_pct) { return rnd_below(r, 1000) < p_pct * 10; }   /* p in percent */
 /* one of n, each as likely as its weight */
-static inline uint32_t rnd_weighted(rnd_t *r, const uint8_t *w, uint32_t n)
+AINL uint32_t rnd_weighted(rnd_t *r, const uint8_t *w, uint32_t n)
 {
     uint32_t i, t = 0, x;
     for (i = 0; i < n; i++)
@@ -231,9 +245,9 @@ static inline uint32_t rnd_weighted(rnd_t *r, const uint8_t *w, uint32_t n)
         x -= w[i];
     return i;
 }
-static inline int rnd_chance_q15(rnd_t *r, int32_t p) { return rnd_q15(r) < p; }
+AINL int rnd_chance_q15(rnd_t *r, int32_t p) { return rnd_q15(r) < p; }
 /* uniform in [a, b] (any integer unit) */
-static inline int32_t rnd_in(rnd_t *r, int32_t a, int32_t b)
+AINL int32_t rnd_in(rnd_t *r, int32_t a, int32_t b)
 {
     return a + (int32_t)(((int64_t)(b - a) * rnd_q15(r)) >> 15);
 }
@@ -241,7 +255,7 @@ static inline int32_t rnd_in(rnd_t *r, int32_t a, int32_t b)
 /* ------------------------------------------------------------------ added for the Digitone II engines --- */
 /* the phase increment of a pitch in semitones, Q16 (MIDI note numbers: 69 = A, 440 Hz) */
 #define INC_A4 42852281u                  /* 440 / FS x 2^32 */
-static inline uint32_t note_inc(int32_t p16)
+AINL uint32_t note_inc(int32_t p16)
 {
     int32_t x = (int32_t)(((int64_t)(p16 - (69 << 16)) * 87381) >> 20);   /* / 12: octaves, Q16 */
     uint64_t r;
@@ -251,10 +265,10 @@ static inline uint32_t note_inc(int32_t p16)
     return r > 0x7FFFFFFFu ? 0x7FFFFFFFu : (uint32_t)r;
 }
 /* a frequency in Hz as log2 Hz Q16 .. and back (Hz, integer) */
-static inline int32_t hz_of_oct(int32_t oct) { return (int32_t)(exp2_q16(clampi(oct, 0, 15 << 16) - (16 << 16)) ); }
+AINL int32_t hz_of_oct(int32_t oct) { return (int32_t)(exp2_q16(clampi(oct, 0, 15 << 16) - (16 << 16)) ); }
 AINL int32_t onepole(int32_t *s, int32_t x, int32_t a) { *s += mulq15(x - *s, a); return *s; }
 /* a one-pole low-pass coefficient (Q15) for a cutoff in Hz: 1 - e^(-2 pi f / FS), from the SVF's tan */
-static inline int32_t lp1_coef(int32_t hz)
+AINL int32_t lp1_coef(int32_t hz)
 {
     int32_t g = svf_g(hz);                               /* tan(pi f / FS), Q24 */
     uint32_t g12 = (uint32_t)g >> 12, d12 = (uint32_t)((1 << 24) + g) >> 12;

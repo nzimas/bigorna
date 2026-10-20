@@ -159,6 +159,10 @@ static volatile uint32_t so_w, so_r;
 /* MIDI rings: 4-byte USB-MIDI event packets */
 #define MQ 64u
 static uint32_t midi_in_q[MQ], midi_out_q[MQ];
+#if TELEMETRY
+static uint8_t tl_cmd[4];
+static volatile uint8_t tl_ready;
+#endif
 static volatile uint32_t mi_w, mi_r, mo_w, mo_r;
 static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 {
@@ -712,6 +716,15 @@ static void sysex_byte(uint8_t b)
             ok = usb.sysex[i] == UBOOT_KEY[i];
         if (ok)
             usb.uboot_req = 1;
+#if TELEMETRY
+        else if (usb.sx_len >= 5u && usb.sx_len <= 7u && usb.sysex[1] == 0x7D && (usb.sysex[2] == 0x56 || usb.sysex[2] == 0x57) &&
+                 !tl_ready) {
+            for (i = 0; i < 4u; i++)
+                tl_cmd[i] = usb.sysex[2u + i];
+            RING_PUBLISH();
+            tl_ready = 1;                               /* (main.c's diagnosis: ui.c's midi_take) */
+        }
+#endif
 #if FELUCCA_OTA
         else if (usb.sx_len == 6u && usb.sysex[1] == 0x22 && usb.sysex[2] == 0x24 && usb.sysex[3] == 0x35 &&
                  usb.sysex[4] == 0x7F)

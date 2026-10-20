@@ -60,7 +60,7 @@ static void ck_cook(ck_t *c, const sound_t *s)
     c->sd_chr = s->fx[X_CHR] * s->fx[X_CHR] * Q15 / 16129;
     c->snd = *s;
 }
-static int32_t send_q15(int32_t v) { return v * v * Q15 / 16129; }
+AINL int32_t send_q15(int32_t v) { return v * v * Q15 / 16129; }
 
 /* each track's sidechain (the COMP page's second half, the chosen track's: SC SOURCE, SC LEVEL): the track ducked
  * under another's hits (fx.c's dk_*), by SC LEVEL, 0 .. 100 (raw 0 .. 127): up to 45 dB on the hit, near a gate.
@@ -137,12 +137,20 @@ static volatile int32_t trk_gain[NTRACK], trk_pl[NTRACK], trk_pr[NTRACK];
 
 /* the budget (as TONITOR's): each machine's voice cost measured as it renders, so a start that would overrun the
  * block lets the quietest release tails go first (tail_victim), over ~6 ms, rather than the audio arriving late */
-#define COST_NOW() fm1_ticks()
+#define COST_NOW() FAR(fm1_ticks)()   /* (from the RAM code too: through a pointer) */
 #define BLK_TICKS ((uint32_t)CTL * 1000000u / FS * FM1_TICKS_PER_US)
 #define BUDGET (BLK_TICKS * 90u / 100u)   /* (82 % until build 28: tails went that the time had room for) */
 #define SHED 8u                  /* blocks of the budget's fade (~6 ms: no click) */
 static uint32_t eng_cost[NENG];
 static uint32_t blk_last, blk_new;
+#if !TELEMETRY
+#define TL_FX(k, call) { call; }
+#endif
+#if TELEMETRY
+static uint32_t tl_trk[NTRACK], tl_fx, tl_all, tl_n, tl_max, tl_shed;   /* (main.c's report: ticks, summed) */
+#define TL_FX(k, call) { uint32_t c4 = COST_NOW(); call; tl_fxk[k] += COST_NOW() - c4; }
+static uint32_t tl_mach[NENG], tl_chain[NENG], tl_fxk[4];   /* (a machine's render, its chain; CH DL RV CP) */
+#endif
 static uint32_t blk_clock;
 static volatile uint8_t shed_req;
 static volatile uint8_t load_pct;
@@ -170,8 +178,8 @@ static void ev_post(uint32_t type, uint32_t t, uint32_t note, uint32_t val)   /*
 
 /* ---------------------------------------------------------------- voices --- */
 static uint32_t vox_age;
-static const vck_t *vck_of(uint32_t k, const ck_t *c) { return vox[k].own ? &vmem[k].lck : &c->ch; }
-static const mck_t *mck_of(uint32_t k, const ck_t *c) { return vox[k].own ? &vmem[k].lm : &c->m; }
+AINL const vck_t *vck_of(uint32_t k, const ck_t *c) { return vox[k].own ? &vmem[k].lck : &c->ch; }
+AINL const mck_t *mck_of(uint32_t k, const ck_t *c) { return vox[k].own ? &vmem[k].lm : &c->m; }
 /* the voice cooked with its note's locks: the track's sound, the locked parameters set (none: the track's own) */
 static void voice_locks(uint32_t k, const ck_t *c)
 {
@@ -232,7 +240,7 @@ static void voice_off(uint32_t t, uint32_t k)
         wt_off(&m->m.wt, &mck_of(k, c)->wt);
     vc_off(&m->ch, vck_of(k, c));
 }
-static void voice_silence(uint32_t k)
+AINL void voice_silence(uint32_t k)
 {
     vox[k].sounding = 0;
     vox[k].fade = vox[k].fade_n = 0;
@@ -324,7 +332,7 @@ static void note_off(uint32_t t, uint32_t note, uint32_t src)
     }
 }
 /* a voice's fade over: the note it waited for, on the track it goes to */
-static void voice_take(uint32_t k)
+AINL void voice_take(uint32_t k)
 {
     voice_t *v = &vox[k];
     uint32_t to = v->pend_track;
@@ -1006,12 +1014,15 @@ static void seq_block(void)
 /* ------------------------------------------------------------- the mix --- */
 #define TRACK_GAIN 6144          /* Q12, x 1.5 */
 #define LIM 19661                /* a track's ceiling, 0.6 (Q15) */
-static void lim_block(int32_t *env, int32_t *g, int32_t *x)
+FAST static void lim_block(int32_t *env, int32_t *g, int32_t *x)
 {
     int32_t pk = 0, want, g0 = *g, dg;
     uint32_t i;
-    for (i = 0; i < CTL; i++)
-        pk = maxi(pk, absi(x[i]));
+    for (i = 0; i < CTL;) {
+        REP4({
+            pk = maxi(pk, absi(x[i]));
+        })
+    }
     if (pk > *env)
         *env = pk;
     else
@@ -1020,14 +1031,16 @@ static void lim_block(int32_t *env, int32_t *g, int32_t *x)
     if (want > g0 && g0 < Q15)
         want = g0 + ((want - g0) >> 3);
     dg = (want - g0) / (int32_t)CTL;
-    for (i = 0; i < CTL; i++) {
-        g0 += dg;
-        x[i] = mulq15(x[i], g0);
+    for (i = 0; i < CTL;) {
+        REP4({
+            g0 += dg;
+            x[i] = mulq15(x[i], g0);
+        })
     }
     *g = want;
 }
 
-static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin, int32_t *rvin, int32_t *chin)
+FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin, int32_t *rvin, int32_t *chin)
 {
     track_t *y = &trk[t];
     int32_t buf[CTL], vb[CTL], pk = 0, sd1, sr1, sc1, pl1, pr1, dk_dg = 0, dk_next = Q16;
@@ -1036,15 +1049,19 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
     uint32_t i, k, any = 0;
     const ck_t *c;
     if (!y->xfade && ck_pub[t] != ck_use[t]) {
-        if (ck_buf[t][ck_pub[t]].mach != ck_buf[t][ck_use[t]].mach && track_sounding(t))
+        if (ck_buf[t][ck_pub[t]].mach != ck_buf[t][ck_use[t]].mach && FAR(track_sounding)(t))
             y->xfade = FADE;                     /* another machine: out first */
         else if (ck_buf[t][ck_pub[t]].mach != ck_buf[t][ck_use[t]].mach)
-            change_apply(t);
+            FAR(change_apply)(t);
         else
             ck_use[t] = ck_pub[t];               /* the same machine: on, with the new values */
     }
     c = &ck_buf[t][ck_use[t]];
-    memset(buf, 0, sizeof buf);
+    for (i = 0; i < CTL;) {
+        REP4({
+            buf[i] = 0;
+        })
+    }
     for (k = 0; k < NVOICE; k++) {
         voice_t *v = &vox[k];
         vmem_t *m = &vmem[k];
@@ -1057,7 +1074,7 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         c0 = COST_NOW();
         switch (v->eng) {
         case ENG_FMT:
-            ft_render(&m->m.ft, &mck_of(k, c)->ft, note_inc(note16), note16, vb);
+            FAR(ft_render)(&m->m.ft, &mck_of(k, c)->ft, note_inc(note16), note16, vb);
             break;
         case ENG_FMD:
             fd_render(&m->m.fd, &mck_of(k, c)->fd, note16, vb);
@@ -1069,7 +1086,16 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
             sw_render(&m->m.sw, &mck_of(k, c)->sw, note16, vb);
             break;
         }
+#if TELEMETRY
+        {
+            uint32_t c3 = COST_NOW();
+            tl_mach[v->eng] += c3 - c0;
+            alive = vc_block(&m->ch, vck_of(k, c), vb, note16, v->vel);
+            tl_chain[v->eng] += COST_NOW() - c3;
+        }
+#else
         alive = vc_block(&m->ch, vck_of(k, c), vb, note16, v->vel);
+#endif
         cc = COST_NOW() - c0;
         v->cost = (uint16_t)(cc > 0xFFFFu ? 0xFFFFu : cc);
         eng_cost[v->eng] = (eng_cost[v->eng] * 7u + cc + 7u) / 8u;
@@ -1085,8 +1111,11 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         if (v->fade) {
             uint32_t fn = v->fade_n ? v->fade_n : FADE;
             int32_t g0 = (int32_t)(v->fade * (uint32_t)Q15 / fn), g1 = (int32_t)((v->fade - 1u) * (uint32_t)Q15 / fn);
-            for (i = 0; i < CTL; i++)
-                buf[i] += mulq15(vb[i], g0 + (((g1 - g0) * (int32_t)i) >> 5));
+            for (i = 0; i < CTL;) {
+                REP4({
+                    buf[i] += mulq15(vb[i], g0 + (((g1 - g0) * (int32_t)i) >> 5));
+                })
+            }
             if (--v->fade == 0) {
                 if (v->pend)
                     voice_take(k);
@@ -1094,21 +1123,28 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
                     voice_silence(k);
             }
         } else
-            for (i = 0; i < CTL; i++)
-                buf[i] += vb[i];
+            for (i = 0; i < CTL;) {
+                REP4({
+                    buf[i] += vb[i];
+                })
+            }
     }
     if (y->xfade) {
         int32_t g0 = (int32_t)(y->xfade * (uint32_t)Q15 / FADE), g1 = (int32_t)((y->xfade - 1u) * (uint32_t)Q15 / FADE);
-        for (i = 0; i < CTL; i++)
-            buf[i] = mulq15(buf[i], g0 + (((g1 - g0) * (int32_t)i) >> 5));
+        for (i = 0; i < CTL;) {
+            REP4({
+                buf[i] = mulq15(buf[i], g0 + (((g1 - g0) * (int32_t)i) >> 5));
+            })
+        }
         if (--y->xfade == 0 || !any) {
             y->xfade = 0;
-            change_apply(t);
+            FAR(change_apply)(t);
         }
     }
     {   /* the sends and the pan: the step's locks over the sound's and the track's */
         int32_t pan = -1;
-        memcpy(mg, c->snd.mg, NM);
+        for (k = 0; k < NM; k++)
+            mg[k] = c->snd.mg[k];
         sd1 = c->sd_del;
         sr1 = c->sd_rev;
         sc1 = c->sd_chr;
@@ -1139,7 +1175,11 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
     }
     if (!any) {
         if (dk_mask >> t & 1u) {                 /* (a source, silent: its level falls) */
-            memset(buf, 0, sizeof buf);
+            for (i = 0; i < CTL;) {
+                REP4({
+                    buf[i] = 0;
+                })
+            }
             dk_feed(&dk[t], buf, dk_struck[t]);
             dk_struck[t] = 0;
         }
@@ -1153,10 +1193,12 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         y->sc = sc1;
         return;
     }
-    mangle_block(t, buf, mg);                    /* MANGLE */
-    for (i = 0; i < CTL; i++) {                  /* (a DC blocker, ~10 Hz: FM with feedback can sit off centre) */
-        int32_t xg = mulq12(buf[i], TRACK_GAIN);
-        buf[i] = xg - lp8(&y->dc, xg, 47);
+    FAR(mangle_block)(t, buf, mg);               /* MANGLE (in the flash: RAM is short) */
+    for (i = 0; i < CTL;) { /* (a DC blocker, ~10 Hz: FM with feedback can sit off centre) */
+        REP4({
+            int32_t xg = mulq12(buf[i], TRACK_GAIN);
+            buf[i] = xg - lp8(&y->dc, xg, 47);
+        })
     }
     lim_block(&y->lim_env, &y->lim_g, buf);
     if (dk_mask >> t & 1u)                       /* (a source: its hits followed) */
@@ -1185,29 +1227,31 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         int32_t dd = (sd1 - y->sd) / CTL, dv = (sr1 - y->sr) / CTL, dc = (sc1 - y->sc) / CTL;
         int32_t g = y->g, pl = y->pl, pr = y->pr, sd = y->sd, sr = y->sr, sc = y->sc;
         uint32_t sch = 0, sdl = 0, srv = 0;
-        for (i = 0; i < CTL; i++) {
-            int32_t x;
-            g += dg;
-            pl += dl;
-            pr += dr;
-            sd += dd;
-            sr += dv;
-            sc += dc;
-            x = (int32_t)(((int64_t)buf[i] * g) >> 14);
-            pk = maxi(pk, absi(x));
-            if (dk_on) {                         /* (what it sends, for its share of each return) */
-                int32_t a = absi(x);
-                sch += (uint32_t)mulq15(a, sc);
-                sdl += (uint32_t)mulq15(a, sd);
-                srv += (uint32_t)mulq15(a, sr);
-            }
-            if (duck)                            /* (ducked: under its source's hits) */
-                x = (int32_t)(((int64_t)x * (dk_gp[t] + dk_dg * (int32_t)(i + 1u))) >> 16);
-            mixl[i] += mulq15(x, pl);
-            mixr[i] += mulq15(x, pr);
-            dlin[i] += mulq15(x, sd);
-            rvin[i] += mulq15(x, sr);
-            chin[i] += mulq15(x, sc);
+        for (i = 0; i < CTL;) {
+            REP4({
+                int32_t x;
+                g += dg;
+                pl += dl;
+                pr += dr;
+                sd += dd;
+                sr += dv;
+                sc += dc;
+                x = (int32_t)(((int64_t)buf[i] * g) >> 14);
+                pk = maxi(pk, absi(x));
+                if (dk_on) {                         /* (what it sends, for its share of each return) */
+                    int32_t a = absi(x);
+                    sch += (uint32_t)mulq15(a, sc);
+                    sdl += (uint32_t)mulq15(a, sd);
+                    srv += (uint32_t)mulq15(a, sr);
+                }
+                if (duck)                            /* (ducked: under its source's hits) */
+                    x = (int32_t)(((int64_t)x * (dk_gp[t] + dk_dg * (int32_t)(i + 1u))) >> 16);
+                mixl[i] += mulq15(x, pl);
+                mixr[i] += mulq15(x, pr);
+                dlin[i] += mulq15(x, sd);
+                rvin[i] += mulq15(x, sr);
+                chin[i] += mulq15(x, sc);
+            })
         }
         y->g = g1;
         y->pl = pl1;
@@ -1265,6 +1309,9 @@ static int shed_voice(int held)
     if (ok == NVOICE)
         return 0;
     vox[ok].fade = FADE;
+#if TELEMETRY
+    tl_shed++;
+#endif
     return 1;
 }
 static void budget_guard(void)
@@ -1279,6 +1326,9 @@ static void budget_guard(void)
         if (ok == NVOICE)
             return;
         vox[ok].fade = SHED;
+#if TELEMETRY
+        tl_shed += 100u;                         /* (the guard's: counted apart, x 100) */
+#endif
         vox[ok].fade_n = SHED;
         pred -= pred < vox[ok].cost ? pred : vox[ok].cost;
     }
@@ -1315,14 +1365,28 @@ static void mix_block(int32_t *out)
             shed_voice(1);
         shed_req = 0;
     }
-    for (i = 0; i < CTL; i++)
-        l_[i] = r_[i] = dlin[i] = rvin[i] = chin[i] = 0;
-    for (t = 0; t < NTRACK; t++)
-        track_block(t, l_, r_, dlin, rvin, chin);
+    for (i = 0; i < CTL;) {
+        REP4({
+            l_[i] = r_[i] = dlin[i] = rvin[i] = chin[i] = 0;
+        })
+    }
+    for (t = 0; t < NTRACK; t++) {
+#if TELEMETRY
+        uint32_t c1 = COST_NOW();
+        FAR(track_block)(t, l_, r_, dlin, rvin, chin);
+        tl_trk[t] += COST_NOW() - c1;
+#else
+        FAR(track_block)(t, l_, r_, dlin, rvin, chin);
+#endif
+    }
+#if TELEMETRY
+    {
+        uint32_t c2 = COST_NOW();
+#endif
     if (!dk_on) {
-        ch_block(chin, l_, r_, dlin, rvin);
-        dl_block(dlin, l_, r_, rvin);
-        rv_block(rvin, l_, r_);
+        TL_FX(0, FAR(ch_block)(chin, l_, r_, dlin, rvin))
+        TL_FX(1, FAR(dl_block)(dlin, l_, r_, rvin))
+        TL_FX(2, FAR(rv_block)(rvin, l_, r_))
         dk_rg[0] = dk_rg[1] = dk_rg[2] = Q16;
     } else {   /* each return apart, ducked by its tracks' share in it (a ducked pad's reverb ducked with it) */
         int32_t wl[CTL], wr[CTL];
@@ -1338,31 +1402,47 @@ static void mix_block(int32_t *out)
                 den += w;
             }
             g1 = den ? (int32_t)(num / den) << 4 : Q16;
-            for (i = 0; i < CTL; i++)
-                wl[i] = wr[i] = 0;
+            for (i = 0; i < CTL;) {
+                REP4({
+                    wl[i] = wr[i] = 0;
+                })
+            }
             if (f == 0u)
-                ch_block(chin, wl, wr, dlin, rvin);
+                TL_FX(0, FAR(ch_block)(chin, wl, wr, dlin, rvin))
             else if (f == 1u)
-                dl_block(dlin, wl, wr, rvin);
+                TL_FX(1, FAR(dl_block)(dlin, wl, wr, rvin))
             else
-                rv_block(rvin, wl, wr);
+                TL_FX(2, FAR(rv_block)(rvin, wl, wr))
             g = dk_rg[f];
             dg = (g1 - g) / (int32_t)CTL;
-            for (i = 0; i < CTL; i++) {
-                g += dg;
-                l_[i] += (int32_t)(((int64_t)wl[i] * g) >> 16);
-                r_[i] += (int32_t)(((int64_t)wr[i] * g) >> 16);
+            for (i = 0; i < CTL;) {
+                REP4({
+                    g += dg;
+                    l_[i] += (int32_t)(((int64_t)wl[i] * g) >> 16);
+                    r_[i] += (int32_t)(((int64_t)wr[i] * g) >> 16);
+                })
             }
             dk_rg[f] = g1;
         }
     }
-    cp_block(l_, r_);                            /* the compressor: the master's, the returns in it (a pad's tails duck) */
+#if TELEMETRY
+        tl_fx += COST_NOW() - c2;
+    }
+#endif
+    TL_FX(3, FAR(cp_block)(l_, r_))                            /* the compressor: the master's, the returns in it (a pad's tails duck) */
     met_block(l_, r_);
-    for (i = 0; i < CTL; i++) {
-        out[2u * i] = ceiling(mulq12(l_[i], master_q12));
-        out[2u * i + 1u] = ceiling(mulq12(r_[i], master_q12));
+    for (i = 0; i < CTL;) {
+        REP4({
+            out[2u * i] = ceiling(mulq12(l_[i], master_q12));
+            out[2u * i + 1u] = ceiling(mulq12(r_[i], master_q12));
+        })
     }
     blk_last = COST_NOW() - c0;
+#if TELEMETRY
+    tl_all += blk_last;
+    tl_max = blk_last > tl_max ? blk_last : tl_max;
+    tl_n++;
+#endif
     blk_clock++;
 }
 

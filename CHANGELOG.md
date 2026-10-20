@@ -1,5 +1,44 @@
 # Changelog
 
+## Build 31
+
+Fixed
+- A SWARMER triad against a kick cut the kick to a dry transient: the FM-1 ran out of time with four voices and
+  the voice budget's guard let the kick's tail go. Kick + three pad notes (DRIVEN KICK, SWARM DRONE) took up to
+  106 % of a block's time; it now takes ~70 % on average, ~77 % at most, and nothing is cut. Measured on the FM-1
+  (a diagnostic build, `tools/build.py --telemetry`, read with `tools/telelog.py`): where a block's time went,
+  per 0.73 ms block:
+
+  |                      | build 30 | build 31 |
+  |----------------------|---------:|---------:|
+  | reverb               | 20.9 %   | 11.1 %   |
+  | FM DRUM kick (voice) | 13.9 %   | 12.7 %   |
+  | SWARMER, each note   | 10.5 %   | 9.9 %    |
+  | kick + 3 pad notes   | 83 % mean, 106 % peak | 70 % mean, 77 % peak |
+
+  - The reverb's tank runs at half the rate (22.05 kHz): its input filtered at 44.1 kHz, two samples averaged a
+    step, its output brought back up between steps; the modulation's LFOs once a block, a line between. The same
+    lengths, decay and shelf (its coefficient converted for the rate); it differs from the old by ~2 % of its
+    energy, above ~11 kHz.
+  - SWARMER sums its six oscillators per wave and crossfades the two sums once a sample, not each oscillator
+    (the same output within rounding, 73 dB down).
+  - FM DRUM skips its noise once the noise's envelope is at 0, and the transient once past its longest (20 ms):
+    the same output, bit for bit.
+  - The audio's hot code (the machines, the chain, the tracks' block, the chorus, delay and compressor) runs
+    from RAM, and the short per-sample loops are unrolled by 4: fewer of the slow peaks (a block's worst case
+    107 % to 86 %).
+- The update loader is always built at -Os: an -O2 loader never answered, and an install stalled in update mode.
+
+Not yet
+- A fuller arrangement (kick, a pad triad, hats, an FM lead, an FM bass at once) still overloads: up to ~130 % of
+  a block, the pad's notes cut. Voices cost ~10 to 14 % of a block each, the effects ~17 %.
+
+Tools
+- `tools/build_install.sh`: build; install only when the build printed its package line and no FAIL; then check
+  that the FM-1 answers over USB.
+- `tools/telelog.py pads | arr | bench`: the diagnostic build's reports (a kick and 1 .. 4 pad notes; the
+  arrangement above; the chip's costs measured at start-up).
+
 ## Build 30
 
 Fixed

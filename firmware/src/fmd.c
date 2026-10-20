@@ -151,7 +151,7 @@ static void fd_on(fdv_t *v, const fdck_t *c, int fresh, uint32_t seed)
 
 /* the transients: short attacks drawn by type (TRAN 0 .. 127, eight kinds across the range) at sample n since the
  * note began; 0 once over */
-static int32_t fd_transient(fdv_t *v, uint32_t kind, uint32_t n)
+FAST static int32_t fd_transient(fdv_t *v, uint32_t kind, uint32_t n)
 {
     int32_t env, x;
     uint32_t len = 220u + kind * 90u;                       /* 5 .. 20 ms */
@@ -193,7 +193,7 @@ AINL int32_t fd_folder(int32_t x, int32_t g, int32_t wet)
     return x + mulq15(y * 2 - x, wet);                       /* (x 2: the shape peaks near half scale) */
 }
 
-static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *out)
+FAST static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *out)
 {
     const fdalg_t *g = c->alg;
     uint32_t inc, ic[3], i, k;
@@ -229,6 +229,8 @@ static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *out)
     dne = ((ne1 >> 9) - n) / (int32_t)CTL;
     dea = (v->ea - ea0) / (int32_t)CTL;
     deb = (v->eb - eb0) / (int32_t)CTL;
+    {
+    int noise = c->nlev && (n || dne);           /* (the noise's envelope at 0 the whole block: none) */
     for (i = 0; i < CTL; i++) {
         int32_t o[3] = {0, 0, 0}, lv[3], body, nz, y;
         b += dbe;
@@ -258,20 +260,23 @@ static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *out)
             body = (body + mulq15(o[FD_B], eb0)) >> 1;
         body = mulq15(body, c->blev);
         /* the noise: white, or grains (a fresh value now and then, silence between) */
-        if (c->gran >= Q16 || (int32_t)(rnd_next(&v->rn) >> 16) < c->gran)
-            nz = rnd_bi(&v->rn);
-        else
-            nz = 0;
-        if (c->gran < Q16)
-            nz = mulq12(nz, c->gran_g);
-        if (c->nrm)
-            nz = mulq15(nz, o[FD_C]);
-        nz = bw_run(&v->s1, &v->s2, &c->nb, nz);
-        nz = mulq12(mulq15(nz, n), c->nlev);
-        y = body + nz;
-        if (c->tlev)
+        y = body;
+        if (noise) {
+            if (c->gran >= Q16 || (int32_t)(rnd_next(&v->rn) >> 16) < c->gran)
+                nz = rnd_bi(&v->rn);
+            else
+                nz = 0;
+            if (c->gran < Q16)
+                nz = mulq12(nz, c->gran_g);
+            if (c->nrm)
+                nz = mulq15(nz, o[FD_C]);
+            nz = bw_run(&v->s1, &v->s2, &c->nb, nz);
+            y += mulq12(mulq15(nz, n), c->nlev);
+        }
+        if (c->tlev && v->tn < 220u + 7u * 90u)      /* (the transients' longest: past it, nothing) */
             y += mulq15(fd_transient(v, c->tran / 16u, v->tn), c->tlev);
         v->tn++;
         out[i] = y;
+    }
     }
 }

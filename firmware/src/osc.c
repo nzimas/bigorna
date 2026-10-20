@@ -48,7 +48,7 @@ typedef struct {
     int32_t x;                   /* the crossfade, Q15 */
 } morph_t;
 /* x (Q15, 0 .. 1) along the n waves from wave first */
-static void morph_set(morph_t *m, uint32_t first, uint32_t n, int32_t x, uint32_t inc)
+FAST static void morph_set(morph_t *m, uint32_t first, uint32_t n, int32_t x, uint32_t inc)
 {
     uint32_t lv = wt_level(inc), seg;
     int32_t q = clampi(x, 0, Q15) * (int32_t)(n - 1u);       /* Q15 */
@@ -70,7 +70,7 @@ AINL int32_t morph_rd(const morph_t *m, uint32_t ph)
     return a + (((wt_rd(m->b, m->sh, ph) - a) * m->x) >> 15);
 }
 /* .. along a bank of single cycles (no levels): x Q15 along n from wave first */
-static void morph_sc(morph_t *m, uint32_t first, uint32_t n, int32_t x)
+FAST static void morph_sc(morph_t *m, uint32_t first, uint32_t n, int32_t x)
 {
     int32_t q = clampi(x, 0, Q15) * (int32_t)(n - 1u);
     uint32_t seg = (uint32_t)q >> 15;

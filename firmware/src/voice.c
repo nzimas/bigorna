@@ -87,7 +87,7 @@ static void env_release(env_t *e, const envck_t *c)           /* a note let go *
                                                                * still rising decays from its top) */
 }
 /* a block on; returns the level, Q24 */
-static int32_t env_step(env_t *e, const envck_t *c, int gate)
+FAST static int32_t env_step(env_t *e, const envck_t *c, int gate)
 {
     switch (e->st) {
     case EV_DEL:
@@ -286,15 +286,17 @@ static void vc_off(vchain_t *v, const vck_t *c)
 }
 
 AINL int32_t sat16(int32_t x) { return clampi(x, -32767, 32767); }
-static void vc_srr(vchain_t *v, const vck_t *c, int32_t *x)
+FAST static void vc_srr(vchain_t *v, const vck_t *c, int32_t *x)
 {
     uint32_t i, inc = c->srr_inc;
-    for (i = 0; i < CTL; i++) {
-        uint32_t was = v->srr_ph;
-        v->srr_ph += inc;
-        if (v->srr_ph < was)
-            v->srr_hold = x[i];
-        x[i] = v->srr_hold;
+    for (i = 0; i < CTL;) {
+        REP4({
+            uint32_t was = v->srr_ph;
+            v->srr_ph += inc;
+            if (v->srr_ph < was)
+                v->srr_hold = x[i];
+            x[i] = v->srr_hold;
+        })
     }
 }
 #define OD_EMPH 3110             /* 1 - e^(-2 pi 700 / FS), Q15 */
@@ -303,33 +305,38 @@ AINL int32_t od_stage(const vck_t *c, int32_t e)   /* the two stages (e biased) 
     int32_t u = tanh_q15((int32_t)(((int64_t)e * c->od_g1) >> 12));
     return od_asym(mulq12(u, c->od_g2) + c->od_b) - c->od_fb;
 }
-static void vc_od(vchain_t *v, const vck_t *c, int32_t *x)
+FAST static void vc_od(vchain_t *v, const vck_t *c, int32_t *x)
 {
     uint32_t i;
-    for (i = 0; i < CTL; i++) {
-        int32_t dry = x[i], e, o;
-        v->od_pre += mulq15(dry - v->od_pre, OD_EMPH);
-        e = 2 * dry - v->od_pre;                 /* the highs +6 dB */
-        v->od_env = absi(e) > v->od_env ? absi(e) : v->od_env - (v->od_env >> 12);
-        e += mulq15(v->od_env, c->od_beta);      /* (a bias in step with the level: lopsided however hard) */
-        o = od_stage(c, e);
-        v->od_post += mulq15(o - v->od_post, OD_EMPH);
-        o = (o + v->od_post) >> 1;               /* the highs -6 dB again */
-        v->od_dc += (((o << 8) - v->od_dc) * 37) >> 15;   /* (~8 Hz) */
-        o -= v->od_dc >> 8;
-        v->od_lp += mulq15(o - v->od_lp, c->od_tone);
-        o = mulq12(v->od_lp, c->od_mk);
-        x[i] = dry + mulq15(o - dry, c->od_w);
+    for (i = 0; i < CTL;) {
+        REP4({
+            int32_t dry = x[i], e, o;
+            v->od_pre += mulq15(dry - v->od_pre, OD_EMPH);
+            e = 2 * dry - v->od_pre;                 /* the highs +6 dB */
+            v->od_env = absi(e) > v->od_env ? absi(e) : v->od_env - (v->od_env >> 12);
+            e += mulq15(v->od_env, c->od_beta);      /* (a bias in step with the level: lopsided however hard) */
+            o = od_stage(c, e);
+            v->od_post += mulq15(o - v->od_post, OD_EMPH);
+            o = (o + v->od_post) >> 1;               /* the highs -6 dB again */
+            v->od_dc += (((o << 8) - v->od_dc) * 37) >> 15;   /* (~8 Hz) */
+            o -= v->od_dc >> 8;
+            v->od_lp += mulq15(o - v->od_lp, c->od_tone);
+            o = mulq12(v->od_lp, c->od_mk);
+            x[i] = dry + mulq15(o - dry, c->od_w);
+        })
     }
 }
-static void vc_bw(vchain_t *v, const vck_t *c, int32_t *x)
+FAST static void vc_bw(vchain_t *v, const vck_t *c, int32_t *x)
 {
     uint32_t i;
-    for (i = 0; i < CTL; i++)
-        x[i] = bw_run(&v->bh, &v->bl, &c->bw, x[i]);
+    for (i = 0; i < CTL;) {
+        REP4({
+            x[i] = bw_run(&v->bh, &v->bl, &c->bw, x[i]);
+        })
+    }
 }
 /* the FLTR machine, its frequency moved by its envelope (Q24 level) and the note */
-static void vc_filter(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, int32_t elv)
+FAST static void vc_filter(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, int32_t elv)
 {
     int32_t ef = (int32_t)(((int64_t)c->f_env * elv) >> 24);   /* the envelope's move, of FREQ's span, Q16 */
     int32_t oct = c->f_oct + (int32_t)(((int64_t)ef * FREQ_SPAN) >> 16)
@@ -341,31 +348,38 @@ static void vc_filter(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, i
         svf_c k;
         int32_t m = c->mm;
         svf_coef(&k, hz_of_oct(oct), c->f_q);
-        for (i = 0; i < CTL; i++) {                          /* (svf_run's step, its three outputs) */
-            int32_t v3 = x[i] - v->s1.ic2;
-            int32_t v1 = mulr16(k.a1, v->s1.ic1) + mulr24(k.a2, v3);
-            int32_t v2 = v->s1.ic2 + mulr24(k.a2, v->s1.ic1) + mulr24(k.a3, v3);
-            int32_t hp = x[i] - mulr24(k.k, v1) - v2;
-            v->s1.ic1 = 2 * v1 - v->s1.ic1;
-            v->s1.ic2 = 2 * v2 - v->s1.ic2;
-            x[i] = m < Q15 ? v2 + mulq15(v1 - v2, m) : v1 + mulq15(hp - v1, m - Q15);
+        for (i = 0; i < CTL;) { /* (svf_run's step, its three outputs) */
+            REP4({
+                int32_t v3 = x[i] - v->s1.ic2;
+                int32_t v1 = mulr16(k.a1, v->s1.ic1) + mulr24(k.a2, v3);
+                int32_t v2 = v->s1.ic2 + mulr24(k.a2, v->s1.ic1) + mulr24(k.a3, v3);
+                int32_t hp = x[i] - mulr24(k.k, v1) - v2;
+                v->s1.ic1 = 2 * v1 - v->s1.ic1;
+                v->s1.ic2 = 2 * v2 - v->s1.ic2;
+                x[i] = m < Q15 ? v2 + mulq15(v1 - v2, m) : v1 + mulq15(hp - v1, m - Q15);
+            })
         }
         break;
     }
     case FLT_LEG: {
         svf_c k;
         svf_coef(&k, hz_of_oct(oct), c->f_q);
-        for (i = 0; i < CTL; i++)
-            x[i] = svf_run(&v->s1, &k, x[i], c->leg_hp ? 3 : 1);
+        for (i = 0; i < CTL;) {
+            REP4({
+                x[i] = svf_run(&v->s1, &k, x[i], c->leg_hp ? 3 : 1);
+            })
+        }
         break;
     }
     case FLT_EQ: {
         svf_c k;
         int32_t g = c->eq_g;
         svf_coef(&k, hz_of_oct(oct), c->eq_q);
-        for (i = 0; i < CTL; i++) {                          /* x + (A^2 - 1) k bp */
-            int32_t bp = svf_run(&v->s1, &k, x[i], 2);
-            x[i] += mulq12(mulq12(bp, c->eq_k), g);
+        for (i = 0; i < CTL;) { /* x + (A^2 - 1) k bp */
+            REP4({
+                int32_t bp = svf_run(&v->s1, &k, x[i], 2);
+                x[i] += mulq12(mulq12(bp, c->eq_k), g);
+            })
         }
         break;
     }
@@ -377,22 +391,24 @@ static void vc_filter(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, i
         uint32_t den = (uint32_t)((1 << 24) + g) >> 8;
         G = Q16 - (int32_t)(0xFFFFFFFFu / den);              /* g / (1 + g) = 1 - 1 / (1 + g), Q16 */
         k = mulq16(k, Q16 - (G >> 1));                       /* (less of it as the cutoff nears the top) */
-        for (i = 0; i < CTL; i++) {
-            int32_t u = tanh_q15(mulq12(x[i], comp) - mulq12(y4, k)), vv;
-            vv = mulq16(u - s0, G);                          /* v = (u - s) G, y = v + s, s = y + v */
-            u = vv + s0;
-            s0 = u + vv;
-            vv = mulq16(u - s1, G);
-            u = vv + s1;
-            s1 = u + vv;
-            vv = mulq16(u - s2, G);
-            u = vv + s2;
-            s2 = u + vv;
-            vv = mulq16(u - s3, G);
-            u = vv + s3;
-            s3 = u + vv;
-            y4 = u;
-            x[i] = u;
+        for (i = 0; i < CTL;) {
+            REP4({
+                int32_t u = tanh_q15(mulq12(x[i], comp) - mulq12(y4, k)), vv;
+                vv = mulq16(u - s0, G);                          /* v = (u - s) G, y = v + s, s = y + v */
+                u = vv + s0;
+                s0 = u + vv;
+                vv = mulq16(u - s1, G);
+                u = vv + s1;
+                s1 = u + vv;
+                vv = mulq16(u - s2, G);
+                u = vv + s2;
+                s2 = u + vv;
+                vv = mulq16(u - s3, G);
+                u = vv + s3;
+                s3 = u + vv;
+                y4 = u;
+                x[i] = u;
+            })
         }
         v->s1.ic1 = s0;
         v->s1.ic2 = s1;
@@ -413,13 +429,15 @@ static void vc_filter(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, i
         lp = lp1_coef(mulq15(22000, lp) + 20);
         d8 = (uint32_t)FS * 256u / (uint32_t)maxi(hz_of_oct(coct), 16);   /* the period, Q8 */
         d8 = d8 < 512u ? 512u : d8 > (COMB_N - 2u) << 8 ? (COMB_N - 2u) << 8 : d8;
-        for (i = 0; i < CTL; i++) {
-            uint32_t p = ((w << 8) - d8) & ((COMB_N << 8) - 1u), i0 = p >> 8, f8 = p & 255u;
-            int32_t a = v->cb[i0], b = v->cb[(i0 + 1u) & (COMB_N - 1u)], d = a + (((b - a) * (int32_t)f8) >> 8), y;
-            y = x[i] + mulq15(lp8(&v->cb_lp, d, lp), fb);
-            v->cb[w] = (int16_t)sat16(y);
-            w = (w + 1u) & (COMB_N - 1u);
-            x[i] = y >> 1;
+        for (i = 0; i < CTL;) {
+            REP4({
+                uint32_t p = ((w << 8) - d8) & ((COMB_N << 8) - 1u), i0 = p >> 8, f8 = p & 255u;
+                int32_t a = v->cb[i0], b = v->cb[(i0 + 1u) & (COMB_N - 1u)], d = a + (((b - a) * (int32_t)f8) >> 8), y;
+                y = x[i] + mulq15(lp8(&v->cb_lp, d, lp), fb);
+                v->cb[w] = (int16_t)sat16(y);
+                w = (w + 1u) & (COMB_N - 1u);
+                x[i] = y >> 1;
+            })
         }
         v->cb_w = w;
         break;
@@ -431,7 +449,7 @@ AINL int32_t quant(int32_t x, uint32_t st, uint32_t inv)
 {
     return (int32_t)(((int64_t)x * inv + 0x80000000LL) >> 32) * (int32_t)st;
 }
-static void vc_br(const vck_t *c, int32_t *x)
+FAST static void vc_br(const vck_t *c, int32_t *x)
 {
     uint32_t i, b = (uint32_t)c->br_bits, bi = b >> 8, st0, st1, inv0, inv1;
     int32_t fr = (int32_t)(b & 255u) << 7;                    /* Q15 */
@@ -441,15 +459,17 @@ static void vc_br(const vck_t *c, int32_t *x)
     st1 = bi < 15u ? st0 >> 1 : 1u;
     inv0 = 0xFFFFFFFFu / st0;
     inv1 = 0xFFFFFFFFu / st1;
-    for (i = 0; i < CTL; i++) {
-        int32_t a = quant(x[i], st0, inv0);
-        x[i] = a + mulq15(quant(x[i], st1, inv1) - a, fr);
+    for (i = 0; i < CTL;) {
+        REP4({
+            int32_t a = quant(x[i], st0, inv0);
+            x[i] = a + mulq15(quant(x[i], st1, inv1) - a, fr);
+        })
     }
 }
 
 /* the chain over a block of the machine's output (note16: the note played, semitones Q16; vel 1 .. 127); returns
  * 0 once the AMP envelope has ended */
-static int vc_block(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, int32_t vel)
+FAST static int vc_block(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, int32_t vel)
 {
     int32_t a0 = v->ae.lv, a1, fl;
     uint32_t i;
@@ -470,9 +490,11 @@ static int vc_block(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16, int
         vc_br(c, x);
     {   /* the AMP envelope (a line across the block), VOL and the note's level */
         int32_t g = mulq15(c->vol, vel * 258), e = a0 >> 9, de = ((a1 >> 9) - e) / (int32_t)CTL;
-        for (i = 0; i < CTL; i++) {
-            e += de;
-            x[i] = mulq15(mulq15(x[i], e), g);
+        for (i = 0; i < CTL;) {
+            REP4({
+                e += de;
+                x[i] = mulq15(mulq15(x[i], e), g);
+            })
         }
     }
     return v->ae.st != EV_DONE;

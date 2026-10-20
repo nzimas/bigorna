@@ -640,16 +640,37 @@ static void rec_release(uint32_t k)
 
 static void midi_take(void)
 {
+#if TELEMETRY
+    if (tl_ready) {                              /* (a diagnosis: a recipe on a track, or its level) */
+        uint32_t t = tl_cmd[1] % NTRACK;
+        if (tl_cmd[0] == 0x56u && tl_cmd[2] < NENG) {
+            gen_sound(&ui.snd[t][tl_cmd[2]], tl_cmd[2], tl_cmd[3], -1, 7u + t);
+            ui.eng[t] = tl_cmd[2];
+        } else if (tl_cmd[0] == 0x57u) {
+            ui.level[t] = tl_cmd[2];
+            level_pan_apply(t);
+        }
+        mark(t);
+        ui.force = 1;
+        RING_PUBLISH();
+        tl_ready = 0;
+    }
+#endif
     while (mi_r != mi_w) {
         uint32_t pkt = midi_in_q[mi_r % MQ], cin = pkt & 15u, note = (pkt >> 16) & 0x7Fu, vel = pkt >> 24 & 0x7Fu;
+#if TELEMETRY
+        uint32_t tt = (pkt >> 8 & 15u) < NTRACK ? (pkt >> 8 & 15u) : ui.sel;   /* (channel 1 .. 6: track 1 .. 6) */
+#else
+        uint32_t tt = ui.sel;
+#endif
         RING_PUBLISH();
         mi_r++;
         if (cin == 9u && vel) {
             if (ui.midi_track[note] != 0xFFu)
                 ev_post(EV_OFF, ui.midi_track[note], note, 0);
-            ui.midi_track[note] = ui.sel;
-            ui.last_note[ui.sel] = (uint8_t)note;
-            ev_post(EV_ON, ui.sel, note, vel);
+            ui.midi_track[note] = (uint8_t)tt;
+            ui.last_note[tt] = (uint8_t)note;
+            ev_post(EV_ON, tt, note, vel);
             rec_note(note, vel, NKEY);
             loop_note(note, vel, NKEY);
         } else if ((cin == 8u || cin == 9u) && ui.midi_track[note] != 0xFFu) {

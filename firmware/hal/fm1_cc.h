@@ -8,3 +8,6 @@
 #pragma once
 
 #define FM1_INLINE static inline __attribute__((always_inline))
+
+/* a value kept in a register, the compiler unable to fold it away (benchmarks) */
+FM1_INLINE int fm1_keep(int x) { __asm__ volatile("" : "+r"(x)); return x; }
