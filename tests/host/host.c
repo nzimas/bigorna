@@ -2135,6 +2135,43 @@ static int cmd_projects(const char *dir)
         EXPECT(ui.page == PG_MAIN && prj_cur == (int32_t)k && prj_has[k], "SAVE: saved into it");
         (void)was;
     }
+    {   /* SAVE pressed and let go apart, as the panel does it: the list, a session's page, LOAD (build 39) */
+        uint32_t k, x;
+        for (k = 0; k < PRJ_SLOTS && !prj_has[k]; k++)
+            ;
+        prj_dirty = 0;
+        pat_dirty = 0;
+        ui.page = PG_MAIN;
+        prj_cur = -1;
+        for (x = 0; x < 2u; x++) {               /* (the list; the slot's page) */
+            fm1_in.buttons |= 1u << PANEL_BTN[B_SAVE];
+            host_press = 1u << PANEL_BTN[B_SAVE];
+            ui_input();
+            fm1_ms += 150;
+            ui_input();
+            fm1_in.buttons = 0;
+            ui_input();
+            fm1_ms += 300;
+            if (!x)
+                pj.slot[0] = (uint8_t)k;
+        }
+        EXPECT(ui.page == PG_PRJD, "SAVE tapped twice: the slot's page");
+        pj.row = PR_LOAD;
+        {   /* (SAVE held a second and more on LOAD, as a firm press: loaded, not saved) */
+            uint32_t e0 = host_erases;
+            fm1_in.buttons |= 1u << PANEL_BTN[B_SAVE];
+            host_press = 1u << PANEL_BTN[B_SAVE];
+            ui_input();
+            for (x = 0; x < 12u; x++) {
+                fm1_ms += 100;
+                ui_input();
+            }
+            fm1_in.buttons = 0;
+            ui_input();
+            EXPECT(ui.page == PG_MAIN && prj_cur == (int8_t)k, "SAVE held 1.2 s on LOAD: the session loaded");
+            EXPECT(host_erases == e0, "SAVE held on LOAD: nothing saved");
+        }
+    }
     {   /* the loops with the session (build 38): saved, loaded back whole; every loop full (7 sectors) saved over and
          * over into one slot; copied; the last session loaded at the start */
         static loop_t want[NTRACK][NLOOP];

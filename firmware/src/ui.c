@@ -1000,19 +1000,24 @@ static void ui_input(void)
         ui.ehalf = 0;
         ui.force = 1;
     }
-    /* SAVE: let go soon, the projects (projects.c); held 0.8 s, the session saved (none: the first empty slot, asked) */
+    /* SAVE: on the sessions' pages, their own at once, as pressed (held, nothing more: a long press must not save in
+     * place of LOAD -- build 39). Elsewhere: let go soon, the sessions' list; held 0.8 s, the session saved (none:
+     * the first empty slot, asked) */
     if (btn_bit(press, B_SAVE)) {
-        ui.save_down = 1;
-        ui.save_long = 0;
-        ui.save_t0 = fm1_ms;
+        if (ui.page == PG_PRJ || ui.page == PG_PRJD) {
+            prj_press(sh);
+            ui.save_down = 0;
+        } else {
+            ui.save_down = 1;
+            ui.save_long = 0;
+            ui.save_t0 = fm1_ms;
+        }
     }
     if (ui.save_down) {
         if (!btn_bit(fm1_in.buttons, B_SAVE)) {
             ui.save_down = 0;
             if (ui.save_long)
                 ;
-            else if (ui.page == PG_PRJ || ui.page == PG_PRJD)
-                prj_press(sh);
             else if (!sh) {
                 ui.page = PG_PRJ;
                 ui.force = 1;

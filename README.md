@@ -294,7 +294,7 @@ LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE. SAVE runs the row chosen, or moves
 changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not saved, saving over another session,
 copying over one and deleting ask first (NO / YES on PRESETS).
 
-SAVE held 0.8 s (or HOME held) saves the session playing into its slot at once. If it has never been saved, the
+SAVE held 0.8 s (or HOME held), outside the sessions' pages, saves the session playing into its slot at once. If it has never been saved, the
 first empty slot's page shows SAVE NEW? with YES chosen: SAVE saves it there and goes back to the track (PRESETS
 left: NO). With all 16 slots taken, NO FREE SLOT shows.
 

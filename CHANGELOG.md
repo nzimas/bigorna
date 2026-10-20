@@ -1,5 +1,12 @@
 # Changelog
 
+## Build 39
+
+Fixed
+- On the sessions' pages SAVE acts as it is pressed again, as before build 37. Since build 37 it acted when let go,
+  and a press of 0.8 s or more counted as SAVE held: on LOAD it saved the session in place instead of loading the
+  one chosen. SAVE held now saves only from the other pages.
+
 ## Build 38
 
 Added
