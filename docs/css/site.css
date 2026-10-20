@@ -112,6 +112,12 @@ p.note { color: var(--dim); font-size: 15px; }
 main .shot h2 { margin: 0 0 8px; padding: 0; border: 0; font-size: 28px; }
 .shot p { margin: 0 0 8px; color: var(--dim); }
 
+.major { display: grid; gap: 18px; margin: 26px 0 8px; }
+.big { background-color: var(--plate2); border: 1px solid var(--line); border-left: 6px solid var(--steel); padding: 22px 28px 20px; }
+main .big h2 { margin: 0 0 10px; padding: 0; border: 0; font-size: clamp(28px, 4vw, 40px); }
+.big p, .big li { color: var(--steel); }
+.big ul { padding-left: 20px; margin: 8px 0; }
+.big li { margin: 6px 0; }
 .machines { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin: 18px 0 0; }
 .machine { background-color: var(--plate2); border: 1px solid var(--line); border-top: 3px solid var(--mid); padding: 18px 20px 20px; }
 main .machine h3 { margin: 0 0 6px; font-size: 28px; }
