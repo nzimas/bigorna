@@ -1563,6 +1563,11 @@ static int cmd_projects(const char *dir)
         EXPECT(ui.page == PG_FXP && ui.fx_pg == 1u && ui.half == 1u && ui.eng[ui.sel] == k,
                "the effects: OCT the next, PRESETS the half");
         btn(B_GLO, 0);
+        EXPECT(ui.page == PG_FXP && ui.sel == 5u, "a track's button on the effects' pages: the track chosen, the page kept");
+        ui_draw();
+        shot(dir, "fx_comp_track");
+        while (ui.page == PG_FXP)
+            btn(B_SEQ, 0);
         {   /* MANGLE: SLICE gates the track in time; DESTROY breaks its samples; off, the track as it was */
             int32_t out[2 * CTL];
             uint32_t i, kind;
@@ -1668,12 +1673,23 @@ static int cmd_projects(const char *dir)
         static uint8_t sec[PRJ_SECT];
         prj_head_t *h = (prj_head_t *)(void *)sec;
         fx_cp[CP_THR] = 50;
-        fx_cp[CP_SCS] = 1;
+        sc_src[2] = 1;
+        sc_lvl[2] = 100;
         EXPECT(!prj_save(2), "(session 3 saved)");
         fx_cp[CP_THR] = 0;
-        fx_cp[CP_SCS] = 0;
-        EXPECT(!prj_load(2) && fx_cp[CP_THR] == 50u && fx_cp[CP_SCS] == 1u && cpc.sct == 1u,
-               "the compressor kept with the session");
+        sc_src[2] = 0;
+        sc_lvl[2] = 0;
+        EXPECT(!prj_load(2) && fx_cp[CP_THR] == 50u && sc_src[2] == 1u && sc_lvl[2] == 100u,
+               "the compressor and the tracks' sidechains kept with the session");
+        memcpy(sec, host_flash + prj_sector(2, 0), sizeof sec);   /* (as build 28 kept it: no tracks' sidechains) */
+        h->what = 11u * 16u;
+        h->len = PRJ_LEN28;
+        h->body_crc = prj_crc(sec + sizeof(prj_head_t), PRJ_LEN28);
+        h->head_crc = prj_crc(sec, __builtin_offsetof(prj_head_t, head_crc));
+        memcpy(host_flash + prj_sector(11, 0), sec, sizeof sec);
+        prj_scan(1);
+        EXPECT(prj_has[11] && !prj_load(11) && fx_cp[CP_THR] == 50u && !sc_src[2], "a session from build 28: no track ducked");
+        EXPECT(!prj_load(2), "(session 3 back)");
         memcpy(sec, host_flash + prj_sector(2, 0), sizeof sec);   /* (session 3 as build 23 kept it: no compressor) */
         h->what = 10u * 16u;
         h->len = PRJ_LEN23;
@@ -1703,22 +1719,21 @@ static int cmd_projects(const char *dir)
             mix_block(out);
         gr_lo = cp.gr;
         EXPECT(gr_lo > gr_hi + (6 << 16), "a lower threshold: more taken off");
-        fx_cp[CP_SCS] = 6;                       /* track 6 as the sidechain: silent -- nothing off */
-        fx_cook_all();
-        for (i = 0; i < 600u; i++)
-            mix_block(out);
-        EXPECT(cp.gr < gr_lo / 4, "a silent track as the sidechain: the mix let be");
-        {   /* a kick on track 1 each beat as the source, a pad held on track 2: the pad ducked deep, the kick let be */
-            int32_t gmax = 0, gmin = 1 << 30;
-            uint32_t b;
+        {   /* a track's sidechain: a kick on track 1 each beat, a pad held on track 2 (SC T1), another pad on track 3
+             * (OFF): track 2 ducked by its SC LEVEL, on the hit and back within the beat; track 3 and the kick let be */
+            int32_t gmin = Q16, gmax = 0, g3min = Q16;
+            uint32_t b, lvl, over = 0, all = 0;
             for (i = 0; i < 4u; i++)
                 ev_post(EV_STOP, i, 0, 0);
             gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 1, -1, 99u);
             ui.eng[0] = ENG_FMD;
             gen_sound(&ui.snd[1][ENG_WAV], ENG_WAV, 43, -1, 7u);
             ui.eng[1] = ENG_WAV;
+            gen_sound(&ui.snd[2][ENG_WAV], ENG_WAV, 43, -1, 8u);
+            ui.eng[2] = ENG_WAV;
             mark(0);
             mark(1);
+            mark(2);
             for (i = 0; i < 8u; i++) {
                 ui_publish();
                 mix_block(out);
@@ -1729,54 +1744,46 @@ static int cmd_projects(const char *dir)
             memset((void *)seq_dir, DIR_FWD, sizeof seq_dir);
             seq_note[0][0] = seq_note[0][4] = seq_note[0][8] = seq_note[0][12] = 36;
             memcpy(fx_cp, CP0, NCP);
-            fx_cp[CP_SCS] = 1;
             fx_cook_all();
+            memset((void *)sc_src, 0, sizeof sc_src);
+            sc_src[1] = 1;
             ev_post(EV_ON, 1, 60, 127);
+            ev_post(EV_ON, 2, 64, 127);
             seq_run = 1;
-            for (b = 0; b < 3000u; b++) {
-                mix_block(out);
-                if (b > 600u) {
-                    gmax = cp.gr > gmax ? cp.gr : gmax;
-                    gmin = cp.gr < gmin ? cp.gr : gmin;
-                }
-            }
-            EXPECT(gmax > (7 << 16) && gmin < (2 << 16), "a kick as the source: the rest ducked 7 dB and more, back between");
-            {   /* a pump: the duck on the hit, gone well before the next (not held through the kick's body) */
-                uint32_t over = 0, all = 0;
-                for (b = 0; b < 1380u; b++) {
+            for (lvl = 0; lvl < 3u; lvl++) {     /* SC LEVEL 50, 100, 0 */
+                sc_lvl[1] = (uint8_t)(lvl == 0u ? 64 : lvl == 1u ? 127 : 0);
+                gmin = Q16;
+                gmax = 0;
+                g3min = Q16;
+                over = all = 0;
+                for (b = 0; b < 2800u; b++) {
                     mix_block(out);
-                    all++;
-                    over += cp.gr > (3 << 16);
-                }
-                EXPECT(over * 2u < all, "a pump: ducked by 3 dB and more less than half of each beat");
-            }
-            {   /* as heard: the pad (the kick's dry share taken out), quietest and loudest 25 ms over a beat */
-                double lo = 1e30, hi = 0;
-                uint32_t w, sounding = 0;
-                while (seq_pos[0] != 0u || seq_tacc_now[0] > SEQ_STEP8 / 2u)
-                    mix_block(out);
-                for (w = 0; w < 20u; w++) {
-                    double e = 0;
-                    uint32_t q, j;
-                    for (q = 0; q < 34u; q++) {
-                        mix_block(out);
-                        for (j = 0; j < 2u * CTL; j++) {
-                            double pd = out[j] - (double)mulq12(j & 1u ? cp_scr[j >> 1] : cp_scl[j >> 1], master_q12);
-                            e += pd * pd;
-                        }
+                    if (b > 700u) {
+                        gmin = dk_gp[1] < gmin ? dk_gp[1] : gmin;
+                        gmax = dk_gp[1] > gmax ? dk_gp[1] : gmax;
+                        g3min = dk_gp[2] < g3min ? dk_gp[2] : g3min;
+                        all++;
+                        over += dk_gp[1] < Q16 / 2;
                     }
-                    lo = e < lo ? e : lo;
-                    hi = e > hi ? e : hi;
                 }
-                for (w = 0; w < NVOICE; w++)
-                    sounding += vox[w].sounding;
-                EXPECT(10.0 * log10(hi / (lo + 1.0)) > 8.0, "as heard: the pad, its tails too, ducked 8 dB and more each kick");
-                EXPECT(sounding <= 4u, "the kicks choke: no tails piling up");
+                if (lvl == 0u)
+                    EXPECT(gmin < Q16 / 4 && gmin > Q16 / 64 && gmax > Q16 * 9 / 10,
+                           "SC LEVEL 50: ducked ~20 dB on the hit, back between");
+                else if (lvl == 1u)
+                    EXPECT(gmin < Q16 / 50 && over * 10u < all * 7u,
+                           "SC LEVEL 100: down near 40 dB on the hit (a gate), back for part of the beat");
+                else
+                    EXPECT(gmin == Q16, "SC LEVEL 0: let be");
+                EXPECT(g3min == Q16, "a track with SC SOURCE OFF: let be");
             }
+            sc_src[1] = 0;
             seq_run = 0;
             ev_post(EV_STOP, 1, 0, 0);
+            ev_post(EV_STOP, 2, 0, 0);
             for (i = 0; i < 400u; i++)
                 mix_block(out);
+            for (i = 0; i < 4u; i++)
+                ev_post(EV_STOP, i, 0, 0);
         }
         for (i = 0; i < 4u; i++)
             ev_post(EV_STOP, i, 0, 0);
@@ -1914,143 +1921,22 @@ static int cmd_od(void)
     return 0;
 }
 
-/* host duck [CP]: a kick on track 1 each beat, a pad held on track 2, SC SOURCE T1: the gain taken off as it goes
- * (CP=..: the compressor by hand, as phrases), and the pad's level between the kicks */
-static int cmd_duck(const char *wav)
+/* host duck [LEVEL] [WAV]: a kick (DRIVEN KICK) on track 1 each beat, a reverb locked on its first step; a SWARMER pad
+ * (SWARM DRONE) held on track 2, two notes, its SC SOURCE T1 at SC LEVEL (0 .. 100, default 70): the pad's duck over a
+ * beat (dB, each 25 ms), rendered to WAV */
+static int cmd_duck(int lvl, const char *wav)
 {
     static int16_t pb[44100 * 4 * 2];
     int32_t out[2 * CTL];
-    uint32_t i, fr = 44100u * 4u / CTL;
-    int32_t grmax = 0, grmin = 1 << 30;
+    uint32_t i, n = 0, fr = 44100u * 4u / CTL;
     tracks_init();
     ui_init();
-    gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 1, -1, 99u);    /* DEEP KICK */
+    gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 2, -1, 99u);
     ui.eng[0] = ENG_FMD;
-    gen_sound(&ui.snd[1][ENG_WAV], ENG_WAV, 43, -1, 7u);    /* WAVE PAD */
-    ui.eng[1] = ENG_WAV;
-    for (i = 2; i < NTRACK; i++)
-        ui.level[i] = 0, level_pan_apply(i);
-    for (i = 0; i < NTRACK; i++)
-        mark(i);
-    for (i = 0; i < 8u; i++) {
-        ui_publish();
-        mix_block(out);
-    }
-    memset((void *)seq_note, 0, sizeof seq_note);
-    seq_note[0][0] = seq_note[0][4] = seq_note[0][8] = seq_note[0][12] = 36;
-    for (i = 0; i < NSTEP; i++)
-        seq_vel[0][i] = 127;
-    fx_cp[CP_SCS] = 1;
-    if (getenv("CP")) {
-        int v[8];
-        sscanf(getenv("CP"), "%d,%d,%d,%d,%d,%d,%d,%d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7]);
-        for (i = 0; i < 8u; i++)
-            fx_cp[i] = (uint8_t)v[i];
-    }
-    fx_cook_all();
-    ev_post(EV_ON, 1, 60, 127);
-    seq_run = 1;
-    for (i = 0; i < fr; i++) {
-        uint32_t j;
-        mix_block(out);
-        for (j = 0; j < 2u * CTL; j++)
-            pb[i * 2u * CTL + j] = (int16_t)clampi(out[j], -32768, 32767);
-        if (i > fr / 4u) {
-            grmax = cp.gr > grmax ? cp.gr : grmax;
-            grmin = cp.gr < grmin ? cp.gr : grmin;
-        }
-        if (i % 40u == 0u && i < 1300u)
-            printf("%4u gr %5.1f env %7d sc %6d\n", i, cp.gr / 65536.0, cp.env >> 8, cp_sc[0]);
-    }
-    printf("GR max %.1f min %.1f dB (threshold %d)\n", grmax / 65536.0, grmin / 65536.0, fx_cp[CP_THR]);
-    {   /* the pad's level as heard: the output with the kick's track silenced in it (its level 0), 25 ms windows
-         * over a beat, with the compressor and without */
-        uint32_t pass;
-        for (pass = 0; pass < 2u; pass++) {
-            uint32_t n, w;
-            double lv[20];
-            fx_cp[CP_MIX] = pass ? 0 : 127;
-            fx_cook_all();
-            ui.snd[0][ENG_FMD].fx[X_DEL] = ui.snd[0][ENG_FMD].fx[X_REV] = ui.snd[0][ENG_FMD].fx[X_CHR] = 0;
-            mark(0);
-            ui_publish();                        /* (the kick dry only: its share taken out of what is heard below) */
-            for (n = 0; n < 700u; n++)
-                mix_block(out);
-            while (seq_pos[0] != 0u || seq_tacc_now[0] > SEQ_STEP8 / 2u)
-                mix_block(out);
-            for (w = 0; w < 20u; w++) {
-                double e = 0;
-                uint32_t q, j;
-                for (q = 0; q < 34u; q++) {
-                    mix_block(out);
-                    for (j = 0; j < 2u * CTL; j++) {
-                        double pad = out[j] - (double)mulq12(j & 1u ? cp_scr[j >> 1] : cp_scl[j >> 1], master_q12);
-                        e += pad * pad;
-                    }
-                }
-                lv[w] = 10.0 * log10(e / (34.0 * 2 * CTL) / (32768.0 * 32768.0) + 1e-12);
-            }
-            printf("%s the pad, dBFS each 25 ms over a beat:", pass ? "dry:" : "COMP:");
-            for (w = 0; w < 20u; w++)
-                printf(" %5.1f", lv[w]);
-            printf("\n");
-        }
-        fx_cp[CP_MIX] = 127;
-        fx_cook_all();
-    }
-    {   /* the kick's track over one beat: one pad note, then two */
-        uint32_t notes;
-        for (notes = 1; notes <= 3u; notes++) {
-            uint32_t n, b0 = 0;
-            int32_t mt[8];
-            if (notes > 1u)
-                ev_post(EV_ON, 1, 60 + 4 * notes, 127);
-            for (n = 0; n < 900u; n++)
-                mix_block(out);
-            while (seq_pos[0] != 0u || seq_tacc_now[0] > SEQ_STEP8 / 2u)
-                mix_block(out);
-            for (n = 0; n < 8u; n++) {
-                uint32_t q;
-                int32_t pk = 0;
-                for (q = 0; q < 70u; q++) {
-                    mix_block(out);
-                    pk = trk[0].meter > pk ? trk[0].meter : pk;
-                }
-                mt[n] = pk;
-            }
-            printf("pad notes %u: the kick's track, peak each 50 ms:", notes);
-            for (n = 0; n < 8u; n++)
-                printf(" %5d", mt[n]);
-            for (n = 0, b0 = 0; n < NVOICE; n++)
-                b0 += vox[n].sounding;
-            printf("   voices sounding %u, GR %.1f\n", b0, cp.gr / 65536.0);
-        }
-    }
-    if (wav)
-        wav_write(wav, pb, fr * CTL);
-    return 0;
-}
-
-/* host duck2: a kick (DRIVEN KICK) on track 1 each beat, a reverb locked on its first step; a SWARMER pad (SWARM PAD)
- * held on track 2, two notes; SC SOURCE T1 (or MIX, sc 0). Rendered twice from the same start, the pad's level 0 the
- * second time (it is not the sidechain: the compressor does the same): the kick as heard is the second, the pad as
- * heard the difference. dBFS each 25 ms over a beat */
-static float d2_gr[44100 * 6 / 32], d2_sc[44100 * 6 / 32];
-static void duck2_run(int pad_on, uint32_t sc, int16_t *o, uint32_t blocks)
-{
-    int32_t out[2 * CTL];
-    uint32_t i, n = 0;
-    host_ticks = 0;
-    tracks_init();
-    ui_init();
-    gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 2, -1, 99u);    /* DRIVEN KICK */
-    ui.eng[0] = ENG_FMD;
-    gen_sound(&ui.snd[1][ENG_SWM], ENG_SWM, 53, -1, 7u);    /* SWARM PAD */
+    gen_sound(&ui.snd[1][ENG_SWM], ENG_SWM, 54, -1, 7u);
     ui.eng[1] = ENG_SWM;
     for (i = 2; i < NTRACK; i++)
         ui.level[i] = 0;
-    if (!pad_on)
-        ui.level[1] = 0;
     for (i = 0; i < NTRACK; i++) {
         level_pan_apply(i);
         mark(i);
@@ -2062,72 +1948,22 @@ static void duck2_run(int pad_on, uint32_t sc, int16_t *o, uint32_t blocks)
     memset((void *)seq_note, 0, sizeof seq_note);
     seq_note[0][0] = seq_note[0][4] = seq_note[0][8] = seq_note[0][12] = 36;
     (void)pl_set(0, 0, PL_REV, 110);
-    fx_cp[CP_SCS] = (uint8_t)sc;
-    fx_cook_all();
-    ev_post(EV_ON, 1, 60, 127);
-    ev_post(EV_ON, 1, 67, 127);
+    sc_src[1] = 1;
+    sc_lvl[1] = (uint8_t)pct_raw(lvl);
+    ev_post(EV_ON, 1, 48, 127);
+    ev_post(EV_ON, 1, 55, 127);
     seq_run = 1;
-    for (i = 0; i < blocks; i++) {
+    for (i = 0; i < fr; i++) {
         uint32_t j;
-        int32_t pk = 0;
         mix_block(out);
-        for (j = 0; j < CTL; j++)
-            pk = absi(cp_sc[j]) > pk ? absi(cp_sc[j]) : pk;
-        d2_gr[i] = (float)(cp.gr / 65536.0);
-        d2_sc[i] = (float)(20.0 * log10(pk / 32768.0 + 1e-6));
         for (j = 0; j < 2u * CTL; j++)
-            o[n++] = (int16_t)clampi(out[j], -32768, 32767);
+            pb[n++] = (int16_t)clampi(out[j], -32768, 32767);
+        if (i >= 1378u && i < 1378u + 690u && (i - 1378u) % 34u == 0u)
+            printf("%5.0f", 20.0 * log10(dk_gp[1] / 65536.0 + 1e-9));
     }
-}
-static void duck2_show(const char *what, const int16_t *a, const int16_t *b, uint32_t from)
-{
-    uint32_t w, j;
-    printf("%-22s", what);
-    for (w = 0; w < 20u; w++) {
-        double e = 0;
-        for (j = 0; j < 34u * CTL * 2u; j++) {
-            uint32_t k = from + w * 34u * CTL * 2u + j;
-            double d = (double)a[k] - (b ? (double)b[k] : 0.0);
-            e += d * d;
-        }
-        printf(" %5.1f", 10.0 * log10(e / (34.0 * CTL * 2.0) / (32768.0 * 32768.0) + 1e-12));
-    }
-    printf("\n");
-}
-static int cmd_duck2(void)
-{
-    static int16_t full[44100 * 6 * 2], kick[44100 * 6 * 2];
-    uint32_t blocks = 44100u * 3u / CTL, from = 1800u * CTL * 2u, sc;
-    for (sc = 1; sc != 0xFFu; sc = sc ? 0u : 0xFFu) {   /* (T1, then MIX) */
-        duck2_run(1, sc, full, blocks);
-        duck2_run(0, sc, kick, blocks);
-        printf("SC %s, a beat from a kick:\n", sc ? "T1" : "MIX");
-        duck2_show("  the kick as heard", kick, 0, from);
-        duck2_show("  the pad as heard", full, kick, from);
-        duck2_show("  the whole", full, 0, from);
-        {
-            uint32_t w, q;
-            printf("  GR dB, max a window   ");
-            for (w = 0; w < 20u; w++) {
-                float m = 0;
-                for (q = 0; q < 34u; q++)
-                    m = d2_gr[1800u + w * 34u + q] > m ? d2_gr[1800u + w * 34u + q] : m;
-                printf(" %5.1f", m);
-            }
-            printf("\n  kick dry dBFS (sc)    ");
-            for (w = 0; w < 20u; w++) {
-                float m = -120;
-                for (q = 0; q < 34u; q++)
-                    m = d2_sc[1800u + w * 34u + q] > m ? d2_sc[1800u + w * 34u + q] : m;
-                printf(" %5.1f", m);
-            }
-            printf("\n");
-        }
-        if (!sc) {
-            wav_write("build/sounds/duck2_mix.wav", full, blocks * CTL);
-        } else
-            wav_write("build/sounds/duck2_t1.wav", full, blocks * CTL);
-    }
+    printf("   (the pad's duck, dB, each 25 ms over a beat; SC LEVEL %d)\n", lvl);
+    if (wav)
+        wav_write(wav, pb, fr * CTL);
     return 0;
 }
 
@@ -2277,10 +2113,8 @@ int main(int argc, char **argv)
     }
     if (argc >= 2 && !strcmp(argv[1], "prof"))
         return cmd_prof();
-    if (argc >= 2 && !strcmp(argv[1], "duck2"))
-        return cmd_duck2();
     if (argc >= 2 && !strcmp(argv[1], "duck"))
-        return cmd_duck(argc >= 3 ? argv[2] : 0);
+        return cmd_duck(argc >= 3 ? atoi(argv[2]) : 70, argc >= 4 ? argv[3] : 0);
     if (argc >= 2 && !strcmp(argv[1], "od"))
         return cmd_od();
     if (argc >= 2 && !strcmp(argv[1], "cost"))

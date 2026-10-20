@@ -62,6 +62,16 @@ static void ck_cook(ck_t *c, const sound_t *s)
 }
 static int32_t send_q15(int32_t v) { return v * v * Q15 / 16129; }
 
+/* each track's sidechain (the COMP page's second half, the chosen track's: SC SOURCE, SC LEVEL): the track ducked
+ * under another's hits (fx.c's dk_*), by SC LEVEL, 0 .. 100 (raw 0 .. 127): up to 45 dB on the hit, near a gate.
+ * SC SOURCE 0: off */
+static volatile uint8_t sc_src[NTRACK], sc_lvl[NTRACK] = {64, 64, 64, 64, 64, 64};
+static dk_t dk[NTRACK];                          /* (the ISR's: each source's hits) */
+static int32_t dk_att[NTRACK];                   /* (the duck now, dB Q16) */
+static int32_t dk_gp[NTRACK] = {Q16, Q16, Q16, Q16, Q16, Q16};   /* (its gain as the last block ended) */
+static uint8_t dk_mask;                          /* (the tracks some track ducks under) */
+static uint8_t dk_struck[NTRACK];                /* (a note began on the track this block: a hit) */
+
 /* a step's parameter locks (the sequencer's): up to NPL a step, each a parameter of the sound -- its id, page x 8 +
  * knob (params.c: SYN 1 .. 4, FLTR 1, FLTR 2, AMP, FX, MANGLE), or PL_PAN -- and its value. The note's own (the
  * machine, the filter, the amp, the drive ..) are cooked into the voice as its note starts; the track's (the sends,
@@ -263,6 +273,7 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
             }
         }
     }
+    dk_struck[t] = 1;                            /* (a hit, for the tracks it ducks) */
     best = voice_pick(t, y->xfade != 0);
     if (best == NVOICE)
         return;
@@ -1013,7 +1024,8 @@ static void lim_block(int32_t *env, int32_t *g, int32_t *x)
 static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin, int32_t *rvin, int32_t *chin)
 {
     track_t *y = &trk[t];
-    int32_t buf[CTL], vb[CTL], pk = 0, sd1, sr1, sc1, pl1, pr1;
+    int32_t buf[CTL], vb[CTL], pk = 0, sd1, sr1, sc1, pl1, pr1, dk_dg = 0, dk_next = Q16;
+    int duck = 0;
     uint8_t mg[NM];
     uint32_t i, k, any = 0;
     const ck_t *c;
@@ -1120,6 +1132,11 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         }
     }
     if (!any) {
+        if (dk_mask >> t & 1u) {                 /* (a source, silent: its level falls) */
+            memset(buf, 0, sizeof buf);
+            dk_feed(&dk[t], buf, dk_struck[t]);
+            dk_struck[t] = 0;
+        }
         y->meter -= y->meter >> 4;
         y->g = trk_gain[t];
         y->pl = pl1;
@@ -1135,6 +1152,26 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         buf[i] = xg - lp8(&y->dc, xg, 47);
     }
     lim_block(&y->lim_env, &y->lim_g, buf);
+    if (dk_mask >> t & 1u)                       /* (a source: its hits followed) */
+        dk_feed(&dk[t], buf, dk_struck[t]);
+    dk_struck[t] = 0;
+    {   /* this track ducked under its source's hits: by SC LEVEL (0 .. 100: up to 45 dB, near a gate) as the source's
+         * level stands against its hit, coming down at ATTACK, back as the source's level falls (RELEASE) */
+        uint32_t src = sc_src[t];
+        if (src && src - 1u != t && src <= NTRACK && sc_lvl[t]) {
+            int32_t e = dk_e(&dk[src - 1u]), d = (sc_lvl[t] * 100 + 63) / 127, att = e * d / 10 * 9;   /* (dB,
+                                                                                         * Q16: 0.45 dB a step of 100) */
+            int32_t g1;
+            dk_att[t] = att > dk_att[t] ? dk_att[t] + (int32_t)(((int64_t)(att - dk_att[t]) * cpc.ka) >> 16) : att;
+            g1 = (int32_t)exp2_q16(-(dk_att[t] * 100 / 602));
+            dk_dg = (g1 - dk_gp[t]) / (int32_t)CTL;
+            duck = 1;
+            dk_next = g1;
+        } else {
+            dk_att[t] = 0;
+            dk_gp[t] = Q16;
+        }
+    }
     {   /* the level, the pan and the sends, gliding over the block */
         int32_t g1 = trk_gain[t];
         int32_t dg = (g1 - y->g) / CTL, dl = (pl1 - y->pl) / CTL, dr = (pr1 - y->pr) / CTL;
@@ -1150,11 +1187,8 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
             sc += dc;
             x = (int32_t)(((int64_t)buf[i] * g) >> 14);
             pk = maxi(pk, absi(x));
-            if (cpc.sct == t + 1u) {             /* (the compressor's sidechain: this track, and its share of the mix) */
-                cp_sc[i] = x;
-                cp_scl[i] = mulq15(x, pl);
-                cp_scr[i] = mulq15(x, pr);
-            }
+            if (duck)                            /* (ducked: under its source's hits) */
+                x = (int32_t)(((int64_t)x * (dk_gp[t] + dk_dg * (int32_t)(i + 1u))) >> 16);
             mixl[i] += mulq15(x, pl);
             mixr[i] += mulq15(x, pr);
             dlin[i] += mulq15(x, sd);
@@ -1169,6 +1203,8 @@ static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin,
         y->sc = sc1;
     }
     y->meter = pk > y->meter ? pk : y->meter - (y->meter >> 5);
+    if (duck)
+        dk_gp[t] = dk_next;
 }
 
 /* above half scale, a soft knee into a ceiling at full scale */
@@ -1237,9 +1273,13 @@ static void mix_block(int32_t *out)
     int32_t l_[CTL], r_[CTL], dlin[CTL], rvin[CTL], chin[CTL];
     uint32_t i, t, c0 = COST_NOW();
     events_take();
-    memset(cp_sc, 0, sizeof cp_sc);
-    memset(cp_scl, 0, sizeof cp_scl);
-    memset(cp_scr, 0, sizeof cp_scr);
+    {   /* the tracks some track ducks under (their hits followed: dk_feed) */
+        uint32_t m = 0, q;
+        for (q = 0; q < NTRACK; q++)
+            if (sc_src[q] && sc_src[q] - 1u != q && sc_src[q] <= NTRACK && sc_lvl[q])
+                m |= 1u << (sc_src[q] - 1u);
+        dk_mask = (uint8_t)m;
+    }
     seq_block();
     {   /* MANGLE's clock: where in the bar this block starts (the sequencer's, playing; else its own at the tempo) */
         uint32_t bpm = (uint32_t)clampi(fx_bpm10, 100, 3000);

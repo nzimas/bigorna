@@ -178,8 +178,12 @@ static struct {
 static const char *const RVN[NRV] = {"PRE", "DECAY", "FREQ", "GAIN", "HPF", "LPF", "VOLUME"};
 static const char *const DLN[NDL] = {"TIME", "PING PONG", "WIDTH", "FEEDBACK", "HPF", "LPF", "REVERB", "VOLUME"};
 static const char *const CHN[NCH] = {"DEPTH", "SPEED", "HPF", "WIDTH", "DELAY", "REVERB", "VOLUME"};
-static const char *const CPN[NCP] = {"THRESHOLD", "ATTACK", "RELEASE", "RATIO", "MAKEUP", "SC FILTER", "SC SOURCE",
-                                     "MIX"};
+/* the COMP page's rows: the compressor's six, then the chosen track's sidechain (SC SOURCE, SC LEVEL: in its colour) */
+static const char *const CPN[NCP] = {"THRESHOLD", "ATTACK", "RELEASE", "RATIO", "MAKEUP", "MIX", "SC SOURCE", "SC LEVEL"};
+#define CMP_SRC 0xFEu
+#define CMP_LVL 0xFFu
+static const uint8_t CMP_SLOT[NCP] = {CP_THR, CP_ATK, CP_REL, CP_RAT, CP_MUP, CP_MIX, CMP_SRC, CMP_LVL};
+static uint16_t row_tint;                        /* (draw_row: a row's name and value in this colour, 0 none) */
 enum { FXP_CHR, FXP_CMP, FXP_DEL, FXP_REV, NFXP };   /* (the effects' pages, in turn) */
 static const char *const FXT[NFXP] = {"CHORUS", "COMP", "DELAY", "REVERB"};
 #define C_SEND RGB(140, 190, 255)
@@ -407,28 +411,46 @@ static uint8_t *fx_vals(void)
 {
     return ui.fx_pg == FXP_REV ? fx_rv : ui.fx_pg == FXP_DEL ? fx_dl : ui.fx_pg == FXP_CMP ? fx_cp : fx_ch;
 }
+static int32_t fx_get(uint32_t k)                /* an effect's parameter k (COMP: its row, CMP_SLOT) */
+{
+    if (ui.fx_pg == FXP_CMP)
+        return CMP_SLOT[k] == CMP_SRC ? sc_src[ui.sel] : CMP_SLOT[k] == CMP_LVL ? sc_lvl[ui.sel] : fx_cp[CMP_SLOT[k]];
+    return fx_vals()[k];
+}
+static void fx_put(uint32_t k, int32_t v)
+{
+    if (ui.fx_pg == FXP_CMP && CMP_SLOT[k] == CMP_SRC)
+        sc_src[ui.sel] = (uint8_t)v;
+    else if (ui.fx_pg == FXP_CMP && CMP_SLOT[k] == CMP_LVL)
+        sc_lvl[ui.sel] = (uint8_t)v;
+    else if (ui.fx_pg == FXP_CMP)
+        fx_cp[CMP_SLOT[k]] = (uint8_t)v;
+    else
+        fx_vals()[k] = (uint8_t)v;
+}
 static uint32_t fx_n(void) { return ui.fx_pg == FXP_REV ? NRV : ui.fx_pg == FXP_DEL ? NDL : ui.fx_pg == FXP_CMP ? NCP : NCH; }
-/* an effect's parameter: 0 shown as it is (DELAY's TIME, PING PONG), 1 as 0 .. 100, 2 as -50 .. +50 (DELAY's WIDTH,
- * COMP's SC FILTER), 3 a list (COMP's RATIO, SC SOURCE) */
+/* an effect's parameter: 0 shown as it is (DELAY's TIME, PING PONG), 1 as 0 .. 100, 2 as -50 .. +50 (DELAY's WIDTH),
+ * 3 a list (COMP's RATIO, SC SOURCE) */
 static uint32_t fx_kind(uint32_t j)
 {
     if (ui.fx_pg == FXP_DEL && (j == DL_TIME || j == DL_X))
         return 0;
-    if (ui.fx_pg == FXP_CMP && (j == CP_RAT || j == CP_SCS))
+    if (ui.fx_pg == FXP_CMP && (CMP_SLOT[j] == CP_RAT || CMP_SLOT[j] == CMP_SRC))
         return 3u;
-    return (ui.fx_pg == FXP_DEL && j == DL_WID) || (ui.fx_pg == FXP_CMP && j == CP_SCF) ? 2u : 1u;
+    return ui.fx_pg == FXP_DEL && j == DL_WID ? 2u : 1u;
 }
-static uint32_t fx_list_n(uint32_t j) { return j == CP_RAT ? NCP_RAT : NCP_SCS; }
+static uint32_t fx_list_n(uint32_t j) { return CMP_SLOT[j] == CP_RAT ? NCP_RAT : NCP_SCS; }
 static void fx_turn(uint32_t j, int32_t s)
 {
-    uint8_t *v = fx_vals();
+    int32_t v;
     uint32_t kd;
     if (j >= fx_n())
         return;
     kd = fx_kind(j);
-    v[j] = (uint8_t)(kd == 1u ? pct_raw(pct_disp(v[j]) + s) : kd == 2u ? bip_raw(bip_disp(v[j]) + s)
-                     : kd == 3u ? clampi(v[j] + s, 0, (int32_t)fx_list_n(j) - 1)
-                     : clampi(v[j] + s, 0, ui.fx_pg == FXP_DEL && j == DL_X ? 1 : 127));
+    v = fx_get(j);
+    fx_put(j, kd == 1u ? pct_raw(pct_disp(v) + s) : kd == 2u ? bip_raw(bip_disp(v) + s)
+              : kd == 3u ? clampi(v + s, 0, (int32_t)fx_list_n(j) - 1)
+              : clampi(v + s, 0, ui.fx_pg == FXP_DEL && j == DL_X ? 1 : 127));
     fx_cook_all();
     prj_dirty = 1;
 }
@@ -822,7 +844,8 @@ static void ui_input(void)
     for (t = 0; t < NTRACK; t++)
         if (btn_bit(press, TRACK_BTN[t])) {
             ui.sel = (uint8_t)t;
-            if (ui.page == PG_FXP || ui.page == PG_TEMPO || pg_any())
+            if (ui.page == PG_TEMPO || pg_any())    /* (the effects' pages stay: COMP's sidechain is the chosen
+                                                      * track's) */
                 ui.page = PG_MAIN;
             if (ui.page == PG_EDIT && ui.edit_pg >= pages_n(cur()))
                 ui.edit_pg = 0;
@@ -1520,8 +1543,8 @@ static void draw_row(uint32_t r, const char *name, const char *val, int32_t frac
     const font_t *fn = &FONT_XS, *fv = text_w(&FONT_XS, name) + text_w(&FONT_S, val) + 12 <= 228 ? &FONT_S : &FONT_XS;
     cv_begin(240, 47, bg);
     if (name[0]) {
-        cv_text(6, 1 + (FONT_M.h - fn->h) / 2, fn, name, touched ? C_BLACK : RGB(200, 200, 200));
-        cv_text(234 - text_w(fv, val), 1 + (FONT_M.h - fv->h) / 2, fv, val, fg);
+        cv_text(6, 1 + (FONT_M.h - fn->h) / 2, fn, name, touched ? C_BLACK : row_tint ? row_tint : RGB(200, 200, 200));
+        cv_text(234 - text_w(fv, val), 1 + (FONT_M.h - fv->h) / 2, fv, val, touched || !row_tint ? fg : row_tint);
         cv_rect(6, 38, 228, 6, touched ? C_GREY : RGB(60, 60, 60));
         if (bip) {
             int32_t x0 = 120, x1 = 6 + frac * 228 / 1000;
@@ -1579,7 +1602,7 @@ static void dl_time_text(char *b, int32_t v)   /* TIME as 128th notes: 1 .. 128 
 static void fx_text(uint32_t k, int32_t x, char *b)   /* an effect's parameter k, as it reads */
 {
     if (ui.fx_pg == FXP_CMP && fx_kind(k) == 3u)
-        str_cpy(b, k == CP_RAT ? CP_RATN[x % NCP_RAT] : CP_SCSN[x % NCP_SCS], 8);
+        str_cpy(b, CMP_SLOT[k] == CP_RAT ? CP_RATN[x % NCP_RAT] : SC_SRCN[x % NCP_SCS], 8);
     else if (ui.fx_pg == FXP_DEL && k == DL_TIME)
         dl_time_text(b, x);
     else if (ui.fx_pg == FXP_DEL && k == DL_X)
@@ -1602,29 +1625,32 @@ static const char *fx_name(uint32_t k)
 }
 static void draw_fx_page(void)
 {
-    const uint8_t *v = fx_vals();
     uint32_t j;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
-    int full = ui.force || ui.shown_page != PG_FXP || ui.shown_half != ui.half || ui.shown_sub != ui.fx_pg + 100u;
+    uint32_t sub = ui.fx_pg + 100u + (ui.fx_pg == FXP_CMP ? 10u * ui.sel : 0u);   /* (COMP: the chosen track's too) */
+    int full = ui.force || ui.shown_page != PG_FXP || ui.shown_half != ui.half || ui.shown_sub != sub;
     if (full)
         draw_rows_title(FXT[ui.fx_pg], ui.half ? "E-H" : "A-D", C_SEND);
     for (j = 0; j < 4u; j++) {
         uint32_t k = j + 4u * ui.half;
         char b[16];
         const char *name = k < fx_n() ? fx_name(k) : "";
-        int32_t x = k < fx_n() ? v[k] : 0;
+        int32_t x = k < fx_n() ? fx_get(k) : 0;
         if (!full && ui.shown_rows[j] == x && ((int32_t)j == t) == ((int32_t)j == ui.shown_touch))
             continue;
         fx_text(k, x, b);
+        row_tint = ui.fx_pg == FXP_CMP && k < fx_n() && CMP_SLOT[k] >= CMP_SRC ? TRACK_COL[ui.sel] : 0;   /* (the
+                                                                                    * chosen track's, in its colour) */
         draw_row(j, name, b,
                  k < fx_n() && fx_kind(k) == 3u ? x * 1000 / (int32_t)(fx_list_n(k) - 1u)
                  : (ui.fx_pg == FXP_DEL && k == DL_X ? x * 127 : x) * 1000 / 127,
-                 k < fx_n() && fx_kind(k) == 2u, (int32_t)j == t, C_SEND);
+                 k < fx_n() && fx_kind(k) == 2u, (int32_t)j == t, row_tint ? row_tint : C_SEND);
+        row_tint = 0;
         ui.shown_rows[j] = x;
     }
     ui.shown_touch = (int8_t)t;
     ui.shown_half = ui.half;
-    ui.shown_sub = (uint8_t)(ui.fx_pg + 100u);
+    ui.shown_sub = (uint8_t)sub;
 }
 
 /* the step held, on the step view's TRIG knobs: NOTE, VEL, LEN, COND as an EDIT page's rows */

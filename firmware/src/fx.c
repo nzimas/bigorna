@@ -13,17 +13,12 @@
  *   CHORUS  DPTH, SPD, HPF (on its input), WDTH, DEL, REV, VOL: two taps on one short line, swept by an LFO a
  *           quarter of a cycle apart.
  *   COMP    the master compressor (the Digitone II's, manual 12.5): on the mix after the effects' returns, as the
- *           original's (a pad's reverb and delay tails duck with it). THRESHOLD (-60 .. 0 dB), ATTACK (0.03 .. 30 ms), RELEASE (10 ms ..
- *           2 s), RATIO (1.5, 2, 3, 4, 6, 8, 16, 20), MAKEUP (0 .. +24 dB), SC FILTER (what it listens to through
- *           a low-pass, below the middle -- the bass: it pumps --, or a high-pass, above), SC SOURCE (the mix, or a
- *           track: the rest of the mix ducked under it, a pump -- the track itself only made up; listened to 12 dB
- *           louder, as one track is quieter than the mix, and for its hits: each strikes the level, which then falls
- *           at RELEASE whatever the track still sounds -- the next hit counting once the track has fallen 15.5 dB
- *           from the last), MIX (dry .. wet). Stereo, linked: the level's peaks caught at once
- *           and let fall at RELEASE; the gain coming down at ATTACK, once a block, gliding. Set at the start for
- *           pounding drums: -9 dB, 10 ms (the kick's attack through), 100 ms, 4:1, +3 dB, listening below ~200 Hz --
- *           on host phrases' renders 1 .. 3 dB taken off on the whole, 5 .. 6 dB on the hits; a kick as the source
- *           (host duck) ducks the rest by ~12 dB, back between the beats. */
+ *           original's. THRESHOLD (-60 .. 0 dB), ATTACK (0.03 .. 30 ms), RELEASE (10 ms .. 2 s), RATIO (1.5, 2, 3, 4, 6,
+ *           8, 16, 20), MAKEUP (0 .. +24 dB), MIX (dry .. wet). Stereo, linked: the level's peaks caught at once and
+ *           let fall at RELEASE; the gain coming down at ATTACK, once a block, gliding. Its ATTACK and RELEASE are the
+ *           ducks' too (each track's sidechain: tracks.c, dk_* below). Set at the start for pounding drums: -9 dB,
+ *           10 ms, 100 ms, 4:1, +3 dB, fully wet. (fx_cp's SC FILTER and SC SOURCE places, kept for sessions'
+ *           sake, are not read since build 29.) */
 
 enum { DL_TIME, DL_X, DL_WID, DL_FDBK, DL_HPF, DL_LPF, DL_REV, DL_VOL, NDL };
 enum { RV_PRE, RV_DEC, RV_FREQ, RV_GAIN, RV_HPF, RV_LPF, RV_VOL, NRV };
@@ -33,7 +28,7 @@ enum { CP_THR, CP_ATK, CP_REL, CP_RAT, CP_MUP, CP_SCF, CP_SCS, CP_MIX, NCP };
 #define NCP_SCS 7u
 static const uint8_t CP_RAT10[NCP_RAT] = {15, 20, 30, 40, 60, 80, 160, 200};   /* (x 10) */
 static const char *const CP_RATN[NCP_RAT] = {"1.5", "2", "3", "4", "6", "8", "16", "20"};
-static const char *const CP_SCSN[NCP_SCS] = {"MIX", "T1", "T2", "T3", "T4", "T5", "T6"};
+static const char *const SC_SRCN[NCP_SCS] = {"OFF", "T1", "T2", "T3", "T4", "T5", "T6"};   /* (a track's SC SOURCE) */
 
 static volatile int32_t fx_bpm10 = 1200;         /* the tempo, x 10 (the delay's time follows it) */
 
@@ -374,25 +369,15 @@ static void rv_block(const int32_t *in, int32_t *ol, int32_t *or_)
 static volatile struct {
     int32_t thr, mup;            /* dB, Q16 */
     int32_t slope;               /* 1 - 1 / ratio, Q16 */
-    uint32_t rel;                /* the level's fall, a sample, Q24 */
-    int32_t ka;                  /* the gain's coming down, a block, Q16 */
-    int32_t sclp, schp;          /* the sidechain's low-pass or high-pass, Q15 (0: none) */
+    uint32_t rel;                /* the level's fall, a sample, Q24 (RELEASE: the ducks' too) */
+    int32_t ka;                  /* the gain's coming down, a block, Q16 (ATTACK: the ducks' too) */
     int32_t mix;                 /* Q15 */
-    uint8_t sct;                 /* the sidechain: 0 the mix, 1 .. 6 a track */
 } cpc;
 static struct {
     int32_t env;                 /* the level followed (x 256) */
-    int32_t f;                   /* the sidechain filter's state */
     int32_t g;                   /* the gain as the last block ended, Q16 */
     int32_t gr;                  /* the gain taken off, dB Q16 */
-    int32_t mk;                  /* the makeup as a gain, Q16 */
-    int32_t hit;                 /* a track the source: its last hit's level (x 256) .. */
-    uint8_t armed;               /* .. and fallen 15.5 dB from it since: the next may strike */
-    uint16_t since;              /* .. blocks since it struck */
-    int32_t lv;                  /* .. its level, held over ~20 ms (x 256) */
 } cp;
-static int32_t cp_sc[CTL];       /* a track's signal, for the sidechain (tracks.c fills it) .. */
-static int32_t cp_scl[CTL], cp_scr[CTL];   /* .. and its share of the mix, each side (let be) */
 static uint32_t cp_step(uint32_t base8, int32_t oct16)   /* the level's fall: base8 (samples x 256) x 2^oct, Q24 */
 {
     uint32_t n8 = (exp2_q16(oct16) >> 12) * (base8 >> 4);
@@ -400,7 +385,6 @@ static uint32_t cp_step(uint32_t base8, int32_t oct16)   /* the level's fall: ba
 }
 static void cp_cook(const uint8_t *p)
 {
-    int32_t f = clampi(p[CP_SCF], 0, 127) - 64;
     cpc.thr = -(60 << 16) + clampi(p[CP_THR], 0, 127) * ((60 << 16) / 127);
     cpc.mup = clampi(p[CP_MUP], 0, 127) * ((24 << 16) / 127);
     cpc.slope = Q16 - (int32_t)((uint32_t)Q16 * 10u / CP_RAT10[p[CP_RAT] % NCP_RAT]);
@@ -409,77 +393,65 @@ static void cp_cook(const uint8_t *p)
         cpc.ka = (int32_t)(us <= 726u ? Q16 : 726u * (uint32_t)Q16 / (us + 363u));
     }
     cpc.rel = cp_step(112896u, clampi(p[CP_REL], 0, 127) * 3945);     /* 10 ms x 200^(v / 127) */
-    /* the sidechain: below the middle a low-pass from 20 kHz down 8.4 octaves (~60 Hz), above a high-pass from
-     * 20 Hz up 6.6 octaves (~2 kHz) */
-    cpc.sclp = f < 0 ? lp1_coef((int32_t)((20000u * (uint64_t)exp2_q16(f * 8601)) >> 16)) : 0;
-    cpc.schp = f > 0 ? lp1_coef((int32_t)((20u * (uint64_t)exp2_q16(f * 6866)) >> 16)) : 0;
     cpc.mix = clampi(p[CP_MIX], 0, 127) * Q15 / 127;
-    cpc.sct = (uint8_t)(p[CP_SCS] % NCP_SCS);
 }
 static void cp_block(int32_t *l, int32_t *r)
 {
     uint32_t i;
-    int32_t g0 = cp.g ? cp.g : Q16, g1, dg, db, gain, gr, bpk = 0;
-    for (i = 0; i < CTL; i++) {                  /* the level: its peaks at once, falling at RELEASE */
-        int32_t x = cpc.sct ? cp_sc[i] * 4 : (l[i] + r[i]) >> 1, a;   /* (a track: 12 dB louder) */
-        if (cpc.sclp) {
-            cp.f += mulq15(x - cp.f, cpc.sclp);
-            x = cp.f;
-        } else if (cpc.schp) {
-            cp.f += mulq15(x - cp.f, cpc.schp);
-            x -= cp.f;
-        }
-        a = absi(x) << 8;
-        if (cpc.sct) {                           /* a track: its hits, not its body -- a peak 3 dB over the level as
-                                                  * it has fallen strikes it again; else it falls at RELEASE, whatever
-                                                  * the track still sounds (so the rest ducks on the hit and swells
-                                                  * back, a pump) */
-            if (a > cp.env && (cp.armed || cp.since < 40u || a > 2 * cp.hit)) {   /* a hit (its first ~30 ms
-                                                                                  * followed up to its peak; one twice
-                                                                                  * the last always): it strikes */
-                if (cp.armed || a > 2 * cp.hit) {
-                    cp.since = 0;
-                    cp.hit = 0;
-                }
-                cp.env = a;
-                cp.hit = a > cp.hit ? a : cp.hit;
-                cp.armed = 0;
-            } else
-                cp.env -= (int32_t)(((int64_t)cp.env * (int32_t)cpc.rel) >> 24);
-            cp.lv = a > cp.lv ? a : cp.lv - (cp.lv >> 10);   /* (the track's level over ~20 ms: past a low cycle) */
-            bpk = cp.lv;
-        } else if (a > cp.env)
+    int32_t g0 = cp.g ? cp.g : Q16, g1, dg, db, gain, gr;
+    for (i = 0; i < CTL; i++) {                  /* the mix's level: its peaks at once, falling at RELEASE */
+        int32_t a = absi((l[i] + r[i]) >> 1) << 8;
+        if (a > cp.env)
             cp.env = a;
         else
             cp.env += (int32_t)(((int64_t)(a - cp.env) * (int32_t)cpc.rel) >> 24);
     }
-    if (cp.since < 0xFFFFu)
-        cp.since++;
-    if (cpc.sct && !cp.armed && bpk < cp.hit / 6)   /* (the track 15.5 dB down from its hit: the next counts -- a
-                                                     * kick's body, swelling as FM beats, does not) */
-        cp.armed = 1;
     /* the gain: over the threshold, the ratio's share taken off; the makeup on */
     db = cp.env > 256 ? (log2_q16((uint32_t)cp.env) - (23 << 16)) * 602 / 100 : -(96 << 16);   /* (dBFS, Q16) */
     gr = db > cpc.thr ? (int32_t)(((int64_t)(db - cpc.thr) * cpc.slope) >> 16) : 0;
     cp.gr = gr > cp.gr ? cp.gr + (int32_t)(((int64_t)(gr - cp.gr) * cpc.ka) >> 16) : gr;   /* (down at ATTACK) */
     gain = cpc.mup - cp.gr;
-    cp.mk = (int32_t)exp2_q16(cpc.mup * 100 / 602);   /* (the makeup alone: the source track's) */
     g1 = (int32_t)exp2_q16(gain * 100 / 602);
     dg = (g1 - g0) / (int32_t)CTL;
-    for (i = 0; i < CTL; i++) {                  /* (a track the source: the rest compressed; it only made up) */
-        int32_t g = g0 + dg * (int32_t)(i + 1u), xl = cpc.sct ? l[i] - cp_scl[i] : l[i],
-                xr = cpc.sct ? r[i] - cp_scr[i] : r[i];
-        int32_t wl = (int32_t)(((int64_t)xl * g) >> 16), wr = (int32_t)(((int64_t)xr * g) >> 16);
-        if (cpc.sct) {
-            wl += (int32_t)(((int64_t)cp_scl[i] * cp.mk) >> 16);
-            wr += (int32_t)(((int64_t)cp_scr[i] * cp.mk) >> 16);
-            xl = l[i];
-            xr = r[i];
-        }
-        l[i] += mulq15(wl - xl, cpc.mix);
-        r[i] += mulq15(wr - xr, cpc.mix);
+    for (i = 0; i < CTL; i++) {
+        int32_t g = g0 + dg * (int32_t)(i + 1u);
+        int32_t wl = (int32_t)(((int64_t)l[i] * g) >> 16), wr = (int32_t)(((int64_t)r[i] * g) >> 16);
+        l[i] += mulq15(wl - l[i], cpc.mix);
+        r[i] += mulq15(wr - r[i], cpc.mix);
     }
     cp.g = g1;
+}
+
+/* ---------------------------------------------------------------- ducks --- */
+/* a track's hits, for the tracks it ducks (tracks.c): each note the track strikes (the sequencer's, the keys', MIDI's)
+ * is a hit; the level follows the track up to its peak for ~30 ms, then falls at RELEASE whatever the track still
+ * sounds (a kick's swelling body never ducks again). dk_e: where the level is against its hit's, Q15 (1: struck now) */
+typedef struct {
+    int32_t env, hit;            /* the level, the hit's (x 256) */
+    uint16_t since;              /* blocks since the hit */
+} dk_t;
+static void dk_feed(dk_t *d, const int32_t *x, int struck)   /* a block of the track's signal; struck: a note began */
+{
+    uint32_t i;
+    if (struck) {
+        d->since = 0;
+        d->hit = d->env = 0;
+    }
+    for (i = 0; i < CTL; i++) {
+        int32_t a = absi(x[i]) << 8;
+        if (d->since < 40u && a > d->env) {     /* (the hit's first ~30 ms: up to its peak) */
+            d->env = a;
+            d->hit = a > d->hit ? a : d->hit;
+        } else
+            d->env -= (int32_t)(((int64_t)d->env * (int32_t)cpc.rel) >> 24);
+    }
+    if (d->since < 0xFFFFu)
+        d->since++;
+}
+static int32_t dk_e(const dk_t *d)
+{
+    uint32_t h = (uint32_t)d->hit >> 8;          /* (32-bit: the levels x 256 are below 2^24) */
+    return h ? clampi((int32_t)(((uint32_t)d->env >> 8) * 32767u / h), 0, Q15) : 0;
 }
 
 /* --------------------------------------------------------- the interface --- */
@@ -502,7 +474,6 @@ static void fx_init(void)
     memcpy(fx_ch, CH0, NCH);
     memcpy(fx_cp, CP0, NCP);
     memset(&cp, 0, sizeof cp);
-    cp.armed = 1;
     rv_init();
     dl_init();
     memset(ch_line, 0, sizeof ch_line);

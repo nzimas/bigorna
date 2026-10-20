@@ -51,8 +51,15 @@ typedef struct {
     uint8_t pat;                 /* the pattern playing as it was saved */
     sound_t snd[NTRACK][NENG];
     uint8_t cp[NCP];             /* the master compressor (from build 24: sessions before end at snd, PRJ_LEN23) */
+    uint8_t sc_src[NTRACK], sc_lvl[NTRACK];   /* each track's sidechain (from build 29: before, PRJ_LEN28) */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body_t, cp)
+#define PRJ_LEN28 __builtin_offsetof(prj_body_t, sc_src)
+static void prj_sc0(prj_body_t *b)               /* (a session from before build 29: no track ducked) */
+{
+    memset(b->sc_src, 0, NTRACK);
+    memset(b->sc_lvl, 64, NTRACK);
+}
 typedef struct {
     uint8_t used;                /* saved */
     uint8_t pad;
@@ -169,6 +176,7 @@ static void prj_from17(void)
         d->seed = a.seed;
     }
     memcpy(((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->cp, CP0, NCP);
+    prj_sc0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
     prj_head_fill(PRJ_MAGIC, ((prj_head_t *)(void *)prj_buf)->what, sizeof(prj_body_t));
 }
 static int prj_read(uint32_t k, uint32_t s)
@@ -186,6 +194,14 @@ static int prj_read(uint32_t k, uint32_t s)
         h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN23)) {   /* (builds 18 .. 23: no compressor --
                                                                              * its start values) */
         memcpy(((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->cp, CP0, NCP);
+        prj_sc0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
+        prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
+        return 0;
+    }
+    if (!s && prj_head_ok(h, magic, k * 16u, PRJ_LEN28) &&
+        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN28)) {   /* (builds 24 .. 28: no track's
+                                                                             * sidechain) */
+        prj_sc0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
         prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
         return 0;
     }
@@ -218,7 +234,8 @@ static void prj_scan(int flash_ok)
         if (prj_ok && !prj_flash_read(prj_sector(k, 0), &h, sizeof h))
             prj_has[k] = (uint8_t)(prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body17_t)) ||
-                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN23));
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN23) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN28));
     }
 }
 
@@ -518,6 +535,8 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     memcpy(b->rv, fx_rv, NRV);
     memcpy(b->ch, fx_ch, NCH);
     memcpy(b->cp, fx_cp, NCP);
+    memcpy(b->sc_src, (const void *)sc_src, NTRACK);
+    memcpy(b->sc_lvl, (const void *)sc_lvl, NTRACK);
     memcpy(b->snd, ui.snd, sizeof b->snd);
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
@@ -538,6 +557,10 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     memcpy(fx_rv, b->rv, NRV);
     memcpy(fx_ch, b->ch, NCH);
     memcpy(fx_cp, b->cp, NCP);
+    for (t = 0; t < NTRACK; t++) {
+        sc_src[t] = (uint8_t)(b->sc_src[t] < NCP_SCS ? b->sc_src[t] : 0u);
+        sc_lvl[t] = (uint8_t)(b->sc_lvl[t] & 127u);
+    }
     ui.tempo = (int16_t)clampi(b->tempo, TEMPO_MIN, TEMPO_MAX);
     ui.root = (uint8_t)(b->root % 12u);
     ui.scale = (uint8_t)(b->scale < NSCALE ? b->scale : 0);

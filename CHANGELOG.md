@@ -1,5 +1,25 @@
 # Changelog
 
+## Build 29
+
+Changed
+- Sidechaining is now each track's own. On the COMP page's second half (PRESETS right), SC SOURCE and SC LEVEL are the
+  chosen track's, shown in its colour; a track's button on the effects' pages chooses the track and keeps the page.
+  - SC SOURCE: OFF (the track is never ducked), or T1 to T6: the track whose hits duck it (not itself).
+  - SC LEVEL: 0 to 100, how deep: up to ~45 dB on each hit at 100, near a gate -- the hit slices the track -- and
+    about 10, 20, 27 dB at 25, 50, 70 (host duck renders a kick and a SWARMER drone at any level).
+  - A hit is each note the source track strikes (the sequencer's, the keys', MIDI's): the duck comes down at the
+    compressor's ATTACK as the source sounds its first ~30 ms, then lets go at its RELEASE whatever the source still
+    sounds -- one duck a hit, never a second as a kick's body swells.
+  - The duck works on the track itself and on what it sends to the delay and the reverb (a tail already in the
+    reverb rings on: the reverb is all the tracks').
+  - Kept with the session; sessions saved before load with every track OFF (SC LEVEL 50).
+- The master compressor no longer has a sidechain: it listens to the whole mix. COMP page: THRESHOLD, ATTACK,
+  RELEASE, RATIO | MAKEUP, MIX, SC SOURCE, SC LEVEL.
+
+Removed
+- SC FILTER (it did nothing worth hearing) and the compressor's own SC SOURCE.
+
 ## Build 28
 
 Fixed
