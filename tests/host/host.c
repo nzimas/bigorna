@@ -3854,9 +3854,65 @@ static int cmd_bkserve(void)
     return 0;
 }
 
+/* a new session (build 57): SAVE on an empty slot while a saved session plays -- a blank one there, nothing of the
+ * one before (asked first if it has changes not saved); with nothing saved yet, what plays goes into it */
+#define NEXPECT(c, what) do { if (!(c)) { printf("FAIL newses: %s\n", what); fails++; } } while (0)
+static void ns_slot_save(uint32_t k)             /* (the sessions' list, slot k, its page, SAVE) */
+{
+    ui.page = PG_MAIN;                           /* (from the track's view) */
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, -20);
+    turn(EN_PRESET, (int32_t)k);
+    btn(B_SAVE, 0);                              /* (its page, on LOAD) */
+    turn(EN_PRESET, 1);                          /* SAVE */
+    btn(B_SAVE, 0);
+}
+static int cmd_newses(const char *dir)
+{
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    ui.tempo = 150;
+    seq_note[0][0] = 60;
+    loops[2][0].n = 2; loops[2][0].len = 16; loops[2][0].on = 1; loops[2][0].ev[0].note = 50; loops[2][0].ev[1].note = 52;
+    arp_on[1] = 1;
+    ui.chord_on[3] = 1;
+    fx_dl[0] = 5;
+    ui.snd[0][ui.eng[0]].amp[A_VOL] = 33;
+    ns_slot_save(0);                             /* (nothing saved yet: what plays goes into slot 1) */
+    NEXPECT(prj_cur == 0 && prj_has[0] && ui.tempo == 150 && seq_note[0][0] == 60 && loops[2][0].on,
+            "nothing saved yet: SAVE on an empty slot keeps what plays");
+    ns_slot_save(3);
+    NEXPECT(prj_cur == 3 && prj_has[3] && ui.page == PG_MAIN, "a saved session playing: SAVE on an empty slot, a new "
+            "session there, saved");
+    NEXPECT(ui.tempo == 120 && !seq_note[0][0] && !loops[2][0].on && !arp_on[1] && !ui.chord_on[3] && fx_dl[0] == DL0[0] &&
+            ui.snd[0][ui.eng[0]].amp[A_VOL] != 33 && !prj_dirty && !pat_dirty && !seq_run,
+            "the new session: nothing of the one before (tempo, steps, loops, ARP, chords, effects, sounds)");
+    ui_draw();
+    shot(dir, "new_session");
+    NEXPECT(!prj_load(0) && ui.tempo == 150 && seq_note[0][0] == 60 && loops[2][0].on && arp_on[1],
+            "the session before, loaded again: all of it");
+    ui.tempo = 151;                              /* (changes not saved: asked) */
+    prj_dirty = 1;
+    ns_slot_save(5);
+    NEXPECT(pj.ask == PQ_NEW && !prj_has[5], "changes not saved: NEW SESSION? asked");
+    btn(B_SAVE, 0);                              /* (NO, as it opens) */
+    NEXPECT(!prj_has[5] && ui.tempo == 151, "NO: nothing changed");
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, 1);                          /* (YES) */
+    btn(B_SAVE, 0);
+    NEXPECT(prj_has[5] && prj_cur == 5 && ui.tempo == 120, "YES: the new session");
+    printf("newses: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
+    if (argc >= 3 && !strcmp(argv[1], "newses"))
+        return cmd_newses(argv[2]);
     if (argc >= 2 && !strcmp(argv[1], "bkserve"))
         return cmd_bkserve();
     if (argc >= 3 && !strcmp(argv[1], "arp"))

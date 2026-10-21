@@ -1049,6 +1049,42 @@ static int prj_save(uint32_t k)              /* the loops into the store, the pa
     lst_note(k);
     return 0;
 }
+/* a new session (build 57), as the FM-1 starts with none: each track's machine the start's, its sounds drawn anew,
+ * the start's levels, pans, octaves, effects, compressor and scale; no sidechain, chords, mutes, arpeggiators,
+ * patterns or loops; the sequencer stopped. Not saved anywhere yet */
+static void prj_fresh(void)
+{
+    static prj_body_t b POOL;                    /* (not on the stack, not in RAM: 3 KB, in the pool) */
+    uint32_t t, e;
+    memset(&b, 0, sizeof b);
+    b.tempo = 120;
+    b.scale = 6;
+    for (t = 0; t < NTRACK; t++) {
+        b.eng[t] = ENG0[t];
+        b.oct[t] = (int8_t)(t ? 0 : -1);
+        b.level[t] = LEVEL_UNITY;
+        b.pan[t] = PAN_DEF[t];
+        for (e = 0; e < NENG; e++)
+            gen_sound(&b.snd[t][e], e, e == ENG0[t] ? FAM0[t] : -1, -1, next_seed());
+        b.sc_lvl[t] = 64;
+        memcpy(b.arp[t], AR_DEF, NARP);
+    }
+    memcpy(b.dl, DL0, NDL);
+    memcpy(b.rv, RV0, NRV);
+    memcpy(b.ch, CH0, NCH);
+    memcpy(b.cp, CP0, NCP);
+    seq_run = 0;
+    rec_set(REC_OFF);
+    lop_clear();
+    ui.mute_mode = 0;
+    prj_give(&b);
+    memset(pat_store, 0, sizeof pat_store);
+    memset(pat_dirtyv, 0, sizeof pat_dirtyv);
+    pat_give(0);
+    prj_cur = -1;
+    prj_dirty = 0;
+    pat_dirty = 0;
+}
 static int prj_load(uint32_t k)
 {
     uint32_t s;
@@ -1125,7 +1161,7 @@ static int prj_delete(uint32_t k)
 enum { PR_BACK, PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_ROOT, PR_SCALE, PR_N };   /* (BACK at the top:
                                                   * SAVE on it, the list again; build 48) */
 static const char *const PR_NAME[PR_N] = {"BACK", "LOAD", "SAVE", "COPY", "DELETE", "TEMPO", "ROOT", "SCALE"};
-enum { PQ_NONE, PQ_LOAD, PQ_SAVE, PQ_DELETE, PQ_COPYTO, PQ_COPYOVER, PQ_SAVENEW };
+enum { PQ_NONE, PQ_LOAD, PQ_SAVE, PQ_DELETE, PQ_COPYTO, PQ_COPYOVER, PQ_SAVENEW, PQ_NEW };
 static struct {
     uint8_t slot[2];             /* the slot chosen on each list (projects, patterns) */
     uint8_t row;                 /* the row chosen on the page */
@@ -1182,6 +1218,14 @@ static void do_copy(uint32_t from, uint32_t to)
     prj_done(prj_copy(from, to), "COPIED", to);
 }
 static void do_delete(uint32_t k) { prj_done(prj_delete(k), "DELETED", k); }
+static void do_new(uint32_t k)                   /* (an empty slot: a new session there, saved) */
+{
+    prj_fresh();
+    flash("SAVING", "", C_PRJ);
+    ui_draw();
+    prj_done(prj_save(k), "NEW", k);
+    ui.page = PG_MAIN;
+}
 
 /* SAVE pressed on a sessions' page; ARP on the patterns' grid */
 static void prj_press(int sh)
@@ -1255,7 +1299,8 @@ static void prj_press(int sh)
         else if (q == PQ_SAVENEW) {
             do_save(k);
             ui.page = PG_MAIN;
-        }
+        } else if (q == PQ_NEW)
+            do_new(k);
         else if (q == PQ_DELETE)
             do_delete(k);
         else if (q == PQ_COPYOVER)
@@ -1283,7 +1328,14 @@ static void prj_press(int sh)
         if (pg_has(k) && !pg_cur(k)) {           /* (over another: asked first) */
             pj.ask = PQ_SAVE;
             pj.yes = 0;
-        } else
+        } else if (!pg_has(k) && prj_cur >= 0) { /* an empty slot, a saved session playing: a new one there, blank
+                                                  * (build 57; changes not saved would go: asked first) */
+            if (prj_dirty || pat_dirty) {
+                pj.ask = PQ_NEW;
+                pj.yes = 0;
+            } else
+                do_new(k);
+        } else                                   /* (nothing saved yet: what plays, into it) */
             do_save(k);
         break;
     case PR_COPY:
@@ -1572,7 +1624,8 @@ static void draw_prj_page(void)
     }
     if (pj.ask) {
         draw_noyes_rows(pj.ask == PQ_LOAD ? "LOAD?" : pj.ask == PQ_DELETE ? "DELETE?" : pj.ask == PQ_SAVENEW ? "SAVE NEW?"
-                        : "OVERWRITE?", pj.ask == PQ_LOAD ? C_DIRTY : pj.ask == PQ_SAVENEW ? C_PRJ : C_BAD);
+                        : pj.ask == PQ_NEW ? "NEW SESSION?" : "OVERWRITE?",
+                        pj.ask == PQ_LOAD || pj.ask == PQ_NEW ? C_DIRTY : pj.ask == PQ_SAVENEW ? C_PRJ : C_BAD);
         return;
     }
     for (r = 0; r < 5u; r++) {

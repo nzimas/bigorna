@@ -3092,10 +3092,11 @@ static void ui_draw(void)
 
 /* the start: on each track a sound of each machine; tracks 1 .. 3 on DRUM (a kick, a snare, a hat), 4 4-OP,
  * 5 WAVY, 6 HIVE */
+static const uint8_t ENG0[NTRACK] = {ENG_FMD, ENG_FMD, ENG_FMD, ENG_FMT, ENG_WAV, ENG_SWM};   /* (the start's:
+                                                  * three DRUMs, 4-OP, WAVY, HIVE; projects.c's new session too) */
+static const int8_t FAM0[NTRACK] = {0, 4, 8, -1, -1, -1};
 static void ui_init(void)
 {
-    static const uint8_t ENG0[NTRACK] = {ENG_FMD, ENG_FMD, ENG_FMD, ENG_FMT, ENG_WAV, ENG_SWM};
-    static const int8_t FAM0[NTRACK] = {0, 4, 8, -1, -1, -1};
     uint32_t t, e;
     memset(&ui, 0, sizeof ui);
     memset(ui.midi_track, 0, sizeof ui.midi_track);

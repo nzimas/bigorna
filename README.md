@@ -369,6 +369,14 @@ BACK, LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE (it opens on LOAD; SAVE on BA
 changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not saved, saving over another session,
 copying over one and deleting ask first (NO / YES on PRESETS).
 
+SAVE on an empty slot's page, while a saved session is playing, starts a new session there: blank, as the FM-1
+starts with none loaded — each track's machine as at the start with new sounds drawn, the start's levels, pans,
+octaves, effects, tempo (120), root and scale; no patterns, loops, chords, mutes, transposition or arpeggiator; the
+sequencer stopped. It is saved into the slot at once (NEW, SESSION n shows). If the session playing has changes
+not saved, NEW SESSION? is asked first (they would be lost: save them first). With nothing saved yet — the state
+the FM-1 starts in, or a session just deleted — SAVE on an empty slot saves what is playing there instead. To start
+a new session from a copy of another, use COPY.
+
 SAVE held 0.8 s (or HOME held), outside the sessions' pages, saves the session playing into its slot at once. If it has never been saved, the
 first empty slot's page shows SAVE NEW? with YES chosen: SAVE saves it there and goes back to the track (PRESETS
 left: NO). With all 16 slots taken, NO FREE SLOT shows.

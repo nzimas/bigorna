@@ -498,11 +498,11 @@ static void fx_cook_all(void)
     ch_cook(fx_ch);
     cp_cook(fx_cp);
 }
+static const uint8_t DL0[NDL] = {31, 0, 64, 50, 0, 100, 0, 90};      /* a dotted 16th .. (TIME 32: a quarter) */
+static const uint8_t RV0[NRV] = {8, 80, 90, 80, 10, 110, 80};
+static const uint8_t CH0[NCH] = {40, 30, 10, 100, 0, 30, 90};
 static void fx_init(void)
 {
-    static const uint8_t DL0[NDL] = {31, 0, 64, 50, 0, 100, 0, 90};      /* a dotted 16th .. (TIME 32: a quarter) */
-    static const uint8_t RV0[NRV] = {8, 80, 90, 80, 10, 110, 80};
-    static const uint8_t CH0[NCH] = {40, 30, 10, 100, 0, 30, 90};
     memcpy(fx_dl, DL0, NDL);
     memcpy(fx_rv, RV0, NRV);
     memcpy(fx_ch, CH0, NCH);
