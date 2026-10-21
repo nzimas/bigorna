@@ -111,7 +111,7 @@ static vmem_t vmem[NVOICE] POOL;
 
 #define FADE 12u                 /* blocks of a fade (~9 ms) */
 #define QUICK 3u                 /* blocks of the budget's fade (~2 ms) */
-enum { SRC_KEY, SRC_SEQ };       /* who plays a note: the keys (and MIDI), or the sequencer */
+enum { SRC_KEY, SRC_SEQ, SRC_ARP };   /* who plays a note: the keys (and MIDI), the sequencer, the arpeggiator */
 typedef struct {
     uint8_t note, gate, src;     /* the note, held, by whom */
     uint8_t sounding;            /* the voice renders */
@@ -172,7 +172,7 @@ static int32_t usb_blk[2 * CTL];                 /* (the block for USB audio: th
 #endif
 
 /* --------------------------------------------------------------- events --- */
-enum { EV_ON, EV_OFF, EV_STOP };
+enum { EV_ON, EV_OFF, EV_STOP, EV_ARP_ON, EV_ARP_OFF, EV_ARP_CLR };   /* (EV_ARP_*: build 52) */
 typedef struct { uint8_t type, track, note, val; } ev_t;
 #define EVQ 64u
 static ev_t evq[EVQ];
@@ -437,6 +437,103 @@ static int track_sounding(uint32_t t)
     return 0;
 }
 
+/* ---------------------------------------------------------- the arpeggiator --- */
+/* (build 52) each track's, on the 5th black key (ui.c): the keys held go to it, not to the voices; it plays them in
+ * turn on the tempo's grid -- on the sequencer's while it plays, on its own clock stopped -- and what it plays is
+ * recorded as the keys are (arp_rec: the main loop's, ui.c). Its settings, the main loop's, are read here as they are */
+enum { AR_MODE, AR_RATE, AR_RNG, AR_GATE, AR_LATCH, AR_DENS, AR_ORND, AR_BASS, NARP };
+enum { AM_UP, AM_DOWN, AM_UPDN, AM_DNUP, AM_ORDER, AM_RND, AM_CONV, AM_DIV, AM_PINKY, AM_THUMB, NAM };
+#define NAR_RATE 6u
+static const uint8_t AR_R6[NAR_RATE] = {3, 4, 6, 8, 12, 24};   /* (1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4: sixths of a 16th) */
+#define NAR_RNG 4u
+#define NAR_BASS 8u                              /* (OFF, then every 2 .. 8 notes) */
+#define ARP_N 12u
+static volatile uint8_t arp_on[NTRACK], arp_p[NTRACK][NARP];
+typedef struct {
+    uint8_t n, note[ARP_N], vel[ARP_N];          /* the notes held, in the order played */
+    uint8_t down;                                /* keys down now (LATCH: the notes kept with none) */
+    uint8_t fresh;                               /* the first note of a new chord: at once */
+    uint8_t snd;                                 /* the note sounding (0 none) .. */
+    uint32_t left;                               /* .. its blocks left */
+    uint32_t c, acc, since;                      /* notes in turn; stopped: its clock; blocks since a note */
+    int32_t k;                                   /* playing: the grid's place it played last */
+} arp_t;
+static arp_t arps[NTRACK];
+static uint32_t arp_rnd = 0x9E3779B9u;
+typedef struct { uint8_t t, note, vel, pos; uint16_t len8; uint32_t acc, q; } arp_rec_t;   /* (a note played, for the
+                                                  * main loop to record: where the sequencer was) */
+#define ARP_RQ 16u
+static arp_rec_t arp_rq[ARP_RQ];
+static volatile uint32_t arp_rw, arp_rr;
+static const uint8_t AR_DEF[NARP] = {AM_UP, 2, 0, 64, 0, 127, 0, 0};   /* (UP, 1/16, 1 OCT, GATE 50, LATCH OFF,
+                                                  * DENSITY 100, OCT RND 0, BASS OFF) */
+static void arp_defaults(uint32_t t)
+{
+    uint32_t j;
+    for (j = 0; j < NARP; j++)
+        arp_p[t][j] = AR_DEF[j];
+}
+static void arp_quiet(uint32_t t)                /* (its note let go) */
+{
+    arp_t *a = &arps[t];
+    if (a->snd)
+        note_off(t, a->snd, SRC_ARP);
+    a->snd = 0;
+    a->left = 0;
+}
+static void arp_key(uint32_t t, uint32_t note, uint32_t vel, int on)   /* (the audio's: an event) */
+{
+    arp_t *a = &arps[t];
+    uint32_t i, j;
+    if (!on) {
+        if (a->down)
+            a->down--;
+        if (arp_p[t][AR_LATCH])
+            return;
+        for (i = 0; i < a->n && a->note[i] != note; i++)
+            ;
+        if (i < a->n) {
+            for (j = i; j + 1u < a->n; j++) {
+                a->note[j] = a->note[j + 1u];
+                a->vel[j] = a->vel[j + 1u];
+            }
+            a->n--;
+        }
+        if (!a->n)
+            arp_quiet(t);
+        return;
+    }
+    if (!a->down && arp_p[t][AR_LATCH])          /* (LATCH: a new chord after all were let go, in place of the last) */
+        a->n = 0;
+    a->down++;
+    for (i = 0; i < a->n && a->note[i] != note; i++)
+        ;
+    if (i < a->n || a->n >= ARP_N)
+        return;
+    if (!a->n) {
+        a->fresh = 1;
+        a->c = 0;
+    }
+    a->note[a->n] = (uint8_t)note;
+    a->vel[a->n] = (uint8_t)(vel ? vel : 127u);
+    a->n++;
+}
+static void arp_clear(uint32_t t)
+{
+    arps[t].n = arps[t].down = 0;
+    arp_quiet(t);
+}
+/* (the main loop's: a session's) track t's arpeggiator on or off and its settings, each in its range; its notes let go */
+static void arp_set(uint32_t t, uint32_t on, const uint8_t *p)
+{
+    static const uint8_t N[NARP] = {NAM, NAR_RATE, NAR_RNG, 128, 2, 128, 128, NAR_BASS};
+    uint32_t j;
+    arp_on[t] = (uint8_t)(on != 0);
+    for (j = 0; j < NARP; j++)
+        arp_p[t][j] = (uint8_t)(p[j] < N[j] ? p[j] : 0u);
+    ev_post(EV_ARP_CLR, t, 0, 0);
+}
+
 static void events_take(void)
 {
     while (ev_r != ev_w) {
@@ -452,6 +549,13 @@ static void events_take(void)
             break;
         case EV_OFF:
             note_off(e.track, e.note, SRC_KEY);
+            break;
+        case EV_ARP_ON:
+        case EV_ARP_OFF:
+            arp_key(e.track, e.note, e.val, e.type == EV_ARP_ON);
+            break;
+        case EV_ARP_CLR:
+            arp_clear(e.track);
             break;
         case EV_STOP:
             midi_track_off(e.track);
@@ -1136,6 +1240,130 @@ static int seq_wraps(uint32_t t)                 /* track t's next step begins i
     default: return pos + 1u >= len;
     }
 }
+/* the arpeggiator's next note: the held notes over RANGE octaves, in MODE's order; BASS: every so many, the lowest an
+ * octave down; OCT RND: an octave up or down at random (0: none) */
+static uint32_t arp_rand(void)
+{
+    arp_rnd = arp_rnd * 1664525u + 1013904223u;
+    return arp_rnd >> 8;
+}
+static uint32_t arp_pick(uint32_t t)
+{
+    arp_t *a = &arps[t];
+    const volatile uint8_t *p = arp_p[t];
+    uint8_t s[ARP_N];
+    uint32_t n = a->n, rng = p[AR_RNG] % NAR_RNG + 1u, nn = n * rng, c = a->c, i, j, m, b = p[AR_BASS] % NAR_BASS;
+    int32_t note;
+    for (i = 0; i < n; i++) {                    /* (the notes by pitch; ORDER: as played) */
+        uint8_t x = a->note[i];
+        for (j = i; p[AR_MODE] != AM_ORDER && j > 0u && s[j - 1u] > x; j--)
+            s[j] = s[j - 1u];
+        s[j] = x;
+    }
+    m = c % nn;
+    switch (p[AR_MODE] % NAM) {
+    case AM_DOWN: i = nn - 1u - m; break;
+    case AM_UPDN: m = nn < 2u ? 0u : c % (2u * nn - 2u); i = m < nn ? m : 2u * nn - 2u - m; break;
+    case AM_DNUP: m = nn < 2u ? 0u : c % (2u * nn - 2u); i = nn - 1u - (m < nn ? m : 2u * nn - 2u - m); break;
+    case AM_RND: i = arp_rand() % nn; break;
+    case AM_CONV: i = m & 1u ? nn - 1u - m / 2u : m / 2u; break;   /* (the ends, in to the middle) */
+    case AM_DIV: m = nn - 1u - m; i = m & 1u ? nn - 1u - m / 2u : m / 2u; break;   /* (the middle, out) */
+    case AM_PINKY: m = nn < 2u ? 0u : c % (2u * nn - 2u); i = m & 1u ? nn - 1u : m / 2u; break;   /* (the top between) */
+    case AM_THUMB: m = nn < 2u ? 0u : c % (2u * nn - 2u); i = m & 1u ? 1u + m / 2u : 0u; break;   /* (the bottom between) */
+    default: i = m; break;                       /* UP, ORDER */
+    }
+    note = (int32_t)s[i % n] + 12 * (int32_t)(i / n);
+    if (b && c % (b + 1u) == 0u)
+        note = (int32_t)s[0] - 12 >= 12 ? (int32_t)s[0] - 12 : (int32_t)s[0];
+    else if (p[AR_ORND] && arp_rand() % 127u < p[AR_ORND])
+        note += arp_rand() & 1u ? 12 : -12;
+    while (note > 120)
+        note -= 12;
+    while (note < 12)
+        note += 12;
+    return (uint32_t)note;
+}
+/* a note of the arpeggiator now (DENSITY: or a rest), its length GATE's share of the rate's; for the main loop too */
+static void arp_fire(uint32_t t, uint32_t l, uint32_t adv)
+{
+    arp_t *a = &arps[t];
+    const volatile uint8_t *p = arp_p[t];
+    uint32_t note, vel = 127, g = (uint32_t)p[AR_GATE] + 1u, i;
+    a->since = 0;
+    if (p[AR_DENS] < 127u && arp_rand() % 127u >= p[AR_DENS]) {
+        a->c++;
+        return;
+    }
+    note = arp_pick(t);
+    for (i = 0; i < a->n; i++)                   /* (its velocity: the key's it came from) */
+        if (a->note[i] % 12u == note % 12u) {
+            vel = a->vel[i];
+            break;
+        }
+    a->c++;
+    arp_quiet(t);
+    note_vel = (uint8_t)vel;
+    note_on(t, note, SRC_ARP);
+    note_vel = 127;
+    a->snd = (uint8_t)note;
+    a->left = adv ? (l >> 7) * g / adv : 1u;
+    if (!a->left)
+        a->left = 1;
+    if (arp_rw - arp_rr < ARP_RQ) {
+        arp_rec_t *r = &arp_rq[arp_rw % ARP_RQ];
+        uint32_t e = AR_R6[p[AR_RATE] % NAR_RATE] * g / 96u;   /* (eighths of a 16th: rate x 8 / 6, x the gate / 128) */
+        r->t = (uint8_t)t;
+        r->note = (uint8_t)note;
+        r->vel = (uint8_t)vel;
+        r->len8 = (uint16_t)(e ? e : 1u);
+        r->pos = seq_pos[t];
+        r->acc = seq_tacc[t];
+        r->q = seq_gcount == 0xFFFFFFFFu ? 0u : seq_gcount + (seq_acc >= SEQ_16TH / 2u);
+        RING_PUBLISH();
+        arp_rw++;
+    }
+}
+/* each block: each track's arpeggiator on (notes held), on the sequencer's grid while it plays (its place in four
+ * 16ths, at the rate's), else on its own clock; a new chord plays at once (playing: if no later than a quarter of
+ * the rate's past its place, else from the next) */
+static void arp_block(uint32_t adv, int run)
+{
+    uint32_t t;
+    for (t = 0; t < NTRACK; t++) {
+        arp_t *a = &arps[t];
+        uint32_t l = SEQ_16TH / 6u * AR_R6[arp_p[t][AR_RATE] % NAR_RATE];
+        if (a->snd && a->left && !--a->left)
+            arp_quiet(t);
+        if (a->since < 0xFFFFu)
+            a->since++;
+        if (!arp_on[t] || !a->n)
+            continue;
+        if (run) {
+            uint32_t ph = (seq_gcount == 0xFFFFFFFFu ? 0u : seq_gcount % 4u) * SEQ_16TH + (seq_acc < SEQ_16TH ? seq_acc : 0u);
+            int32_t k = (int32_t)(ph / l);
+            if (a->fresh) {
+                a->fresh = 0;
+                a->k = k;
+                if (ph % l <= l / 4u)
+                    arp_fire(t, l, adv);
+            } else if (k != a->k) {
+                a->k = k;
+                arp_fire(t, l, adv);
+            }
+            a->acc = 0;
+        } else {
+            if (a->fresh) {
+                a->fresh = 0;
+                a->acc = 0;
+                arp_fire(t, l, adv);
+            } else if (a->acc >= l) {
+                a->acc -= l;
+                arp_fire(t, l, adv);
+            }
+            a->acc += adv;
+        }
+    }
+}
 static void seq_block(void)
 {
     uint32_t t, i, adv, xm = 0;
@@ -1169,6 +1397,7 @@ static void seq_block(void)
             met_step = 15;
         }
         met_was = met_on;
+        arp_block(adv, 0);
         if (met_on) {
             if (met_acc >= SEQ_16TH) {
                 met_acc -= SEQ_16TH;
@@ -1192,6 +1421,10 @@ static void seq_block(void)
             rt_left[t] = 0;
         }
         memset(seq_plays, 0, sizeof seq_plays);
+        for (t = 0; t < NTRACK; t++)             /* (the arpeggiators on the grid from step 1: a note just played --
+                                                  * the one that started it, REC or the looper armed -- is step 1's) */
+            arps[t].k = arps[t].since < 64u && arps[t].since * adv <= SEQ_16TH / 24u * AR_R6[arp_p[t][AR_RATE] % NAR_RATE]
+                        ? 0 : -1;                /* (a note no more than a quarter of the rate's ago) */
         seq_gstep = 15;
         seq_gcount = 0xFFFFFFFFu;
         for (t = 0; t < NTRACK; t++)             /* (the loops from their first steps) */
@@ -1281,6 +1514,7 @@ static void seq_block(void)
     }
     loop_kick();
     fxq_block();
+    arp_block(adv, 1);
     seq_acc += adv;
     seq_acc_now = seq_acc;
 }
@@ -2117,6 +2351,10 @@ static void tracks_init(void)
         memset(trk[t].tid, PL_NONE, sizeof trk[t].tid);
     }
     memset((void *)seq_lid, PL_NONE, sizeof seq_lid);
+    memset(arps, 0, sizeof arps);                /* (the arpeggiators off, their settings the start's) */
+    memset((void *)arp_on, 0, sizeof arp_on);
+    for (t = 0; t < NTRACK; t++)
+        arp_defaults(t);
     memset(lfs, 0, sizeof lfs);                  /* (no LFO copy cooked: each track plays its own sound) */
     memset(lfo_any, 0, sizeof lfo_any);
     memset(lfo_mod, 0, sizeof lfo_mod);

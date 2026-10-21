@@ -1,5 +1,27 @@
 # Changelog
 
+## Build 52
+
+Added
+- An arpeggiator for each track: the 5th black key (the track's view, the step view off) turns it on or off (lit
+  while on; ARP at the top left). The keys held, and MIDI notes for the track, go to it; it plays them one at a time
+  on the tempo's grid -- the sequencer's 16ths while it plays, its own clock at the tempo while stopped, the first
+  note of a chord at once. It runs in the audio interrupt with the sequencer.
+- SHIFT + the 5th black key: the ARP page, per track. MODE (UP, DOWN, UP DOWN, DOWN UP, ORDER, RANDOM, CONVERGE,
+  DIVERGE, PINKY, THUMB), RATE (1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4), RANGE (1 to 4 octaves), GATE, LATCH, DENSITY
+  (the chance each note plays), OCT RND (the chance a note jumps an octave), BASS (every 2 to 8 notes, the lowest
+  held an octave down). DENSITY, OCT RND and BASS follow the NGEN's ARPER generator's ideas.
+- Recording: REC puts the arpeggio into the steps, each note at the step it was played on (where the sequencer was
+  as it played, not where the main loop found it), with its velocity and length; SHIFT + REC records it into a
+  loop. Armed, its first note starts the sequencer and is step 1.
+- Each track's arpeggiator and its settings are saved with the session (9 bytes a track at the end of the session's
+  body). Sessions from builds 50 and 51, and earlier, load with it off.
+
+Changed
+- SAVED, SESSION 16 and the like: the second line in the largest size that fits, no longer squeezed past the
+  screen's edges.
+- In CHROMATIC the 5th black key no longer plays a note out of the step view.
+
 ## Build 51
 
 Added

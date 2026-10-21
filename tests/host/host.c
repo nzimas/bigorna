@@ -3516,13 +3516,202 @@ static int cmd_trn(const char *dir)
         pat_decode(&p, &sb_tmp);
         TEXPECT(!sb_tmp.trn[0] && !sb_tmp.trn[1] && sb_tmp.note[1][0] == 52, "an older pattern: TRN 0, its notes");
     }
+    flash("SAVED", "SESSION 16", C_OK);          /* (the second line in the size that fits: build 52) */
+    ui_draw();
+    shot(dir, "saved_session16");
     printf("trn: %d failures\n", fails);
+    return fails != 0;
+}
+
+/* the arpeggiator (build 52): the 5th black key, its page, its modes on the tempo's grid, LATCH, recorded into the
+ * steps and into a loop, kept with the session */
+#define AEXPECT(c, what) do { if (!(c)) { printf("FAIL arp: %s\n", what); fails++; } } while (0)
+static uint8_t arp_got[64];
+static uint32_t arp_ngot, arp_gotb[64];
+static void arp_run(uint32_t blocks)             /* (the audio and, every 8 blocks, the main loop) */
+{
+    int32_t b[2u * CTL];
+    uint32_t k, c0 = arps[0].c;
+    for (k = 0; k < blocks; k++) {
+        mix_block(b);
+        if (arps[0].c != c0 && arps[0].snd && arp_ngot < 64u) {
+            arp_gotb[arp_ngot] = k;
+            arp_got[arp_ngot++] = arps[0].snd;
+        }
+        c0 = arps[0].c;
+        fm1_ms += (k % 4u == 0u);
+        if (k % 8u == 7u)
+            ui_input();
+    }
+}
+static int arp_seq(const uint8_t *want, uint32_t n)
+{
+    uint32_t i;
+    if (arp_ngot < n)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (arp_got[i] != want[i])
+            return 0;
+    return 1;
+}
+static void arp_print(const char *w)
+{
+    uint32_t i;
+    printf("arp: %s:", w);
+    for (i = 0; i < arp_ngot && i < 16u; i++)
+        printf(" %u", arp_got[i]);
+    printf("\n");
+}
+static int cmd_arp(const char *dir)
+{
+    const uint32_t B16 = 44100u * 60u / 120u / 4u / CTL;   /* (a 16th at 120 BPM: 172 blocks) */
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    ui.scale = 0;
+    ui.root = 5;                                 /* (CHROMATIC: key k plays 53 + k) */
+    ui.oct[0] = 0;
+    ui.sel = 0;
+    ui.tempo = 120;
+    tempo_apply();
+    tap(KEY_ARP);
+    AEXPECT(arp_on[0] && !arp_on[1], "the 5th black key: the track's arpeggiator on");
+    ui_draw();
+    shot(dir, "arp_main");
+    key(0, 1); key(4, 1); key(7, 1);             /* F A C, held */
+    arp_ngot = 0;
+    arp_run(B16 * 7u + 10u);
+    {
+        static const uint8_t UP[7] = {53, 57, 60, 53, 57, 60, 53};
+        arp_print("UP");
+        AEXPECT(arp_seq(UP, 7) && arp_gotb[0] < 3u && absi((int32_t)(arp_gotb[3] - arp_gotb[0]) - 3 * (int32_t)B16) <= 2,
+                "UP, 1/16: the notes held in turn, the first at once, a 16th apart");
+    }
+    arp_p[0][AR_MODE] = AM_UPDN;
+    arp_p[0][AR_RNG] = 1;                        /* (2 octaves) */
+    arps[0].c = 0;
+    arp_ngot = 0;
+    arp_run(B16 * 10u + 4u);
+    {
+        static const uint8_t UD[10] = {53, 57, 60, 65, 69, 72, 69, 65, 60, 57};
+        arp_print("UP DOWN, 2 OCT");
+        AEXPECT(arp_seq(UD, 10), "UP DOWN over two octaves: the ends once");
+    }
+    arp_p[0][AR_MODE] = AM_THUMB;
+    arp_p[0][AR_RNG] = 0;
+    arps[0].c = 0;
+    arp_ngot = 0;
+    arp_run(B16 * 4u + 4u);
+    {
+        static const uint8_t TH[4] = {53, 57, 53, 60};
+        arp_print("THUMB");
+        AEXPECT(arp_seq(TH, 4), "THUMB: the lowest between the others");
+    }
+    arp_p[0][AR_MODE] = AM_UP;
+    arp_p[0][AR_BASS] = 3;                       /* (every 4th: the lowest an octave down) */
+    arps[0].c = 0;
+    arp_ngot = 0;
+    arp_run(B16 * 5u + 4u);
+    {
+        static const uint8_t BS[5] = {41, 57, 60, 53, 41};
+        arp_print("BASS EVERY 4");
+        AEXPECT(arp_seq(BS, 5), "BASS EVERY 4: the lowest an octave down every 4th note");
+    }
+    arp_p[0][AR_BASS] = 0;
+    key(0, 0); key(4, 0); key(7, 0);
+    arp_ngot = 0;
+    arp_run(B16 * 3u);
+    AEXPECT(!arps[0].n && !arps[0].snd && !arp_ngot, "the keys let go: it stops");
+    arp_p[0][AR_LATCH] = 1;                      /* LATCH: kept with the keys up; a new chord in its place */
+    key(2, 1); key(2, 0);
+    arp_run(B16 * 2u);
+    AEXPECT(arps[0].n == 1u && arps[0].note[0] == 55, "LATCH: the note kept, the key up");
+    key(9, 1); key(11, 1); key(9, 0); key(11, 0);
+    arp_run(8);
+    AEXPECT(arps[0].n == 2u && arps[0].note[0] == 62 && arps[0].note[1] == 64, "LATCH: a new chord in place of the last");
+    ui.page = PG_FXP;                            /* LATCH turned off on the page: the notes let go */
+    ui.fx_pg = FXP_ARP;
+    fx_turn(AR_LATCH, -1);
+    arp_run(8);
+    AEXPECT(!arps[0].n && !arps[0].snd, "LATCH off: the notes kept let go");
+    ui.page = PG_MAIN;
+
+    /* REC: the arpeggio into the steps, at the 16ths, each its length */
+    memset((void *)seq_note, 0, sizeof seq_note);
+    arp_p[0][AR_GATE] = 127;
+    btn(B_REC, 0);
+    key(0, 1); key(4, 1);
+    arp_run(B16 * 16u + B16 / 2u);
+    {
+        uint32_t i, ok = 1;
+        for (i = 0; i < 16u; i++)
+            ok &= seq_note[0][i] == (i & 1u ? 57u : 53u);
+        printf("arp: steps %u %u %u %u .. %u, len %u\n", seq_note[0][0], seq_note[0][1], seq_note[0][2], seq_note[0][3],
+               seq_note[0][15], seq_glen[0][1]);
+        AEXPECT(ok && seq_run, "REC armed: the arpeggio started the sequencer, each note into its step");
+    }
+    key(0, 0); key(4, 0);
+    btn(B_REC, 0);
+    btn(B_PLAY, 0);
+    arp_run(4);
+
+    /* the looper: SHIFT + REC, the arpeggio in, REC ends it */
+    arp_p[0][AR_RATE] = 4;                       /* (1/8) */
+    btn(B_REC, 1);
+    arp_run(8);
+    key(7, 1);
+    arp_run(B16 * 16u);
+    btn(B_REC, 0);
+    {
+        const loop_t *p = &loops[0][0];
+        uint32_t i, ok = p->on && p->len == 16u && p->n == 8u;
+        for (i = 0; ok && i < p->n; i++)
+            ok &= p->ev[i].note == 60u && p->ev[i].step == 2u * i;
+        printf("arp: loop on %u len %u n %u, steps %u %u %u, len8 %u\n", p->on, p->len, p->n, p->ev[0].step,
+               p->ev[1].step, p->ev[2].step, p->ev[0].len8);
+        AEXPECT(ok, "SHIFT + REC: the arpeggio at 1/8 into a loop, a note every two steps");
+    }
+    key(7, 0);
+
+    /* its page; kept with the session */
+    btn(B_PLAY, 0);
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    tap(KEY_ARP);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    AEXPECT(ui.page == PG_FXP && ui.fx_pg == FXP_ARP, "SHIFT + the 5th black key: the ARP page");
+    fx_turn(AR_MODE, 8);                         /* PINKY */
+    fx_turn(AR_DENS, -20);
+    ui_draw();
+    shot(dir, "arp_page");
+    AEXPECT(arp_p[0][AR_MODE] == AM_PINKY && arp_p[0][AR_DENS] < 127u, "MODE and DENSITY turned on the page");
+    {
+        uint8_t keep[NARP];
+        memcpy(keep, (const void *)arp_p[0], NARP);
+        AEXPECT(!prj_save(4), "(session 5 saved)");
+        tap(KEY_ARP);
+        arp_p[0][AR_MODE] = AM_UP;
+        AEXPECT(!prj_load(4) && arp_on[0] == 1u && !memcmp(keep, (const void *)arp_p[0], NARP),
+                "the session loaded: the arpeggiator on, its settings as saved");
+        /* a session of builds 50, 51: no arpeggiator */
+        prj_flash_read(prj_sector(4, 0), prj_buf, PRJ_SECT);
+        prj_head_fill(PRJ_MAGIC, 4u * 16u, PRJ_LEN50);
+        prj_flash_erase(prj_sector(4, 0));
+        prj_flash_prog(prj_sector(4, 0), prj_buf, PRJ_SECT);
+        prj_scan(1);
+        AEXPECT(prj_has[4] && !prj_load(4) && !arp_on[0] && arp_p[0][AR_MODE] == AM_UP && arp_p[0][AR_DENS] == 127u,
+                "a session of build 51 loads: the arpeggiators off, their start settings");
+    }
+    printf("arp: %d failures\n", fails);
     return fails != 0;
 }
 
 int main(int argc, char **argv)
 {
     wt_init();
+    if (argc >= 3 && !strcmp(argv[1], "arp"))
+        return cmd_arp(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "trn"))
         return cmd_trn(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "lfo"))

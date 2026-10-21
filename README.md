@@ -44,6 +44,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | 2nd black key | MUTE mode on or off |
 | 3rd black key | BREAK, while held; SHIFT + it: on every track |
 | 4th black key | MIDI LEARN on or off |
+| 5th black key | The track's arpeggiator on or off; SHIFT + it: the ARP page |
 | Black key before the last | EDIT: the sound's pages |
 | 3rd black key from the right | STEP: the step view |
 | Last black key | SHIFT |
@@ -142,7 +143,7 @@ Per track, on the track's sound before its level:
 ## Playing
 
 The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and
-root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first three),
+root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first five),
 MAJOR, MINOR NATURAL, MINOR
 HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, IN. OCT− and OCT+ move the track's octave. USB
 MIDI notes play the chosen track as the keys do.
@@ -164,6 +165,33 @@ dim off). Each white key then plays a triad from its note, in the scale: TRIAD, 
 FOURTHS (in CHROMATIC, the same shapes in semitones). SHIFT and the key choose the next form. The form shows at the
 top left. A step put in takes the chord last played; REC records chords into the steps; the looper records their
 notes. DRUM tracks play no chords.
+
+### Arpeggiator
+
+In the track's view, the step view off, the 5th black key turns the track's arpeggiator on or off (lit while on; ARP
+shows at the top left). While it is on, the keys held (and USB or TRS MIDI notes for the track) are not played
+directly: the arpeggiator plays them one at a time, on the tempo's grid. While the sequencer plays it follows the
+sequencer's 16ths; stopped, it runs on its own at the tempo, and the first note of a chord plays at once. With CHORD
+mode on, each key gives it the chord's three notes.
+
+SHIFT + the 5th black key opens the ARP page of the chosen track (KNOB 1 to 4 the rows A to D, PRESETS turned right
+E to H; a track's button goes back):
+
+- MODE: UP, DOWN, UP DOWN, DOWN UP (the end notes once), ORDER (as played), RANDOM, CONVERGE (from the ends in),
+  DIVERGE (from the middle out), PINKY (the top note between each of the others), THUMB (the lowest between each).
+- RATE: 1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4.
+- RANGE: 1 to 4 octaves.
+- GATE: each note's length, 0 to 100 of the rate's.
+- LATCH: on, the notes keep playing with the keys up; the next chord played replaces them. Turning it off lets them
+  go.
+- DENSITY: 0 to 100, the chance that each note plays (otherwise a rest).
+- OCT RND: 0 to 100, the chance that a note jumps an octave up or down.
+- BASS: OFF, or EVERY 2 to EVERY 8: every so many notes, the lowest note held an octave down.
+
+The arpeggio is recorded as played notes are: REC puts each note into the step it falls on, with its velocity and
+its length; SHIFT + REC records it into a loop. With REC or the looper armed, the arpeggiator's first note starts the
+sequencer. Each track's arpeggiator, on or off, and its settings are saved with the session; sessions from earlier
+builds load with it off.
 
 ### MUTE mode
 

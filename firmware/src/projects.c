@@ -86,17 +86,29 @@ typedef struct {
     uint8_t sel;                 /* the track chosen (from build 38: before, PRJ_LEN37) */
     uint8_t loop_nsec;           /* the loops: their sectors in the loop store (0: none) .. */
     uint32_t loop_gen;           /* .. and the generation they were written with */
+    uint8_t arp_on[NTRACK];      /* each track's arpeggiator on (from build 52: before, PRJ_LEN50) .. */
+    uint8_t arp[NTRACK][NARP];   /* .. and its settings (tracks.c's AR_*) */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body49_t, cp)   /* (the lengths builds 18 .. 49 saved: the sound without LFOs) */
 #define PRJ_LEN28 __builtin_offsetof(prj_body49_t, sc_src)
 #define PRJ_LEN32 __builtin_offsetof(prj_body49_t, chord_on)
 #define PRJ_LEN34 __builtin_offsetof(prj_body49_t, mute)
 #define PRJ_LEN49 sizeof(prj_body49_t)
+#define PRJ_LEN50 __builtin_offsetof(prj_body_t, arp_on)   /* (builds 50 and 51: the sounds with LFOs, no arpeggiator) */
+typedef char prj_len50[PRJ_LEN50 % 4u == 0u ? 1 : -1];   /* (their size as saved: no padding after loop_gen) */
 /* (builds 35 .. 37: the body ended at mute, and its size -- what they saved -- was rounded up to the struct's
  * alignment, 4: two bytes of padding past mute. Build 38 took the unrounded length and found none of their sessions
  * (build 40)) */
 #define PRJ_LEN37 ((__builtin_offsetof(prj_body49_t, sel) + 3u) & ~3u)
 typedef char prj_len37[PRJ_LEN37 == 2780u && PRJ_LEN34 == 2772u && PRJ_LEN32 == 2760u ? 1 : -1];   /* (as saved) */
+static void prj_ar0(prj_body_t *b)               /* (a session from before build 52: the arpeggiators off) */
+{
+    uint32_t t;
+    for (t = 0; t < NTRACK; t++) {
+        b->arp_on[t] = 0;
+        memcpy(b->arp[t], AR_DEF, NARP);
+    }
+}
 static void prj_lp0(prj_body_t *b)               /* (a session from before build 38: track 1, no loops) */
 {
     b->sel = 0;
@@ -242,6 +254,7 @@ static void prj_up(uint32_t len)
         prj_mu0(nb);
     else if (len <= PRJ_LEN37)                   /* (builds 35 .. 37: no loops) */
         prj_lp0(nb);
+    prj_ar0(nb);                                 /* (every build before 52: no arpeggiator) */
     prj_head_fill(PRJ_MAGIC, ((prj_head_t *)(void *)prj_buf)->what, sizeof(prj_body_t));
 }
 /* a session saved before build 18, in prj_buf: each sound made one of builds 18 .. 49 in place (MANGLE all off), the
@@ -271,16 +284,20 @@ static void prj_from17(void)
 /* sector s of project k into prj_buf; 0 if it is whole (a session saved by an earlier build: made one of now) */
 static int prj_read(uint32_t k, uint32_t s)
 {
-    static const uint16_t OLD[7] = {sizeof(prj_body17_t), PRJ_LEN23, PRJ_LEN28, PRJ_LEN32, PRJ_LEN34, PRJ_LEN37,
-                                    PRJ_LEN49};
+    static const uint16_t OLD[8] = {sizeof(prj_body17_t), PRJ_LEN23, PRJ_LEN28, PRJ_LEN32, PRJ_LEN34, PRJ_LEN37,
+                                    PRJ_LEN49, PRJ_LEN50};
     uint32_t magic = s ? PAT_MAGIC : PRJ_MAGIC, len = s ? PAT_PER * sizeof(pat_t) : sizeof(prj_body_t), i;
     const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
     if (!prj_ok || k >= PRJ_SLOTS || prj_flash_read(prj_sector(k, s), prj_buf, sizeof(prj_head_t) + len))
         return -1;
-    for (i = 0; !s && i < 7u; i++)
+    for (i = 0; !s && i < 8u; i++)
         if (prj_head_ok(h, magic, k * 16u, OLD[i]) && h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), OLD[i])) {
             if (i == 0u)
                 prj_from17();
+            else if (OLD[i] == PRJ_LEN50) {      /* (builds 50, 51: as now, the arpeggiators added) */
+                prj_ar0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
+                prj_head_fill(PRJ_MAGIC, h->what, sizeof(prj_body_t));
+            }
             else
                 prj_up(OLD[i]);
             return 0;
@@ -622,8 +639,10 @@ static void prj_scan(int flash_ok)
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN32) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN34) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN37) ||
-                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49));
-            if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)))   /* (its loops' generation) */
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN50));
+            if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)) ||
+                prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN50))   /* (its loops' generation: builds 50 on, here) */
                 prj_flash_read(prj_sector(k, 0) + sizeof h + __builtin_offsetof(prj_body_t, loop_gen), &prj_lgen[k], 4u);
             else if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49))   /* (builds 38 .. 49: at their place -- else their
                                                   * loops' sectors would count as free; build 50) */
@@ -962,6 +981,8 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     memcpy(b->chord_on, ui.chord_on, NTRACK);
     memcpy(b->chord_form, ui.chord_form, NTRACK);
     memcpy(b->mute, (const void *)trk_mute, NTRACK);
+    memcpy(b->arp_on, (const void *)arp_on, NTRACK);
+    memcpy(b->arp, (const void *)arp_p, sizeof b->arp);
     memcpy(b->snd, ui.snd, sizeof b->snd);
     b->sel = ui.sel;
 }
@@ -989,7 +1010,9 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
         ui.chord_on[t] = (uint8_t)(b->chord_on[t] != 0);
         ui.chord_form[t] = (uint8_t)(b->chord_form[t] % CHF_N);
         trk_mute[t] = (uint8_t)(b->mute[t] != 0);
+        arp_set(t, b->arp_on[t], b->arp[t]);
     }
+    memset(ui.key_arp, 0, sizeof ui.key_arp);
     ui.solo = 0xFF;                              /* (the mutes loaded: no solo to undo) */
     ui.tempo = (int16_t)clampi(b->tempo, TEMPO_MIN, TEMPO_MAX);
     ui.root = (uint8_t)(b->root % 12u);
