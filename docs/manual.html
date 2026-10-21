@@ -56,6 +56,7 @@
 <a href="#amp-and-fx" class="sub">AMP and FX</a>
 <a href="#mangle" class="sub">MANGLE</a>
 <a href="#playing">Playing</a>
+<a href="#transposition" class="sub">Transposition</a>
 <a href="#chord-mode" class="sub">CHORD mode</a>
 <a href="#mute-mode" class="sub">MUTE mode</a>
 <a href="#break" class="sub">BREAK</a>
@@ -87,7 +88,7 @@
 <tr><td>PRESETS (knob)</td><td>The track's machine: 4-OP, DRUM, WAVY, HIVE</td></tr>
 <tr><td>SHIFT + PRESETS</td><td>A new sound of the family before / after</td></tr>
 <tr><td>HOME</td><td>A new sound for the track, on its machine; SHIFT + HOME: of the same family. Held: the session saved, as SAVE held</td></tr>
-<tr><td>OCT− / OCT+</td><td>The track's octave, −3 to +3 (shown at the top right)</td></tr>
+<tr><td>OCT− / OCT+</td><td>The track's octave, −3 to +3 (shown at the top right); in the step view, the track's transposition; SHIFT + OCT− / OCT+: every track's transposition</td></tr>
 <tr><td>White keys</td><td>Play the track in the scale chosen</td></tr>
 <tr><td>1st black key</td><td>CHORD mode on or off</td></tr>
 <tr><td>2nd black key</td><td>MUTE mode on or off</td></tr>
@@ -161,6 +162,8 @@
 </ul>
 <h2 id="playing">Playing</h2>
 <p>The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first three), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, IN. OCT− and OCT+ move the track's octave. USB MIDI notes play the chosen track as the keys do.</p>
+<h3 id="transposition">Transposition</h3>
+<p>In the step view, OCT− and OCT+ transpose the chosen track's steps; SHIFT + OCT− or OCT+ (in the track's view or the step view) transposes every track's steps at once. Each press moves every note one step of the scale and root chosen, down or up (in CHROMATIC, a semitone), so the notes stay in the scale; a note that is not in it moves to the scale's next. The transposition shows at the top right in the track's colour (T+2, T−1), up to 24 steps each way, and TRN with its value on the screen as it changes. It is part of the pattern: the moved notes and the count are saved with it and with the session, and a copied pattern takes them along. The loops and the keys' octave are left as they are.</p>
 <h3 id="chord-mode">CHORD mode</h3>
 <p>In the track's view, the step view off, the 1st black key turns CHORD mode on or off for the track (lit while on, dim off). Each white key then plays a triad from its note, in the scale: TRIAD, INV 1, INV 2, SUS2, SUS4, OPEN or FOURTHS (in CHROMATIC, the same shapes in semitones). SHIFT and the key choose the next form. The form shows at the top left. A step put in takes the chord last played; REC records chords into the steps; the looper records their notes. DRUM tracks play no chords.</p>
 <h3 id="mute-mode">MUTE mode</h3>
