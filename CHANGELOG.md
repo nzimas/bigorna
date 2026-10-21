@@ -1,5 +1,29 @@
 # Changelog
 
+## Build 50
+
+Added
+- LFOs: three per track, on the pages LFO 1, LFO 2 and LFO 3 after REVERB (SEQ), in the chosen track's colour.
+  The Digitone II's parameters: SPEED, MULT (x1 to x2048 with the tempo, .1 to .2048 at 120 BPM), FADE, DEST, WAVE
+  (TRI, SINE, SQR, SAW, EXP, RAMP, RND), START, MODE (FREE, TRIG, HOLD, ONE, HALF), DEPTH. A cycle takes
+  2048 / (|SPEED| × MULT) 16ths. DEST is a parameter of the sound's pages, or an earlier LFO's SPEED or DEPTH.
+  FADE fades in or out over |FADE| 16ths from each note; DEPTH is the swing each way as a share of the destination's
+  range (±64 the whole). Those two laws are this firmware's; the Digitone II's are not published.
+- An LFO runs once per track, all its voices following it (the Digitone II runs one per voice, like POLY off on its
+  M.LFO). The LFOs are worked out every 4 blocks (2.9 ms); then the track's sound is cooked again with the LFOs'
+  values, one sound in turn every 4 blocks (tracks with LFOs on, and voices with step locks).
+- The cost, measured on the FM-1 with three LFOs on each of six tracks: 2.0 % of the CPU on average (the steps
+  0.75 %, the cooks 1.28 %); the stress arrangement's mean load 73.3 % -> 74.9 %, no half late. Done every block,
+  it was 8.1 %: a cook in the audio interrupt takes about three times what it takes in the main loop.
+- HOME: the recipes' LFOs from SynthSeeder (the drone, pad and texture families, FM LEAD; those on PAN left out,
+  the sound has none an LFO reaches), and its sample-and-hold LFO on the filter's FREQ for the other families but
+  the kicks (held per hit on percussion, a slow drift on sustained sounds; its swing down kept above FREQ 30).
+- MIDI LEARN: the LFOs' rows learn per track; DEST cannot be learned.
+
+Changed
+- Sessions hold each sound's LFOs (24 bytes a sound). Sessions saved by earlier builds load with the LFOs off,
+  including those of builds 38 to 49, whose loops stay theirs.
+
 ## Build 49
 
 Added

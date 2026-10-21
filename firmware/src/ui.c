@@ -218,8 +218,14 @@ static uint16_t row_tint;                        /* (draw_row: a row's name and 
 static uint8_t row_learn;                        /* (draw_row: MIDI LEARN's -- the value a CC's, amber, no bar) */
 #define C_LEARN RGB(255, 170, 40)                /* (a CC number, not a value) */
 #define C_LEARN_ON RGB(170, 70, 0)               /* (.. on the chosen row's white) */
-enum { FXP_CHR, FXP_CMP, FXP_DEL, FXP_REV, NFXP };   /* (the effects' pages, in turn) */
-static const char *const FXT[NFXP] = {"CHORUS", "COMP", "DELAY", "REVERB"};
+/* the effects' pages, in turn, then the chosen track's LFOs (build 50: its sound's, sound.h) */
+enum { FXP_CHR, FXP_CMP, FXP_DEL, FXP_REV, FXP_L1, FXP_L2, FXP_L3, NFXP };
+static const char *const FXT[NFXP] = {"CHORUS", "COMP", "DELAY", "REVERB", "LFO 1", "LFO 2", "LFO 3"};
+/* an LFO page's rows, as lfo_t's fields */
+enum { LF_SPD, LF_MULT, LF_FADE, LF_DEST, LF_WAVE, LF_SPH, LF_MODE, LF_DEP, NLF };
+static const char *const LFN[NLF] = {"SPEED", "MULT", "FADE", "DEST", "WAVE", "START", "MODE", "DEPTH"};
+static const char *const LWN[NLW] = {"TRI", "SINE", "SQR", "SAW", "EXP", "RAMP", "RND"};
+static const char *const LMN[NLM] = {"FREE", "TRIG", "HOLD", "ONE", "HALF"};
 #define C_SEND RGB(140, 190, 255)
 #define C_OK RGB(60, 220, 90)
 #define C_BAD RGB(255, 40, 40)
@@ -463,8 +469,11 @@ static void par_turn(uint32_t id, uint32_t j, int32_t s)   /* a parameter of the
         midi_main_send(0xB0u | (mcfg.out_ch[ui.sel] - 1u), MIDI_CC[id * 8u + j],
                        (uint32_t)((clampi(v, p.lo, p.hi) - p.lo) * 127 + (p.hi - p.lo) / 2) / (uint32_t)(p.hi - p.lo));
 }
+static int fx_lfo(void) { return ui.fx_pg >= FXP_L1; }
 static uint8_t *fx_vals(void)
 {
+    if (fx_lfo())
+        return &cur()->lfo[ui.fx_pg - FXP_L1].spd;   /* (lfo_t: eight bytes, the rows' order) */
     return ui.fx_pg == FXP_REV ? fx_rv : ui.fx_pg == FXP_DEL ? fx_dl : ui.fx_pg == FXP_CMP ? fx_cp : fx_ch;
 }
 static int32_t fx_get(uint32_t k)                /* an effect's parameter k (COMP: its row, CMP_SLOT) */
@@ -484,18 +493,33 @@ static void fx_put(uint32_t k, int32_t v)
     else
         fx_vals()[k] = (uint8_t)v;
 }
-static uint32_t fx_n(void) { return ui.fx_pg == FXP_REV ? NRV : ui.fx_pg == FXP_DEL ? NDL : ui.fx_pg == FXP_CMP ? NCP : NCH; }
-/* an effect's parameter: 0 shown as it is (DELAY's TIME, PING PONG), 1 as 0 .. 100, 2 as -50 .. +50 (DELAY's WIDTH),
- * 3 a list (COMP's RATIO, SC SOURCE) */
+static uint32_t fx_n(void) { return fx_lfo() ? NLF : ui.fx_pg == FXP_REV ? NRV : ui.fx_pg == FXP_DEL ? NDL : ui.fx_pg == FXP_CMP ? NCP : NCH; }
+/* an effect's parameter: 0 shown as it is (DELAY's TIME, PING PONG; an LFO's START), 1 as 0 .. 100, 2 as -50 .. +50
+ * (DELAY's WIDTH), 3 a list (COMP's RATIO, SC SOURCE; an LFO's MULT, WAVE, MODE), 4 as -64 .. +63 (an LFO's SPEED,
+ * FADE, DEPTH), 5 an LFO's DEST */
 static uint32_t fx_kind(uint32_t j)
 {
+    if (fx_lfo())
+        return j == LF_SPH ? 0u : j == LF_DEST ? 5u : j == LF_MULT || j == LF_WAVE || j == LF_MODE ? 3u : 4u;
     if (ui.fx_pg == FXP_DEL && (j == DL_TIME || j == DL_X))
         return 0;
     if (ui.fx_pg == FXP_CMP && (CMP_SLOT[j] == CP_RAT || CMP_SLOT[j] == CMP_SRC))
         return 3u;
     return ui.fx_pg == FXP_DEL && j == DL_WID ? 2u : 1u;
 }
-static uint32_t fx_list_n(uint32_t j) { return CMP_SLOT[j] == CP_RAT ? NCP_RAT : NCP_SCS; }
+static uint32_t fx_list_n(uint32_t j)
+{
+    if (fx_lfo())
+        return j == LF_MULT ? NLMULT : j == LF_WAVE ? NLW : NLM;
+    return CMP_SLOT[j] == CP_RAT ? NCP_RAT : NCP_SCS;
+}
+static void fx_changed(void)                     /* (an effect: all cooked again; an LFO: its track's sound) */
+{
+    if (fx_lfo())
+        mark(ui.sel);
+    else
+        fx_cook_all();
+}
 static void fx_turn(uint32_t j, int32_t s)
 {
     int32_t v;
@@ -506,8 +530,9 @@ static void fx_turn(uint32_t j, int32_t s)
     v = fx_get(j);
     fx_put(j, kd == 1u ? pct_raw(pct_disp(v) + s) : kd == 2u ? bip_raw(bip_disp(v) + s)
               : kd == 3u ? clampi(v + s, 0, (int32_t)fx_list_n(j) - 1)
+              : kd == 5u ? (int32_t)lfo_dest_step(cur(), ui.fx_pg - FXP_L1, (uint32_t)v, s)
               : clampi(v + s, 0, ui.fx_pg == FXP_DEL && j == DL_X ? 1 : 127));
-    fx_cook_all();
+    fx_changed();
     prj_dirty = 1;
 }
 static void dial(uint32_t id, uint32_t j)
@@ -731,6 +756,47 @@ static void midi_take(void)
         else if (a == 8u) {                      /* (every binding forgotten: written as MIDI LEARN goes off) */
             memset(mlearn, 0, sizeof mlearn);
             ui.learn_dirty = 1;
+        }
+        else if (a == 12u) {                     /* (the LFOs' ticks, F0 7D 5F: steps mean, highest; cook mean,
+                                                  * highest; then cleared) */
+            uint8_t f[20];
+            uint32_t n = 0, i, v[4];
+            v[0] = tl_lfo[0] >> 4; v[1] = tl_lfo[1]; v[2] = tl_lfo[2] >> 4; v[3] = tl_lfo[3];
+            tl_lfo[1] = tl_lfo[3] = 0;
+            f[n++] = 0xF0; f[n++] = 0x7D; f[n++] = 0x5F;
+            for (i = 0; i < 4u; i++) {
+                f[n++] = (uint8_t)(v[i] >> 14 & 0x7Fu);
+                f[n++] = (uint8_t)(v[i] >> 7 & 0x7Fu);
+                f[n++] = (uint8_t)(v[i] & 0x7Fu);
+            }
+            f[n++] = 0xF7;
+            ota_wire_send(f, n);
+        } else if (a == 11u) {                     /* (the LFOs' load: b 1, three on each track's sound; 0, none) */
+            uint32_t t, n;
+            static const uint8_t D[NLFO] = {1u + PG_FLT1 * 8u + F_FREQ, 2u, 1u + PG_AMP * 8u + 7u};
+            for (t = 0; t < NTRACK; t++) {
+                sound_t *sd = &ui.snd[t][ui.eng[t]];
+                lfos_off(sd);
+                for (n = 0; b && n < NLFO; n++) {
+                    sd->lfo[n].dest = D[n];
+                    sd->lfo[n].wave = (uint8_t)(n == 1u ? LW_RND : LW_SINE);
+                    sd->lfo[n].spd = (uint8_t)(90 + 7 * n);
+                    sd->lfo[n].mult = (uint8_t)(3 + n);
+                    sd->lfo[n].dep = (uint8_t)(64 + 20);
+                }
+                mark(t);
+            }
+        } else if (a == 10u) {                   /* (the cooks' cost, F0 7D 5E: ticks, 24 MHz) */
+            uint8_t f[40];
+            uint32_t n = 0, i;
+            f[n++] = 0xF0; f[n++] = 0x7D; f[n++] = 0x5E;
+            for (i = 0; i < 8u; i++) {
+                f[n++] = (uint8_t)(tl_cook[i] >> 14 & 0x7Fu);
+                f[n++] = (uint8_t)(tl_cook[i] >> 7 & 0x7Fu);
+                f[n++] = (uint8_t)(tl_cook[i] & 0x7Fu);
+            }
+            f[n++] = 0xF7;
+            ota_wire_send(f, n);
         }
 #if FELUCCA_UAC
         else if (a == 9u) {                      /* (USB audio's counters, F0 7D 5D: usb.c's uac) */
@@ -964,7 +1030,7 @@ static int learn_here(uint32_t *kind, uint32_t *track, uint32_t *id)
         *kind = LK_SND;
         *id = pg * 8u + ui.lsel;
     } else if (ui.page == PG_FXP) {
-        if (ui.lsel >= fx_n())
+        if (ui.lsel >= fx_n() || fx_kind(ui.lsel) == 5u)   /* (an LFO's DEST: not by a CC) */
             return 0;
         *kind = LK_FX;
         *id = ui.fx_pg * 8u + ui.lsel;
@@ -973,9 +1039,9 @@ static int learn_here(uint32_t *kind, uint32_t *track, uint32_t *id)
     *track = ui.sel;
     return 1;
 }
-static int learn_fx_own(uint32_t id)             /* (an effect's row that is a track's own: COMP's SC rows) */
+static int learn_fx_own(uint32_t id)             /* (an effect's row that is a track's own: COMP's SC rows, LFOs) */
 {
-    return id / 8u == FXP_CMP && CMP_SLOT[id % 8u] >= CMP_SRC;
+    return (id / 8u == FXP_CMP && CMP_SLOT[id % 8u] >= CMP_SRC) || id / 8u >= FXP_L1;
 }
 static int learn_is(const learn_t *l, uint32_t kind, uint32_t track, uint32_t id)
 {
@@ -1036,11 +1102,14 @@ static int learn_cc(uint32_t ch, uint32_t cc, uint32_t v)
             uint32_t k = l->id % 8u;
             ui.fx_pg = (uint8_t)(l->id / 8u % NFXP);
             ui.sel = (uint8_t)(l->track % NTRACK);
-            if (k < fx_n()) {
+            if (k < fx_n() && fx_kind(k) != 5u) {
                 uint32_t kd = fx_kind(k);
                 fx_put(k, kd == 3u ? (int32_t)((v * (fx_list_n(k) - 1u) + 63u) / 127u)
                           : ui.fx_pg == FXP_DEL && k == DL_X ? (int32_t)(v >= 64u) : (int32_t)v);
-                fx_cook_all();
+                if (fx_lfo())
+                    mark(ui.sel);
+                else
+                    fx_cook_all();
             }
             ui.fx_pg = pg;
             ui.sel = sel;
@@ -1357,7 +1426,7 @@ static void ui_input(void)
                 ui.edit_pg = 0;
             ui.force = 1;
         }
-    if (btn_bit(press, B_SEQ)) {                     /* CHORUS, COMP, DELAY, REVERB, back */
+    if (btn_bit(press, B_SEQ)) {                     /* CHORUS, COMP, DELAY, REVERB, LFO 1 .. 3, back */
         if (ui.page != PG_FXP) {
             ui.page = PG_FXP;
             ui.fx_pg = 0;
@@ -1636,7 +1705,7 @@ static void ui_input(void)
             ui.edit_pg = (uint8_t)((ui.edit_pg + n + (uint32_t)(d + (int)n)) % n);
             ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
             ui.force = 1;
-        } else if (ui.page == PG_FXP) {              /* CHORUS, COMP, DELAY, REVERB */
+        } else if (ui.page == PG_FXP) {              /* CHORUS, COMP, DELAY, REVERB, LFO 1 .. 3 */
             ui.fx_pg = (uint8_t)((ui.fx_pg + NFXP + (uint32_t)(d + (int)NFXP)) % NFXP);
             ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
             ui.force = 1;
@@ -2281,9 +2350,30 @@ static void dl_time_text(char *b, int32_t v)   /* TIME as 128th notes: 1 .. 128 
 {
     fmt_int(b, v + 1);
 }
+static void lfo_mult_text(char *b, uint32_t m)  /* MULT: x1 .. x2048 with the tempo; .1 .. .2048 at 120 BPM */
+{
+    str_cpy(b, m < 12u ? "x" : ".", 2);
+    fmt_int(b + 1, (int32_t)(1u << (m % 12u)));
+}
 static void fx_text(uint32_t k, int32_t x, char *b)   /* an effect's parameter k, as it reads */
 {
-    if (ui.fx_pg == FXP_CMP && fx_kind(k) == 3u)
+    if (fx_lfo() && k < NLF) {
+        if (k == LF_DEST) {
+            lfo_dest_text(cur(), (uint32_t)x, b);
+            if (text_w(&FONT_XS, "DEST") + text_w(&FONT_XS, b) + 12 > 228 && b[0] && b[1] && b[2] && str_has(b, " "))
+                str_cpy(b, b + (b[2] == ' ' ? 3 : 4), 20);   /* (too wide: the name alone, its page dropped) */
+        }
+        else if (k == LF_MULT)
+            lfo_mult_text(b, (uint32_t)x % NLMULT);
+        else if (k == LF_WAVE || k == LF_MODE)
+            str_cpy(b, k == LF_WAVE ? LWN[x % NLW] : LMN[x % NLM], 8);
+        else if (k == LF_SPH)
+            fmt_int(b, x);
+        else {
+            str_cpy(b, x > 64 ? "+" : "", 2);
+            fmt_int(b + str_len(b), x - 64);
+        }
+    } else if (ui.fx_pg == FXP_CMP && fx_kind(k) == 3u)
         str_cpy(b, CMP_SLOT[k] == CP_RAT ? CP_RATN[x % NCP_RAT] : SC_SRCN[x % NCP_SCS], 8);
     else if (ui.fx_pg == FXP_DEL && k == DL_TIME)
         dl_time_text(b, x);
@@ -2303,19 +2393,20 @@ static void fx_text(uint32_t k, int32_t x, char *b)   /* an effect's parameter k
 }
 static const char *fx_name(uint32_t k)
 {
-    return ui.fx_pg == FXP_REV ? RVN[k] : ui.fx_pg == FXP_DEL ? DLN[k] : ui.fx_pg == FXP_CMP ? CPN[k] : CHN[k];
+    return fx_lfo() ? LFN[k] : ui.fx_pg == FXP_REV ? RVN[k] : ui.fx_pg == FXP_DEL ? DLN[k] : ui.fx_pg == FXP_CMP ? CPN[k] : CHN[k];
 }
 static void draw_fx_page(void)
 {
     uint32_t j;
     int32_t t = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
-    uint32_t sub = ui.fx_pg + 100u + (ui.fx_pg == FXP_CMP ? 10u * ui.sel : 0u);   /* (COMP: the chosen track's too) */
+    uint32_t sub = ui.fx_pg + 100u + (ui.fx_pg == FXP_CMP || fx_lfo() ? 10u * ui.sel : 0u);   /* (COMP, LFOs: the
+                                                                                    * chosen track's too) */
     int lrn = ui.learn;                          /* (MIDI LEARN: the CCs, not the values) */
     int full = ui.force || ui.shown_page != PG_FXP || ui.shown_half != ui.half || ui.shown_sub != sub ||
                ui.shown_learn != lrn;
     ui.shown_learn = (uint8_t)lrn;
     if (full)
-        draw_rows_title(FXT[ui.fx_pg], lrn ? "CC" : ui.half ? "E-H" : "A-D", C_SEND);
+        draw_rows_title(FXT[ui.fx_pg], lrn ? "CC" : ui.half ? "E-H" : "A-D", fx_lfo() ? TRACK_COL[ui.sel] : C_SEND);
     if (lrn) {
         for (j = 0; j < 4u; j++) {
             uint32_t k = j + 4u * ui.half;
@@ -2342,7 +2433,7 @@ static void draw_fx_page(void)
     }
     for (j = 0; j < 4u; j++) {
         uint32_t k = j + 4u * ui.half;
-        char b[16];
+        char b[24];                              /* (an LFO's DEST: its page, then a name of up to 15) */
         const char *name = k < fx_n() ? fx_name(k) : "";
         int32_t x = k < fx_n() ? fx_get(k) : 0;
         if (!full && ui.shown_rows[j] == x && ((int32_t)j == t) == ((int32_t)j == ui.shown_touch))
@@ -2352,8 +2443,10 @@ static void draw_fx_page(void)
                                                                                     * chosen track's, in its colour) */
         draw_row(j, name, b,
                  k < fx_n() && fx_kind(k) == 3u ? x * 1000 / (int32_t)(fx_list_n(k) - 1u)
+                 : k < fx_n() && fx_kind(k) == 5u ? x * 1000 / (int32_t)(LFO_ND - 1u)
                  : (ui.fx_pg == FXP_DEL && k == DL_X ? x * 127 : x) * 1000 / 127,
-                 k < fx_n() && fx_kind(k) == 2u, (int32_t)j == t, row_tint ? row_tint : C_SEND);
+                 k < fx_n() && (fx_kind(k) == 2u || fx_kind(k) == 4u), (int32_t)j == t,
+                 fx_lfo() ? TRACK_COL[ui.sel] : row_tint ? row_tint : C_SEND);
         row_tint = 0;
         ui.shown_rows[j] = x;
     }

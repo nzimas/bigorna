@@ -293,3 +293,82 @@ static void par_text(const par_t *p, int32_t v, char *b)
 #undef PB
 #undef PO
 #undef PX
+
+/* ------------------------------------------------------------- LFOs --- */
+/* (build 50) an LFO's destination as a parameter of the sound (dest 1 .. 72: 1 + page id x 8 + knob) that this
+ * machine has: 0 if not (none, another machine's SYN page, an empty place, FLTR 2's G -- the filter's machine) */
+static int lfo_par(const sound_t *s, uint32_t dest, par_t *p)
+{
+    uint32_t id, pg, k;
+    if (!dest || dest >= LFO_D_LFO)
+        return 0;
+    id = dest - 1u;
+    pg = id / 8u;
+    k = id % 8u;
+    if ((pg < 4u && pg >= SYN_PAGES[s->mach % NENG]) || (pg == PG_FLT2 && k == 6u))
+        return 0;
+    par_get(s, pg, k, p);
+    return p->kind != PK_NONE && p->hi > p->lo;
+}
+/* the LFOs' shares (Q15, of each destination's whole range) onto a sound (tracks.c, the audio's: each cook) */
+static void lfo_apply(sound_t *s, const int32_t *mod)
+{
+    uint32_t n;
+    for (n = 0; n < NLFO; n++) {
+        par_t p;
+        uint32_t d = s->lfo[n].dest;
+        int32_t v;
+        if (!mod[n] || !lfo_par(s, d, &p))
+            continue;
+        v = par_val(s, (d - 1u) / 8u, (d - 1u) % 8u) + (int32_t)(((int64_t)mod[n] * (p.hi - p.lo)) >> 15);
+        par_put(s, (d - 1u) / 8u, (d - 1u) % 8u, clampi(v, p.lo, p.hi));
+    }
+}
+/* a destination as it reads on the LFO page: none, its page (S1 .. S4 the SYN pages, F1, F2, AMP, FX, MNG) and the
+ * parameter's name, or LFO 1 / 2's SPEED or DEPTH */
+static void lfo_dest_text(const sound_t *s, uint32_t dest, char *b)
+{
+    static const char *const LD[4] = {"L1 SPEED", "L1 DEPTH", "L2 SPEED", "L2 DEPTH"};
+    static const char *const PT[9] = {"S1 ", "S2 ", "S3 ", "S4 ", "F1 ", "F2 ", "AMP ", "FX ", "MNG "};
+    par_t p;
+    if (!dest) {
+        str_cpy(b, "NONE", 8);
+        return;
+    }
+    if (dest >= LFO_D_LFO) {
+        str_cpy(b, LD[(dest - LFO_D_LFO) & 3u], 12);
+        return;
+    }
+    if (!lfo_par(s, dest, &p)) {
+        str_cpy(b, "--", 4);
+        return;
+    }
+    str_cpy(b, PT[(dest - 1u) / 8u % 9u], 6);
+    str_cpy(b + str_len(b), p.name, 16);
+}
+/* a destination LFO n (0 .. 2) may take: none, this machine's parameters, the earlier LFOs' SPEED and DEPTH */
+static int lfo_dest_ok(const sound_t *s, uint32_t n, uint32_t d)
+{
+    par_t q;
+    if (!d)
+        return 1;
+    if (d >= LFO_D_LFO)
+        return d < LFO_D_LFO + 2u * n && d < LFO_ND;
+    return lfo_par(s, d, &q);
+}
+/* the destination st steps on from dest, the ones LFO n may not take passed over (at an end: it stays) */
+static uint32_t lfo_dest_step(const sound_t *s, uint32_t n, uint32_t dest, int32_t st)
+{
+    for (; st; st += st > 0 ? -1 : 1) {
+        uint32_t d = dest;
+        do {
+            if (st > 0 ? d + 1u >= LFO_ND : d == 0u) {
+                d = dest;
+                break;
+            }
+            d = st > 0 ? d + 1u : d - 1u;
+        } while (!lfo_dest_ok(s, n, d));
+        dest = d;
+    }
+    return dest;
+}

@@ -566,6 +566,16 @@ static void turn(uint32_t e, int32_t n)
     host_enc[PANEL_ENC[e]] = n;
     ui_input();
 }
+/* a session's sector as now, made as builds 38 .. 49 kept it: each sound without its LFOs, the part after them moved
+ * down (build 50's tests) */
+static void sec_to49(uint8_t *sec)
+{
+    uint8_t *b = sec + sizeof(prj_head_t);
+    uint32_t so = __builtin_offsetof(prj_body_t, snd), n;
+    for (n = 0; n < NTRACK * NENG; n++)
+        memmove(b + so + n * sizeof(sound49_t), b + so + n * sizeof(sound_t), sizeof(sound49_t));
+    memmove(b + PRJ_LEN23, b + __builtin_offsetof(prj_body_t, cp), sizeof(prj_body_t) - __builtin_offsetof(prj_body_t, cp));
+}
 static int cmd_projects(const char *dir)
 {
     sound_t keep;
@@ -2263,6 +2273,7 @@ static int cmd_projects(const char *dir)
         EXPECT(!prj_load(2) && fx_cp[CP_THR] == 50u && sc_src[2] == 1u && sc_lvl[2] == 100u,
                "the compressor and the tracks' sidechains kept with the session");
         memcpy(sec, host_flash + prj_sector(2, 0), sizeof sec);   /* (as build 28 kept it: no tracks' sidechains) */
+        sec_to49(sec);
         h->what = 11u * 16u;
         h->len = PRJ_LEN28;
         h->body_crc = prj_crc(sec + sizeof(prj_head_t), PRJ_LEN28);
@@ -2272,6 +2283,7 @@ static int cmd_projects(const char *dir)
         EXPECT(prj_has[11] && !prj_load(11) && fx_cp[CP_THR] == 50u && !sc_src[2], "a session from build 28: no track ducked");
         EXPECT(!prj_load(2), "(session 3 back)");
         memcpy(sec, host_flash + prj_sector(2, 0), sizeof sec);   /* (session 3 as build 23 kept it: no compressor) */
+        sec_to49(sec);
         h->what = 10u * 16u;
         h->len = PRJ_LEN23;
         h->body_crc = prj_crc(sec + sizeof(prj_head_t), PRJ_LEN23);
@@ -2282,11 +2294,12 @@ static int cmd_projects(const char *dir)
         EXPECT(!prj_load(2), "(session 3 back)");
         memcpy(sec, host_flash + prj_sector(2, 0), sizeof sec);   /* (session 3 as builds 35 .. 37 kept it: the body to
                                                                    * its mutes, rounded up to 4 -- 2780 bytes) */
+        sec_to49(sec);
         {
-            prj_body_t *b = (prj_body_t *)(void *)(sec + sizeof(prj_head_t));
+            prj_body49_t *b = (prj_body49_t *)(void *)(sec + sizeof(prj_head_t));
             b->mute[3] = 1;
-            sec[sizeof(prj_head_t) + __builtin_offsetof(prj_body_t, sel)] = 0;       /* (the padding, as memset left it) */
-            sec[sizeof(prj_head_t) + __builtin_offsetof(prj_body_t, sel) + 1u] = 0;
+            sec[sizeof(prj_head_t) + __builtin_offsetof(prj_body49_t, sel)] = 0;     /* (the padding, as memset left it) */
+            sec[sizeof(prj_head_t) + __builtin_offsetof(prj_body49_t, sel) + 1u] = 0;
         }
         h->what = 12u * 16u;
         h->len = 2780u;
@@ -2296,6 +2309,45 @@ static int cmd_projects(const char *dir)
         prj_scan(1);
         EXPECT(prj_has[12] && !prj_load(12) && trk_mute[3] && !loops[0][0].on, "a session from build 37 (2780 bytes): found, loaded");
         EXPECT(!prj_load(2), "(session 3 back)");
+        {   /* (build 50) a session as builds 38 .. 49 kept it -- its loops' generation where they had it -- found, its
+             * loops' sectors counted in use, loaded, its sounds as they were and their LFOs off; LFOs saved now */
+            sound_t keep = ui.snd[1][ui.eng[1]];
+            uint32_t g49, ok = 1, t2, e2;
+            ui.snd[1][ui.eng[1]].lfo[0].dest = 1 + PG_FLT1 * 8 + 4;
+            ui.snd[1][ui.eng[1]].lfo[0].dep = 90;
+            ui.snd[1][ui.eng[1]].lfo[2].wave = LW_RND;
+            EXPECT(!prj_save(2), "(session 3 saved, an LFO set)");
+            ui.snd[1][ui.eng[1]] = keep;
+            EXPECT(!prj_load(2) && ui.snd[1][ui.eng[1]].lfo[0].dest == 1 + PG_FLT1 * 8 + 4 &&
+                   ui.snd[1][ui.eng[1]].lfo[0].dep == 90 && ui.snd[1][ui.eng[1]].lfo[2].wave == LW_RND,
+                   "LFOs kept with the session");
+            memcpy(sec, host_flash + prj_sector(2, 0), sizeof sec);
+            sec_to49(sec);
+            ((prj_body49_t *)(void *)(sec + sizeof(prj_head_t)))->loop_gen = 4242u;
+            ((prj_body49_t *)(void *)(sec + sizeof(prj_head_t)))->loop_nsec = 0;
+            h->what = 13u * 16u;
+            h->len = PRJ_LEN49;
+            h->body_crc = prj_crc(sec + sizeof(prj_head_t), PRJ_LEN49);
+            h->head_crc = prj_crc(sec, __builtin_offsetof(prj_head_t, head_crc));
+            memcpy(host_flash + prj_sector(13, 0), sec, sizeof sec);
+            prj_scan(1);
+            g49 = prj_lgen[13];
+            EXPECT(prj_has[13] && g49 == 4242u, "a session from build 49: found, its loops' generation read where it was");
+            EXPECT(!prj_load(13), "and loaded");
+            for (t2 = 0; t2 < NTRACK; t2++)
+                for (e2 = 0; e2 < NENG; e2++) {
+                    const sound_t *u = &ui.snd[t2][e2];
+                    ok &= !memcmp(u, (const uint8_t *)host_flash + prj_sector(2, 0) + sizeof(prj_head_t) +
+                                  __builtin_offsetof(prj_body_t, snd) + (t2 * NENG + e2) * sizeof(sound_t), sizeof(sound49_t));
+                    ok &= u->lfo[0].dest == 0 && u->lfo[1].dep == 64 && u->lfo[2].fade == 64;
+                }
+            EXPECT(ok, "its sounds as they were, their LFOs off");
+            prj_delete(13);
+            EXPECT(!prj_load(2), "(session 3 back)");
+            ui.snd[1][ui.eng[1]] = keep;             /* (and saved again without the LFO, for what follows) */
+            EXPECT(!prj_save(2) && !prj_load(2), "(session 3 saved as it was, and loaded: its sounds published)");
+            events_take();                       /* (the loads' events taken, as the audio would: the queue has room) */
+        }
     }
     {   /* the compressor works: a loud mix takes gain off, more at a lower threshold; a track as the sidechain */
         int32_t out[2 * CTL];
@@ -3176,9 +3228,236 @@ static int cmd_prof(void)
     return 0;
 }
 
+/* the LFOs (build 50): the rate, the waves' depth, the modes, FADE, an LFO on another's DEPTH, the cooked copy;
+ * the pages after the effects, per track */
+#define LEXPECT(c, what) do { if (!(c)) { printf("FAIL lfo: %s\n", what); fails++; } } while (0)
+static void lfo_use(const sound_t *s)            /* (s on track 0, as the audio takes a published sound) */
+{
+    ck_cook(&ck_buf[0][0], s);
+    ck_buf[0][1] = ck_buf[0][0];
+    ck_pub[0] = ck_use[0] = 0;
+    lfo_flips[0]++;
+}
+static void lfo_one(sound_t *s, uint32_t dest, uint32_t wave, uint32_t mode, int32_t spd, uint32_t mult, int32_t dep)
+{
+    lfos_off(s);
+    s->lfo[0].dest = (uint8_t)dest;
+    s->lfo[0].wave = (uint8_t)wave;
+    s->lfo[0].mode = (uint8_t)mode;
+    s->lfo[0].spd = (uint8_t)(64 + spd);
+    s->lfo[0].mult = (uint8_t)mult;
+    s->lfo[0].dep = (uint8_t)(64 + dep);
+    lfo_use(s);
+}
+static int cmd_lfo(const char *dir)
+{
+    sound_t s;
+    int32_t i, prev, up[4], nup = 0, mx = -99999, mn = 99999, a, b;
+    const uint32_t FREQ = 1u + PG_FLT1 * 8u + F_FREQ;
+    uint32_t per;
+    tracks_init();
+    fx_bpm10 = 1200;
+    gen_sound(&s, ENG_SWM, -1, -1, 77);
+    s.flt[F_FREQ] = 64;
+    /* SPEED +32, MULT x4: a cycle in 2048 / 128 = 16 16ths, a bar: 2 s at 120 BPM, 2756.25 blocks, 689 steps */
+    lfo_one(&s, FREQ, LW_TRI, LM_FREE, 32, 2, 32);
+    per = 44100u * 2u / CTL / LFO_EVERY;         /* (a step: LFO_EVERY blocks) */
+    prev = 0;
+    for (i = 0; i < (int32_t)per * 3 + 10; i++) {
+        lfo_step(0);
+        if (i > 0 && prev < 0 && lfo_mod[0][0] >= 0 && nup < 4)
+            up[nup++] = i;
+        prev = lfo_mod[0][0];
+        mx = lfo_mod[0][0] > mx ? lfo_mod[0][0] : mx;
+        mn = lfo_mod[0][0] < mn ? lfo_mod[0][0] : mn;
+    }
+    LEXPECT(nup >= 3 && absi(up[2] - up[1] - (int32_t)per) <= 2, "SPEED +32, MULT x4 at 120 BPM: a cycle a bar");
+    LEXPECT(absi(mx - 16383) < 300 && absi(mn + 16384) < 300, "DEPTH +32: half the destination's range each way");
+    if (nup >= 3)
+        printf("lfo: a cycle %d steps (%u a bar), share %d .. %d\n", up[2] - up[1], per, mn, mx);
+    fx_bpm10 = 600;                              /* (60 BPM: twice as long; MULT .4 at 120 BPM whatever the tempo) */
+    nup = 0;
+    for (i = 0; i < (int32_t)per * 8 && nup < 3; i++) {
+        lfo_step(0);
+        if (i > 0 && prev < 0 && lfo_mod[0][0] >= 0)
+            up[nup++] = i;
+        prev = lfo_mod[0][0];
+    }
+    LEXPECT(nup == 3 && absi(up[2] - up[1] - 2 * (int32_t)per) <= 3, "the tempo halved: the cycle twice as long");
+    lfo_one(&s, FREQ, LW_TRI, LM_FREE, 32, 12u + 2u, 32);
+    nup = 0;
+    for (i = 0; i < (int32_t)per * 4 && nup < 3; i++) {
+        lfo_step(0);
+        if (i > 0 && prev < 0 && lfo_mod[0][0] >= 0)
+            up[nup++] = i;
+        prev = lfo_mod[0][0];
+    }
+    LEXPECT(nup == 3 && absi(up[2] - up[1] - (int32_t)per) <= 2, "MULT .4: at 120 BPM, not the tempo's");
+    fx_bpm10 = 1200;
+
+    /* the cooked copy: the destination moved by the share, the copy the one the voices play */
+    lfo_one(&s, FREQ, LW_SQR, LM_FREE, 8, 0, 20);
+    for (i = 0; i < 2 * (int32_t)LFO_EVERY; i++)
+        lfo_block();
+    {
+        sound_t c = ck_buf[0][0].snd;
+        lfo_apply(&c, lfo_mod[0]);
+        LEXPECT(lfo_live(0) && ck_lfo[0].snd.flt[F_FREQ] == c.flt[F_FREQ] && c.flt[F_FREQ] == 64 + 20 * 127 / 64,
+                "SQR, DEPTH +20 on FREQ 64: the copy cooked at FREQ 103");
+    }
+    s.lfo[0].dep = 64;                           /* (DEPTH 0: off, the track's own sound) */
+    lfo_use(&s);
+    for (i = 0; i < (int32_t)LFO_EVERY; i++)
+        lfo_block();
+    LEXPECT(!lfo_live(0), "DEPTH 0: the LFO off, the track's own cooked sound played");
+
+    /* TRIG: from START at each note; FREE: on as it was */
+    lfo_one(&s, FREQ, LW_SINE, LM_TRIG, 20, 3, 63);
+    for (i = 0; i < 700; i++)
+        lfo_step(0);
+    a = lfo_mod[0][0];
+    lfo_trig[0] = 1;
+    lfo_step(0);
+    LEXPECT(absi(lfo_mod[0][0]) < 2000 && absi(a) > 2000, "TRIG: a note starts the wave again (SINE from 0)");
+    s.lfo[0].mode = LM_FREE;
+    lfo_use(&s);
+    for (i = 0; i < 700; i++)
+        lfo_step(0);
+    a = lfo_mod[0][0];
+    lfo_trig[0] = 1;
+    lfo_step(0);
+    LEXPECT(absi(lfo_mod[0][0] - a) < 2000 && absi(a) > 2000, "FREE: a note does not");
+
+    /* HOLD: the wave as it was at the note, held till the next */
+    lfo_one(&s, FREQ, LW_TRI, LM_HOLD, 40, 3, 63);
+    for (i = 0; i < 333; i++)
+        lfo_step(0);
+    lfo_trig[0] = 1;
+    lfo_step(0);
+    a = lfo_mod[0][0];
+    for (i = 0, b = 1; i < 900; i++) {
+        lfo_step(0);
+        b &= lfo_mod[0][0] == a;
+    }
+    lfo_trig[0] = 1;
+    lfo_step(0);
+    LEXPECT(b && a != 0 && lfo_mod[0][0] != a, "HOLD: the value at a note, held until the next note");
+
+    /* ONE: a cycle and stop; HALF: half */
+    lfo_one(&s, FREQ, LW_SAW, LM_ONE, 32, 2, 63);
+    lfo_trig[0] = 1;
+    for (i = 0; i < (int32_t)per * 3 / 2; i++)
+        lfo_step(0);
+    a = lfo_mod[0][0];
+    for (i = 0, b = 1; i < (int32_t)per; i++) {
+        lfo_step(0);
+        b &= lfo_mod[0][0] == a;
+    }
+    LEXPECT(b && a > 30000 * 63 / 64, "ONE: a cycle from a note, then still (SAW: at its start, the top)");
+    lfo_one(&s, FREQ, LW_TRI, LM_HALF, 32, 2, 63);
+    lfo_trig[0] = 1;
+    for (i = 0; i < (int32_t)per; i++)
+        lfo_step(0);
+    a = lfo_mod[0][0];
+    lfo_step(0);
+    LEXPECT(lfo_mod[0][0] == a && absi(a) < 1500, "HALF: half a cycle, then still (TRI: back at 0)");
+
+    /* FADE -16: in over 16 16ths (a bar) from each note; FADE +16: out */
+    lfo_one(&s, FREQ, LW_SQR, LM_FREE, 1, 0, 63);
+    s.lfo[0].fade = 64 - 16;
+    lfo_use(&s);
+    lfo_trig[0] = 1;
+    lfo_step(0);
+    a = absi(lfo_mod[0][0]);
+    for (i = 0; i < (int32_t)per / 2; i++)
+        lfo_step(0);
+    b = absi(lfo_mod[0][0]);
+    for (i = 0; i < (int32_t)per; i++)
+        lfo_step(0);
+    LEXPECT(a < 100 && absi(b - 16000) < 800 && absi(lfo_mod[0][0]) > 32000 * 63 / 64 - 300,
+            "FADE -16: none at a note, half at half a bar, all after a bar");
+    s.lfo[0].fade = 64 + 16;
+    lfo_use(&s);
+    lfo_trig[0] = 1;
+    lfo_step(0);
+    a = absi(lfo_mod[0][0]);
+    for (i = 0; i < (int32_t)per + 2; i++)
+        lfo_step(0);
+    LEXPECT(a > 31000 && lfo_mod[0][0] == 0, "FADE +16: all at a note, none after a bar");
+
+    /* RND: a new value each cycle, within the depth; START slews it */
+    lfo_one(&s, FREQ, LW_RND, LM_FREE, 64, 9, 32);
+    {
+        int32_t ch = 0, last = 0, big = 0;
+        for (i = 0; i < 2000; i++) {
+            lfo_step(0);
+            ch += lfo_mod[0][0] != last;
+            big |= absi(lfo_mod[0][0]) > 16384;
+            last = lfo_mod[0][0];
+        }
+        LEXPECT(ch > 20 && !big, "RND: new values, within the depth (and on again in FREE after HALF stopped it)");
+    }
+
+    /* LFO 2 on LFO 1's DEPTH: LFO 1 at DEPTH 0 moves as LFO 2 swings it */
+    lfo_one(&s, FREQ, LW_SQR, LM_FREE, 8, 0, 0);
+    s.lfo[1].dest = LFO_D_LFO + 1u;
+    s.lfo[1].wave = LW_SQR;
+    s.lfo[1].spd = 64 + 2;
+    s.lfo[1].mult = 0;
+    s.lfo[1].dep = 64 + 32;
+    lfo_use(&s);
+    for (i = 0, mx = 0; i < 4000; i++) {
+        lfo_step(0);
+        mx = absi(lfo_mod[0][0]) > mx ? absi(lfo_mod[0][0]) : mx;
+    }
+    LEXPECT(lfo_any[0] && absi(mx - 16383) < 600 && lfo_mod[0][1] == 0, "LFO 2 on LFO 1's DEPTH: LFO 1 moves by it");
+    LEXPECT(!lfo_dest_ok(&s, 0, LFO_D_LFO) && !lfo_dest_ok(&s, 1, LFO_D_LFO + 2u) && lfo_dest_ok(&s, 2, LFO_D_LFO + 3u),
+            "an LFO reaches only the earlier LFOs");
+
+    /* the pages: after REVERB, LFO 1 .. 3 of the chosen track; DEST steps over what the machine lacks */
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    ui.sel = 2;
+    for (i = 0; i < 5; i++)
+        btn(B_SEQ, 0);
+    LEXPECT(ui.page == PG_FXP && ui.fx_pg == FXP_L1, "SEQ: CHORUS, COMP, DELAY, REVERB, then LFO 1");
+    shot(dir, "lfo1");
+    lfos_off(cur());
+    fx_turn(LF_DEST, 1);
+    LEXPECT(cur()->lfo[0].dest == 1u && ui.snd[0][ui.eng[0]].lfo[0].dest == 0u && ui.dirty[2],
+            "DEST on LFO 1: the chosen track's sound's, the others' not");
+    fx_turn(LF_DEST, 200);
+    LEXPECT(cur()->lfo[0].dest == LFO_D_LFO - 1u || lfo_dest_ok(cur(), 0, cur()->lfo[0].dest),
+            "DEST at its end: a parameter LFO 1 may take");
+    fx_turn(LF_DEST, -200);
+    fx_turn(LF_DEST, (int32_t)(FREQ - 1u));
+    {
+        char t[24];
+        lfo_dest_text(cur(), cur()->lfo[0].dest, t);
+        printf("lfo: DEST %u reads %s\n", cur()->lfo[0].dest, t);
+    }
+    fx_turn(LF_DEP, 20);
+    fx_turn(LF_MULT, 30);
+    fx_turn(LF_WAVE, 3);
+    LEXPECT(cur()->lfo[0].dep == 84u && cur()->lfo[0].mult == NLMULT - 1u && cur()->lfo[0].wave == LW_SAW,
+            "DEPTH, MULT (at its end), WAVE turned");
+    ui.half = 0;
+    shot(dir, "lfo1_set");
+    btn(B_SEQ, 0);
+    btn(B_SEQ, 0);
+    LEXPECT(ui.fx_pg == FXP_L3, "SEQ: LFO 2, LFO 3");
+    btn(B_SEQ, 0);
+    LEXPECT(ui.page == PG_MAIN, "SEQ after LFO 3: back");
+    printf("lfo: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
+    if (argc >= 3 && !strcmp(argv[1], "lfo"))
+        return cmd_lfo(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "projects"))
         return cmd_projects(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "phrases"))

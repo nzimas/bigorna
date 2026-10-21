@@ -53,7 +53,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | PLAY | The sequencer plays or stops; held 0.8 s, the TEMPO page; SHIFT + PLAY: the metronome on or off |
 | REC | Records the keys into the track's steps; SHIFT + REC: the looper |
 | ARP | The patterns |
-| SEQ | The effects' pages |
+| SEQ | The effects' pages, then the track's LFOs |
 | SAVE | The sessions; held 0.8 s, the session saved; SHIFT + SAVE: GLOBAL SETUP (MIDI) |
 | MASTER | The output level |
 
@@ -76,7 +76,9 @@ DRUM tracks choke: each hit fades the track's previous one, as on a drum machine
 HOME draws a new sound for the track from a recipe of its machine — a family such as TIGHT KICK, METAL HAT, FM
 BASS or SWARM DRONE — its values drawn within the recipe's ranges, leaning each time towards industrial, IDM or
 abstract. SHIFT + HOME draws again from the same family. SHIFT + PRESETS moves to the family before or after. The
-screen shows the machine and the family. 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE.
+screen shows the machine and the family. 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE. The
+drone, pad and texture families and FM LEAD set LFOs as SynthSeeder's recipes do (those on PAN left out); the other
+families, kicks aside, may get a sample-and-hold LFO on the filter's FREQ.
 
 ## The sound's pages (EDIT)
 
@@ -197,8 +199,8 @@ them when the key is let go.
 
 ## The effects (SEQ)
 
-SEQ shows CHORUS, COMP, DELAY and REVERB in turn, then goes back (OCT− and OCT+ move between them; a track's button
-goes back to the track's view). KNOB 1 to 4 set the first four rows; PRESETS turned right shows the next four.
+SEQ shows CHORUS, COMP, DELAY, REVERB, then the chosen track's LFO 1, LFO 2 and LFO 3 in turn, then goes back (OCT−
+and OCT+ move between them; a track's button goes back to the track's view). KNOB 1 to 4 set the first four rows; PRESETS turned right shows the next four.
 
 - CHORUS: DEPTH, SPEED, HPF, WIDTH, DELAY (its send to the delay), REVERB, VOLUME
 - DELAY: TIME (synced to the tempo), PING PONG, WIDTH, FEEDBACK, HPF, LPF, REVERB, VOLUME
@@ -212,6 +214,32 @@ Any track can be ducked under another's hits: SC SOURCE chooses the track whose 
 LEVEL how deep, 0 to 100 — at 100 the track is all but gated on each hit. The duck follows the source's level and
 lets go at the compressor's RELEASE; the track's delay, reverb and chorus returns duck with it. The two rows show
 in the chosen track's colour; SHIFT and a track's button choose another track while staying on the page.
+
+### LFOs
+
+Each track's sound has three LFOs, on the pages LFO 1, LFO 2 and LFO 3 after REVERB, shown in the track's colour
+(SHIFT and a track's button choose another track while staying on the page). They are part of the sound: each
+machine's sound on a track has its own, saved with the session. An LFO runs once for the track, and all the track's
+voices follow it (the Digitone II runs one per voice).
+
+- SPEED: −64 to +63; negative runs the wave backwards. One cycle takes 2048 / (|SPEED| × MULT) 16ths: SPEED +32 with
+  MULT x4 is one bar.
+- MULT: x1 to x2048 follow the tempo; .1 to .2048 run as at 120 BPM whatever the tempo.
+- FADE: 0 none; negative fades the LFO in, positive fades it out, over |FADE| 16ths from each note.
+- DEST: NONE, or a parameter of the sound's pages, named with its page (S1 to S4 the machine's SYN pages, F1, F2,
+  AMP, FX, MNG; the page left out where the name would not fit). LFO 2 can also move LFO 1's SPEED or DEPTH, and
+  LFO 3 those of LFO 1 or LFO 2. Parameters the machine does not have are skipped.
+- WAVE: TRI, SINE, SQR, SAW, EXP, RAMP, RND (a new random value each cycle).
+- START: where the wave starts on a note (TRIG, ONE, HALF), 0 to 127 a whole cycle. For RND: how slowly it moves to
+  each new value (below 48 it jumps).
+- MODE: FREE runs on; TRIG starts again at START on each note; HOLD runs on, but its value is held from each note to
+  the next; ONE runs one cycle from each note and stops; HALF half a cycle.
+- DEPTH: −64 to +63, the swing each way as a share of the destination's range (+32: half the range); negative
+  turns the wave upside down; 0 off.
+
+The LFOs are worked out every 2.9 ms. The track's sound is then made anew with the LFOs' values, one sound at a
+time in turn: with LFOs on several tracks (and voices with step locks), each moves in steps of 2.9 ms times their
+number. The LFOs' parameters cannot be step-locked.
 
 ## The sequencer
 
@@ -414,7 +442,8 @@ H (the half shown follows); OCT− and OCT+ turn the pages as before.
 - SHIFT + SAVE: the chosen row's CC forgotten.
 
 A CC learned for a sound's parameter turns it on the track it was learned on; one learned for an effect's turns it
-for all (COMP's SC SOURCE and SC LEVEL: on the track it was learned on). A CC and channel are learned for one
+for all (COMP's SC SOURCE and SC LEVEL, and the LFOs' rows: on the track it was learned on; an LFO's DEST cannot be
+learned). A CC and channel are learned for one
 parameter at a time, and a parameter has one CC: learning again moves it. A learned CC comes before the CC map
 above, on its channel; it needs RECEIVE CC on. Up to 64 are kept, in the flash with GLOBAL SETUP, written when MIDI
 LEARN is turned off.

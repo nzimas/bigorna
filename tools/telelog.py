@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # BIGORNA: reads a diagnostic build's timing reports (python3 tools/build.py --telemetry) from the FM-1 over USB-MIDI,
 # and plays a test on it: a kick on track 1 each beat, then 1, 2, 3 .. notes of a pad on track 2.
-#   .venv/bin/python tools/telelog.py [listen | pads [MAXNOTES] [SECONDS]]
+#   .venv/bin/python tools/telelog.py [listen | pads [MAXNOTES] [SECONDS] | arr [SECONDS] [lfo]]
 # Each report (0.2 s): the I2S halves' highest and mean load, late halves, voices sounding, tails let go (the guard's
 # x 100), each machine's voice cost, each track's and the effects' time a block, all in 1/1000 of the time there was.
 import re, sys, time, threading
@@ -148,6 +148,7 @@ def main():
         for t, (m, r) in enumerate([("FMD", 2), ("SWM", 54), ("FMD", 8), ("FMT", 30), ("FMT", 29)]):
             sx(0x56, t, ENG[m], r)
             time.sleep(0.3)
+        sx(0x5A, 11, 1 if "lfo" in sys.argv[3:] else 0, 0)   # (arr SECONDS lfo: three LFOs on each track)
         time.sleep(0.5)
         triad = [48, 55, 63]
         for n in triad:

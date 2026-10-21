@@ -31,6 +31,10 @@ typedef struct {
     sound_t snd;                         /* (the sound itself: a voice's locks cooked from it; MANGLE's values) */
 } ck_t;
 static ck_t ck_buf[NTRACK][2];
+#if TELEMETRY
+static uint32_t tl_cook[8];                      /* (a TELEMETRY build's: ticks a cook takes, each machine -- the
+                                                  * chain's (vck_cook), the machine's (mck_cook); main.c measures) */
+#endif
 static volatile uint8_t ck_pub[NTRACK], ck_use[NTRACK];
 
 static void mck_cook(mck_t *m, const sound_t *s)
@@ -92,6 +96,9 @@ static uint8_t dk_on;                            /* (some track ducked) */
 #define PL_MNG (8u * 8u)                         /* (MANGLE: 64 .. 71) */
 static int pl_track(uint32_t id) { return id == PL_DEL || id == PL_REV || id == PL_CHR || id >= PL_MNG; }
 static void par_put(sound_t *s, uint32_t id, uint32_t j, int32_t v);   /* (params.c) */
+static void lfo_apply(sound_t *s, const int32_t *mod);   /* (params.c: the LFOs' shares onto their destinations) */
+static volatile uint8_t lfo_trig[NTRACK];       /* (a note began on the track: its LFOs' trigger; build 50) */
+static uint32_t lfo_flips[NTRACK];               /* (each track's cooked sound taken anew: its LFOs' copy is old) */
 
 /* a voice's own memory: the chain (its comb line) and the machine's state */
 typedef struct {
@@ -291,6 +298,7 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
     uint32_t best;
     voice_t *v;
     midi_note_out(t, note, note_vel, trk_mute[t]);   /* (out on the track's channel, SEND NOTES: midi.c) */
+    lfo_trig[t] = 1;                             /* (the track's LFOs: TRIG, HOLD, ONE, HALF and the FADE start again) */
     if (!y->xfade && ck_buf[t][ck_use[t]].mach == ENG_FMD) {   /* an DRUM track chokes, as a drum machine's: its
                                                               * last hit faded out (~2 ms) as the next strikes,
                                                               * the tails never piling up */
@@ -408,6 +416,7 @@ static void change_apply(uint32_t t)
         }
     }
     ck_use[t] = ck_pub[t];
+    lfo_flips[t]++;
     for (j = 0; j < n; j++) {
         for (k = 0; k < NVOICE && (vox[k].sounding || vox[k].gate || vox[k].pend); k++)
             ;
@@ -1393,6 +1402,217 @@ FAST static void vr_job(void *ctx)               /* (CPU1: the effects, and its 
         if (vr_core[k])
             voice_render(k);
 }
+/* ---------------------------------------------------------------- LFOs --- */
+/* Three LFOs a track (build 50), the Digitone II's (its MOD pages; sound.h lfo_t): each runs in the track's sound,
+ * its output (a wave, -1 .. 1, EXP and RAMP 0 .. 1) times its FADE and its DEPTH (+-63: the destination's whole
+ * range) moving one parameter of the sound -- or LFO 1's or LFO 2's SPEED or DEPTH, for LFO 2 and 3 (computed first,
+ * LFO 3 to 1). The rate is the Digitone II's law: a cycle every 2048 / (|SPEED| x MULT) 16ths, at the tempo (MULT
+ * 0 .. 11: x1 .. x2048) or at 120 BPM (12 .. 23); a SPEED below 0 runs it backwards. MODE: FREE runs on; TRIG starts
+ * it again at its START PHASE at each note on the track; HOLD runs on and holds its value at each note; ONE and HALF
+ * start at a note, run one cycle (half), and stay. FADE: from each note, over |FADE| 16ths, in (below 64) or out
+ * (above). RND: a value drawn at each cycle, START PHASE its slew.
+ * They are the track's, not each voice's (as the Digitone II's POLY M.LFO): one copy of the track's cooked sound
+ * moves, and its voices play it. That copy -- and each voice with step locks on such a track -- is cooked anew in
+ * turn, one a block (~15 us at most: 2 % of a block, whatever is modulated); a track whose sound was just taken anew
+ * first, the plain sound played until its copy is ready */
+#define LFO_K 664862u                            /* (2^32 x CTL / (FS x 307200), x 65536: a block's phase, the rate's
+                                                  * BPM x 10 x |SPEED| x MULT apart) */
+typedef char lfo_k_ok[CTL == 32 && FS == 44100 ? 1 : -1];
+typedef struct {
+    uint32_t ph[NLFO], run[NLFO], go[NLFO];      /* the phase; how far a ONE or HALF has run; blocks since a note */
+    int32_t live[NLFO], held[NLFO], tgt[NLFO];   /* the wave now; HOLD's value; RND's next */
+    uint8_t stop[NLFO];
+    uint32_t cooked;                             /* lfo_flips[t] + 1 when its copy was cooked (0: none) */
+} lfo_st_t;
+static lfo_st_t lfs[NTRACK];
+static ck_t ck_lfo[NTRACK] POOL;                 /* (each track's cooked sound, as its LFOs have it now) */
+static int32_t lfo_mod[NTRACK][NLFO];            /* (each LFO's share on its sound's destination, Q15; 0 none) */
+static uint8_t lfo_any[NTRACK];                  /* (an LFO of the track has a destination and a depth) */
+static uint32_t lfo_rr, lfo_rnd = 0x2545F491u;
+static void lfo_off(lfo_t *l)
+{
+    l->spd = 80;
+    l->mult = 2;
+    l->fade = 64;
+    l->dest = 0;
+    l->wave = LW_TRI;
+    l->sph = 0;
+    l->mode = LM_FREE;
+    l->dep = 64;
+}
+static void lfos_off(sound_t *s)
+{
+    uint32_t n;
+    for (n = 0; n < NLFO; n++)
+        lfo_off(&s->lfo[n]);
+}
+static int lfo_on(const lfo_t *l) { return l->dest && l->dest < LFO_ND && l->dep != 64; }
+static int32_t lfo_wave(uint32_t w, uint32_t ph)  /* Q15 */
+{
+    uint32_t x;
+    switch (w) {
+    case LW_SINE:
+        return sin_ph(ph);
+    case LW_SQR:
+        return ph < 0x80000000u ? 32767 : -32768;
+    case LW_SAW:                                 /* (+1 down to -1) */
+        return 32767 - (int32_t)(ph >> 16);
+    case LW_EXP:                                 /* (1 down to 0, (1 - x)^3) */
+        x = 32767u - (ph >> 17);
+        return (int32_t)((x * x >> 15) * x >> 15);
+    case LW_RAMP:                                /* (0 up to 1) */
+        return (int32_t)(ph >> 17);
+    default:                                     /* TRI: from 0 up, as SINE */
+        x = (ph + 0x40000000u) >> 17;
+        return x < 16384u ? (int32_t)(x * 4u) - 32768 : (x == 16384u ? 32767 : 98304 - (int32_t)(x * 4u));
+    }
+}
+#define LFO_EVERY 4u                             /* (the LFOs' work every 4 blocks, 2.9 ms: the steps on one, a cook on
+                                                  * another -- a cook in the audio takes ~3x what it does warm) */
+static void lfo_step(uint32_t t)                 /* (LFO_EVERY blocks on: each LFO on, its share) */
+{
+    const sound_t *s = &ck_buf[t][ck_use[t]].snd;
+    lfo_st_t *f = &lfs[t];
+    int32_t sm[NLFO] = {0, 0, 0}, dm[NLFO] = {0, 0, 0}, n;
+    int trig = lfo_trig[t];
+    uint32_t any = 0;
+    lfo_trig[t] = 0;
+    for (n = NLFO - 1; n >= 0; n--) {            /* (LFO 3 first: it may move LFO 1's or 2's SPEED or DEPTH) */
+        const lfo_t *l = &s->lfo[n];
+        int32_t spd = (int32_t)l->spd - 64 + sm[n], dep = clampi((int32_t)l->dep - 64 + dm[n], -64, 64), o, fq = Q15;
+        uint32_t mult = 1u << (l->mult % 12u), bpm10 = l->mult < 12u ? (uint32_t)clampi(fx_bpm10, 100, 3000) : 1200u, inc, p0;
+        lfo_mod[t][n] = 0;
+        if (!lfo_on(l) && !(sm[n] || dm[n]))
+            continue;
+        spd = clampi(spd, -64, 64);
+        {
+            uint64_t i64 = (((uint64_t)bpm10 * (uint32_t)absi(spd) * mult * LFO_K) >> 16) * LFO_EVERY;
+            inc = i64 > 0x7FFFFFFFu ? 0x7FFFFFFFu : (uint32_t)i64;   /* (faster than a cycle in two: as good as) */
+        }
+        if (trig) {
+            f->go[n] = 0;
+            if (l->mode == LM_HOLD)
+                f->held[n] = f->live[n];
+            else if (l->mode != LM_FREE) {
+                f->ph[n] = (uint32_t)l->sph << 25;
+                f->run[n] = 0;
+                f->stop[n] = 0;
+            }
+        }
+        p0 = f->ph[n];
+        if (l->mode != LM_ONE && l->mode != LM_HALF)
+            f->stop[n] = 0;                      /* (stopped by ONE or HALF, then another MODE: on again) */
+        if (!f->stop[n]) {
+            f->ph[n] += spd >= 0 ? inc : (uint32_t)-inc;
+            if ((l->mode == LM_ONE && f->run[n] + inc < f->run[n]) ||
+                (l->mode == LM_HALF && f->run[n] < 0x80000000u && f->run[n] + inc >= 0x80000000u))
+                f->stop[n] = 1;                  /* (ONE: a cycle run; HALF: half) */
+            f->run[n] += inc;
+        }
+        if (l->wave == LW_RND) {                 /* (a new value each cycle; START PHASE its slew) */
+            if ((spd >= 0 ? f->ph[n] < p0 : f->ph[n] > p0) || trig) {
+                lfo_rnd = lfo_rnd * 1664525u + 1013904223u;
+                f->tgt[n] = (int32_t)(lfo_rnd >> 16) - 32768;
+            }
+            f->live[n] += l->sph >= 48u ? (f->tgt[n] - f->live[n]) >> (l->sph / 16u - 1u) : f->tgt[n] - f->live[n];
+        } else
+            f->live[n] = lfo_wave(l->wave, f->ph[n]);
+        o = l->mode == LM_HOLD ? f->held[n] : f->live[n];
+        if (l->fade != 64) {                     /* (from the last note, over |FADE| 16ths) */
+            uint32_t len = (uint32_t)absi((int32_t)l->fade - 64) * (SEQ_16TH / CTL / LFO_EVERY) / bpm10 + 1u;
+            uint32_t g = f->go[n] < len ? f->go[n] : len;
+            fq = (int32_t)(g * (uint32_t)Q15 / len);
+            if (l->fade > 64)
+                fq = Q15 - fq;
+            if (f->go[n] < 0xFFFFFFF0u)
+                f->go[n]++;
+        }
+        o = (o * fq >> 15) * dep / 64;           /* (32767 x 32767 < 2^31: no 64 bits) */
+        if (l->dest >= LFO_D_LFO) {              /* (LFO 1's or 2's SPEED or DEPTH, for a later LFO) */
+            uint32_t m = (l->dest - LFO_D_LFO) / 2u;
+            if ((int32_t)m < n) {
+                if ((l->dest - LFO_D_LFO) & 1u)
+                    dm[m] += o * 64 / 32768;
+                else
+                    sm[m] += o * 64 / 32768;
+            }
+        } else if (l->dest && l->dest < LFO_D_LFO) {   /* (on, or its DEPTH moved by a later LFO) */
+            lfo_mod[t][n] = o;
+            any = 1;
+        }
+    }
+    lfo_any[t] = (uint8_t)any;
+}
+static int lfo_live(uint32_t t) { return lfo_any[t] && lfs[t].cooked == lfo_flips[t] + 1u; }
+/* one sound cooked anew a block: a track whose own copy is old first, else the next in turn of the tracks with LFOs
+ * on and their voices with step locks */
+#if TELEMETRY
+static uint32_t tl_lfo[4];                       /* (a TELEMETRY build's: the steps' and the cook's ticks, mean x 16 and
+                                                  * highest) */
+#endif
+static void lfo_cook(void);
+static void lfo_block(void)
+{
+    static uint8_t ph;
+#if TELEMETRY
+    uint32_t t0 = fm1_ticks(), t1, t2, t;
+    ph = (uint8_t)((ph + 1u) % LFO_EVERY);
+    for (t = 0; ph == 0u && t < NTRACK; t++)
+        lfo_step(t);
+    t1 = fm1_ticks();
+    if (ph == LFO_EVERY / 2u)
+        lfo_cook();
+    t2 = fm1_ticks();
+    tl_lfo[0] += (t1 - t0) - (tl_lfo[0] >> 4);
+    tl_lfo[1] = t1 - t0 > tl_lfo[1] ? t1 - t0 : tl_lfo[1];
+    tl_lfo[2] += (t2 - t1) - (tl_lfo[2] >> 4);
+    tl_lfo[3] = t2 - t1 > tl_lfo[3] ? t2 - t1 : tl_lfo[3];
+#else
+    uint32_t t;
+    ph = (uint8_t)((ph + 1u) % LFO_EVERY);
+    for (t = 0; ph == 0u && t < NTRACK; t++)
+        lfo_step(t);
+    if (ph == LFO_EVERY / 2u)
+        lfo_cook();
+#endif
+}
+static void lfo_cook(void)
+{
+    uint32_t t, i, k;
+    sound_t s;
+    for (t = 0; t < NTRACK; t++)
+        if (lfo_any[t] && lfs[t].cooked != lfo_flips[t] + 1u)
+            break;
+    if (t == NTRACK)
+        for (i = 0; i < NTRACK + NVOICE; i++) {
+            uint32_t j = (lfo_rr + i) % (NTRACK + NVOICE);
+            if (j < NTRACK ? lfo_any[j] : vox[j - NTRACK].own && vox[j - NTRACK].sounding && lfo_any[vox[j - NTRACK].track]) {
+                lfo_rr = j + 1u;
+                t = j;
+                break;
+            }
+        }
+    if (t == NTRACK)
+        return;
+    if (t < NTRACK) {
+        s = ck_buf[t][ck_use[t]].snd;
+        lfo_apply(&s, lfo_mod[t]);
+        ck_cook(&ck_lfo[t], &s);
+        lfs[t].cooked = lfo_flips[t] + 1u;
+        return;
+    }
+    k = t - NTRACK;                              /* (a voice with step locks: its locks, then the LFOs) */
+    s = ck_buf[vox[k].track][ck_use[vox[k].track]].snd;
+    for (i = 0; i < NPL; i++)
+        if (vox[k].lid[i] < PL_MNG)
+            par_put(&s, vox[k].lid[i] >> 3, vox[k].lid[i] & 7u, vox[k].lv[i]);
+    lfo_apply(&s, lfo_mod[vox[k].track]);
+    if (s.mach == vox[k].eng) {                  /* (the machine the voice plays: else not) */
+        vck_cook(&vmem[k].lck, &s);
+        mck_cook(&vmem[k].lm, &s);
+    }
+}
+
 /* before the tracks: each track's sound for the block (a machine changed: its voices out first), then the voices */
 static void vr_block(void)
 {
@@ -1407,11 +1627,15 @@ static void vr_block(void)
             else if (ck_buf[t][ck_pub[t]].mach != ck_buf[t][ck_use[t]].mach)
                 change_apply(t);
             else
+            {
                 ck_use[t] = ck_pub[t];           /* the same machine: on, with the new values */
+                lfo_flips[t]++;
+            }
         }
     }
+    lfo_block();                                 /* the LFOs: on a block, one sound cooked anew (build 50) */
     for (t = 0; t < NTRACK; t++)
-        vr_ck[t] = &ck_buf[t][ck_use[t]];
+        vr_ck[t] = lfo_live(t) ? &ck_lfo[t] : &ck_buf[t][ck_use[t]];
     audio_worker_check();                        /* (a CPU1 that misread or faulted: alone from here) */
     for (k = 0; k < NVOICE; k++) {               /* (the voices by their last cost, the dearest first ..) */
         vr_core[k] = 0;
@@ -1892,6 +2116,9 @@ static void tracks_init(void)
         memset(trk[t].tid, PL_NONE, sizeof trk[t].tid);
     }
     memset((void *)seq_lid, PL_NONE, sizeof seq_lid);
+    memset(lfs, 0, sizeof lfs);                  /* (no LFO copy cooked: each track plays its own sound) */
+    memset(lfo_any, 0, sizeof lfo_any);
+    memset(lfo_mod, 0, sizeof lfo_mod);
     wt_init();
     fx_init();
     mangle_init();

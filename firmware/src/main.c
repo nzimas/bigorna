@@ -60,6 +60,23 @@ static void tl_bench_run(void)                   /* (before the interrupts are o
 #undef KEEP
 #undef TB
     tl_sink = acc;
+    {   /* (a sound of each machine, drawn as HOME would: its chain's cook and its machine's, 64 times each) */
+        static sound_t s;
+        static vck_t vc;
+        static mck_t mc;
+        uint32_t m;
+        for (m = 0; m < NENG; m++) {
+            gen_sound(&s, m, -1, -1, 1234u + m);
+            t = fm1_ticks();
+            for (i = 0; i < 64u; i++)
+                vck_cook(&vc, &s);
+            tl_cook[m] = (fm1_ticks() - t) / 64u;
+            t = fm1_ticks();
+            for (i = 0; i < 64u; i++)
+                mck_cook(&mc, &s);
+            tl_cook[4u + m] = (fm1_ticks() - t) / 64u;
+        }
+    }
 }
 static void tele_put(uint8_t *f, uint32_t *n, uint32_t v)
 {

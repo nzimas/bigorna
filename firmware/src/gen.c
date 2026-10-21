@@ -5,7 +5,7 @@
  * II), whose ranges were set against the Digitone II's factory sounds and listening tests; they are written in
  * the Digitone II's own units, as the sounds here are. Each draw also leans, at random, towards three tastes --
  * industrial, IDM, abstract -- as SynthSeeder's rolls do.
- * (LFOs are not in this firmware yet: the recipes' LFO lines are left out.) */
+ * The recipes' LFOs are SynthSeeder's (build 50), but those on PAN: the sound has no pan an LFO reaches. */
 
 typedef struct { rnd_t r; int32_t ind, idm, abs_; } gctx_t;   /* the tastes, 0 .. 100 */
 static int32_t RI(gctx_t *g, int32_t a, int32_t b) { return a + rnd_below(&g->r, b - a + 1); }
@@ -61,6 +61,39 @@ static void level(sound_t *s, int32_t lv)   /* the recipe's volume, less for dri
     s->amp[A_VOL] = (uint8_t)clampi(v, 40, 124);
 }
 static void pan(sound_t *s, int32_t p) { s->amp[A_PAN] = (uint8_t)(64 + p); }
+
+static int str_has(const char *s, const char *w)  /* (w within s) */
+{
+    uint32_t i, j;
+    for (i = 0; s[i]; i++) {
+        for (j = 0; w[j] && s[i + j] == w[j]; j++)
+            ;
+        if (!w[j])
+            return 1;
+    }
+    return 0;
+}
+
+/* -------------------------------------------------------------- LFOs --- */
+/* (build 50) LFO n (0 .. 2) on dest, as SynthSeeder's Sections.lfo: its rate one of three (slow: several bars a
+ * cycle; medium: about a bar; fast: within a note), START drawn for RND (its slew), FADE none, depth d of +-63 */
+enum { LR_SLOW, LR_MED, LR_FAST };
+#define LD_SYN(i) (1u + (i))                     /* (a SYN page's parameter, by its index in syn) */
+#define LD_FREQ (1u + PG_FLT1 * 8u + F_FREQ)
+static void lfo(sound_t *s, gctx_t *g, uint32_t n, uint32_t dest, uint32_t wave, uint32_t mode, int rate, int32_t d)
+{
+    lfo_t *l = &s->lfo[n];
+    l->spd = (uint8_t)(rate == LR_SLOW ? RI(g, 66, 84) : rate == LR_MED ? RI(g, 84, 104) : RI(g, 96, 120));
+    l->mult = (uint8_t)(rate == LR_SLOW ? RI(g, 1, 3) : rate == LR_MED ? RI(g, 3, 5) : RI(g, 6, 9));
+    l->fade = 64;
+    l->dest = (uint8_t)dest;
+    l->wave = (uint8_t)wave;
+    l->sph = (uint8_t)(wave == LW_RND ? RI(g, 0, 40) : 0);
+    l->mode = (uint8_t)mode;
+    l->dep = (uint8_t)clampi(64 + d, 0, 127);
+}
+#define LFO(s, g, n, dest, wave, rate, d0, d1) lfo(s, g, n, dest, wave, LM_FREE, rate, RI(g, d0, d1))
+#define SPH(s, g, n, a, b) ((s)->lfo[n].sph = (uint8_t)RI(g, a, b))   /* (RND: a slower slew, a drift) */
 
 /* ------------------------------------------------------------- bases --- */
 static void drum_base(sound_t *s)
@@ -398,6 +431,8 @@ static void r_noise_engine(sound_t *s, gctx_t *g)
     band(s, RI(g, 22, 40), 127);
     sends(s, RI(g, 10, 45), RI(g, 40, 90), 0);
     dirt(s, g->ind * RI(g, 20, 70) / 100, 0, 0, 0, 0);
+    LFO(s, g, 0, LD_SYN(FD_GRAN), LW_RND, LR_MED, 10, 30);
+    LFO(s, g, 1, LD_FREQ, LW_TRI, LR_SLOW, 8, 20);
     level(s, 108);
 }
 static void r_scrape(sound_t *s, gctx_t *g)
@@ -413,6 +448,7 @@ static void r_scrape(sound_t *s, gctx_t *g)
     band(s, RI(g, 24, 45), 127);
     sends(s, RI(g, 10, 40), RI(g, 50, 95), 0);
     dirt(s, RI(g, 10, 40) + g->ind * 30 / 100, 0, 0, 0, 0);
+    LFO(s, g, 0, LD_FREQ, LW_RND, LR_SLOW, 12, 30); SPH(s, g, 0, 60, 110);
     level(s, 104);
 }
 static void r_machine(sound_t *s, gctx_t *g)
@@ -427,6 +463,8 @@ static void r_machine(sound_t *s, gctx_t *g)
     band(s, RI(g, 18, 34), 127);
     sends(s, RI(g, 10, 30), RI(g, 60, 100), 0);
     dirt(s, g->ind * RI(g, 10, 50) / 100, 0, 0, 0, 0);
+    LFO(s, g, 0, LD_FREQ, LW_TRI, LR_SLOW, 8, 18);
+    LFO(s, g, 1, LD_SYN(FD_GRAN), LW_RND, LR_SLOW, 10, 30); SPH(s, g, 1, 60, 110);
     level(s, 106);
 }
 
@@ -454,6 +492,7 @@ static void r_fm_lead(sound_t *s, gctx_t *g)
     band(s, RI(g, 12, 30), 127);
     sends(s, RI(g, 15, 55), RI(g, 15, 50), RI(g, 0, 35));
     dirt(s, RI(g, 15, 50) + g->ind * 35 / 100, 0, 0, 0, 0);
+    LFO(s, g, 0, LD_SYN(FT_HARM), LW_TRI, LR_MED, 4, 12);
     level(s, 116);
 }
 static void r_fm_bell(sound_t *s, gctx_t *g)
@@ -496,6 +535,8 @@ static void r_fb_drone(sound_t *s, gctx_t *g)
     filt(s, SH_LP, RI(g, 58, 90), RI(g, 10, 40), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 14, 30), 127);
     sends(s, 0, RI(g, 50, 95), 0);
+    LFO(s, g, 0, LD_SYN(FT_FDBK), LW_SINE, LR_SLOW, 10, 25);
+    LFO(s, g, 1, LD_SYN(FT_MIX), LW_RND, LR_SLOW, 15, 40); SPH(s, g, 1, 60, 110);
     level(s, 108);
 }
 
@@ -525,6 +566,8 @@ static void r_wt_pad(sound_t *s, gctx_t *g)
     band(s, RI(g, 8, 22), 127);
     sends(s, RI(g, 0, 35), RI(g, 60, 105), RI(g, 10, 50));
     dirt(s, RI(g, 5, 20) + g->ind * RI(g, 0, 30) / 100, 0, 0, 0, 0);
+    LFO(s, g, 0, LD_SYN(WT_WAV1), LW_TRI, LR_SLOW, 10, 28);
+    LFO(s, g, 1, LD_FREQ, LW_SINE, LR_SLOW, 4, 10);
     level(s, 114);
 }
 static void r_ring_drone(sound_t *s, gctx_t *g)
@@ -538,6 +581,8 @@ static void r_ring_drone(sound_t *s, gctx_t *g)
     band(s, RI(g, 14, 30), 127);
     sends(s, RI(g, 0, 35), RI(g, 50, 95), 0);
     dirt(s, g->ind * RI(g, 20, 70) / 100, 0, 0, 0, 0);
+    LFO(s, g, 0, LD_SYN(WT_TUN2), LW_RND, LR_SLOW, 3, 9); SPH(s, g, 0, 70, 120);
+    LFO(s, g, 1, LD_SYN(WT_WAV1), LW_TRI, LR_SLOW, 15, 40);
     level(s, 110);
 }
 static void r_grain_field(sound_t *s, gctx_t *g)
@@ -552,6 +597,8 @@ static void r_grain_field(sound_t *s, gctx_t *g)
     band(s, RI(g, 22, 40), 127);
     sends(s, RI(g, 15, 55), RI(g, 45, 95), 0);
     dirt(s, 0, g->ind > 40 && CH(g, 40) ? RI(g, 20, 60) : 0, CH(g, 30 + g->idm * 30 / 100) ? RI(g, 10, 50) : 0, 0, 0);
+    LFO(s, g, 0, LD_SYN(WT_NBAS), LW_RND, LR_SLOW, 10, 30); SPH(s, g, 0, 60, 120);
+    LFO(s, g, 1, LD_SYN(WT_CHAR), LW_TRI, LR_MED, 10, 35);
     level(s, 110);
 }
 static void r_breath(sound_t *s, gctx_t *g)
@@ -564,6 +611,8 @@ static void r_breath(sound_t *s, gctx_t *g)
     filt(s, SH_BP, RI(g, 50, 85), RI(g, 30, 70), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 24, 40), 127);
     sends(s, RI(g, 20, 60), RI(g, 70, 110), 0);
+    LFO(s, g, 0, LD_FREQ, LW_SINE, LR_SLOW, 10, 25);
+    LFO(s, g, 1, LD_SYN(WT_NBAS), LW_RND, LR_SLOW, 10, 28); SPH(s, g, 1, 60, 110);
     level(s, 108);
 }
 static void r_radio(sound_t *s, gctx_t *g)
@@ -577,6 +626,8 @@ static void r_radio(sound_t *s, gctx_t *g)
     band(s, RI(g, 40, 70), RI(g, 20, 50));
     sends(s, RI(g, 20, 60), RI(g, 30, 70), 0);
     dirt(s, RI(g, 20, 60), CH(g, 50) ? RI(g, 20, 60) : 0, RI(g, 10, 50), 0, 0);
+    LFO(s, g, 0, LD_SYN(WT_NBAS), LW_RND, LR_SLOW, 10, 28);
+    LFO(s, g, 1, LD_FREQ, LW_RND, LR_MED, 10, 25);
     level(s, 104);
 }
 
@@ -626,6 +677,8 @@ static void r_swarm_pad(sound_t *s, gctx_t *g)
     band(s, RI(g, 8, 22), 127);
     sends(s, RI(g, 0, 30), RI(g, 60, 100), RI(g, 15, 55));
     dirt(s, RI(g, 5, 20), 0, 0, 0, 0);
+    LFO(s, g, 0, LD_FREQ, LW_SINE, LR_SLOW, 5, 12);
+    LFO(s, g, 1, LD_SYN(SW_SWRM), LW_TRI, LR_SLOW, 10, 30);
     level(s, 114);
 }
 static void r_swarm_drone(sound_t *s, gctx_t *g)
@@ -639,6 +692,8 @@ static void r_swarm_drone(sound_t *s, gctx_t *g)
     band(s, RI(g, 14, 30), 127);
     sends(s, RI(g, 0, 25), RI(g, 55, 100), 0);
     dirt(s, RI(g, 10, 25) + g->ind * RI(g, 10, 50) / 100, 0, 0, 0, 0);
+    LFO(s, g, 0, LD_FREQ, LW_RND, LR_SLOW, 5, 12); SPH(s, g, 0, 60, 110);
+    LFO(s, g, 1, LD_SYN(SW_SWRM), LW_SINE, LR_SLOW, 15, 35);
     level(s, 116);
 }
 static void r_dark_wash(sound_t *s, gctx_t *g)
@@ -650,6 +705,7 @@ static void r_dark_wash(sound_t *s, gctx_t *g)
     filt(s, SH_LP, RI(g, 35, 65), RI(g, 10, 40), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 18, 30), 127);
     sends(s, RI(g, 10, 40), RI(g, 80, 110), RI(g, 20, 60));
+    LFO(s, g, 0, LD_FREQ, LW_RND, LR_SLOW, 10, 25); SPH(s, g, 0, 60, 110);
     level(s, 110);
 }
 
@@ -881,6 +937,27 @@ static void grit(sound_t *s, gctx_t *g)
     if (s->fmach != FLT_CBM && s->fmach != FLT_CBP && CH(g, 15))
         comb(s, g, CH(g, 50));
 }
+/* (build 50) SynthSeeder's sample-and-hold on the cutoff, in its brutality's place (not on kicks): on percussion a
+ * new colour each hit (RND or SQR, held); on sustained sounds a slow slewed drift. On the first LFO free. */
+static void grit_lfo(sound_t *s, gctx_t *g, int kick)
+{
+    uint32_t n;
+    int32_t d, lo;
+    int perc = s->amp[A_MODE] == 0u && s->amp[A_SUS] == 0u;
+    if (kick || !CH(g, 30 + g->ind * 30 / 100))
+        return;
+    for (n = 0; n < NLFO && s->lfo[n].dest && s->lfo[n].dep != 64u; n++)
+        ;
+    if (n == NLFO)
+        return;
+    d = RI(g, 15, 20 + g->ind * 40 / 100);
+    lo = (s->flt[F_FREQ] - 30) * 64 / 127;       /* (down: the cutoff kept above 30, the sound not shut) */
+    if (CH(g, 50) && lo >= 15)
+        d = -(d < lo ? d : lo);
+    lfo(s, g, n, LD_FREQ, perc && CH(g, 30) ? LW_SQR : LW_RND, perc ? LM_HOLD : LM_FREE, perc ? LR_FAST : LR_SLOW, d);
+    if (!perc)
+        SPH(s, g, n, 60, 110);
+}
 
 /* the recipes, by machine; the FLTR machine each uses */
 static const recipe_t RECIPES[] = {
@@ -937,6 +1014,7 @@ static void gen_sound(sound_t *s, uint32_t m, int32_t fam, int32_t avoid, uint32
         fam = (int32_t)(k < NRECIPE ? k : 0);
     }
     memset(s, 0, sizeof *s);
+    lfos_off(s);
     s->mach = (uint8_t)m;
     s->fmach = RECIPES[fam].fmach;
     s->flt[F_BWRT] = 0;
@@ -944,6 +1022,7 @@ static void gen_sound(sound_t *s, uint32_t m, int32_t fam, int32_t avoid, uint32
     if (!RECIPES[fam].amb) {
         int32_t od0 = s->fx[X_OD];
         grit(s, &g);
+        grit_lfo(s, &g, str_has(RECIPES[fam].name, "KICK"));
         s->amp[A_VOL] = (uint8_t)clampi(s->amp[A_VOL] - (s->fx[X_OD] - od0) / 5, 40, 124);   /* (more drive: less level) */
     }
     s->fx[X_OD] = (uint8_t)(s->fx[X_OD] * 100 / 127);   /* (the recipes' drive in 0 .. 127: OVERDRIVE is 0 .. 100) */

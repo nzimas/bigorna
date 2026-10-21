@@ -7,10 +7,10 @@
  * (isod89), GPL-3.0: the HAL, the boot, the USB stack, the update entry and loader, the rescue mode. */
 #include <stdint.h>
 #ifndef FW_ID
-#define FW_ID "FM-1_8049"         /* the package identity (tools/build.py sets it) */
+#define FW_ID "FM-1_8050"         /* the package identity (tools/build.py sets it) */
 #endif
 #ifndef FW_VERSION
-#define FW_VERSION "BUILD 49"
+#define FW_VERSION "BUILD 50"
 #endif
 #define FW_NAME "BIGORNA"
 #define FELUCCA_ID FW_ID

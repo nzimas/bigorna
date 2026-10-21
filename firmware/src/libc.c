@@ -19,6 +19,16 @@ void *memcpy(void *d, const void *s, unsigned n)
     return d;
 }
 
+void *memmove(void *d, const void *s, unsigned n)   /* (overlapping: from the end when d is past s; build 50) */
+{
+    unsigned char *dp = d;
+    const unsigned char *sp = s;
+    if (dp <= sp || dp >= sp + n)
+        return memcpy(d, s, n);
+    while (n--)
+        dp[n] = sp[n];
+    return d;
+}
 int memcmp(const void *a, const void *b, unsigned n)
 {
     const unsigned char *p = a, *q = b;

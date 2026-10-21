@@ -44,6 +44,33 @@
 #define TEMPO_MAX 300
 
 typedef struct { uint32_t magic; uint16_t format, what; uint32_t len; uint16_t body_crc, head_crc; } prj_head_t;
+/* the sound as builds 18 .. 49 saved it: no LFOs (prj_up makes a session of now of it) */
+typedef struct {
+    uint8_t mach, fmach;
+    int16_t syn[32];
+    uint8_t flt[NF], amp[NA], fx[NX], family;
+    uint8_t mg[NM];
+    uint32_t seed;
+} sound49_t;
+typedef char snd49_fits[__builtin_offsetof(sound_t, lfo) == sizeof(sound49_t) ? 1 : -1];   /* (sound_t: sound49_t, then
+                                                                                          * the LFOs) */
+/* a session as builds 18 .. 49 saved it (their lengths below, each of its builds') */
+typedef struct {
+    uint16_t tempo;
+    uint8_t root, scale;
+    uint8_t eng[NTRACK];
+    int8_t oct[NTRACK], level[NTRACK], pan[NTRACK];
+    uint8_t dl[NDL], rv[NRV], ch[NCH];
+    uint8_t pat;
+    sound49_t snd[NTRACK][NENG];
+    uint8_t cp[NCP];
+    uint8_t sc_src[NTRACK], sc_lvl[NTRACK];
+    uint8_t chord_on[NTRACK], chord_form[NTRACK];
+    uint8_t mute[NTRACK];
+    uint8_t sel;
+    uint8_t loop_nsec;
+    uint32_t loop_gen;
+} prj_body49_t;
 typedef struct {
     uint16_t tempo;
     uint8_t root, scale;
@@ -60,14 +87,15 @@ typedef struct {
     uint8_t loop_nsec;           /* the loops: their sectors in the loop store (0: none) .. */
     uint32_t loop_gen;           /* .. and the generation they were written with */
 } prj_body_t;
-#define PRJ_LEN23 __builtin_offsetof(prj_body_t, cp)
-#define PRJ_LEN28 __builtin_offsetof(prj_body_t, sc_src)
-#define PRJ_LEN32 __builtin_offsetof(prj_body_t, chord_on)
-#define PRJ_LEN34 __builtin_offsetof(prj_body_t, mute)
+#define PRJ_LEN23 __builtin_offsetof(prj_body49_t, cp)   /* (the lengths builds 18 .. 49 saved: the sound without LFOs) */
+#define PRJ_LEN28 __builtin_offsetof(prj_body49_t, sc_src)
+#define PRJ_LEN32 __builtin_offsetof(prj_body49_t, chord_on)
+#define PRJ_LEN34 __builtin_offsetof(prj_body49_t, mute)
+#define PRJ_LEN49 sizeof(prj_body49_t)
 /* (builds 35 .. 37: the body ended at mute, and its size -- what they saved -- was rounded up to the struct's
  * alignment, 4: two bytes of padding past mute. Build 38 took the unrounded length and found none of their sessions
  * (build 40)) */
-#define PRJ_LEN37 ((__builtin_offsetof(prj_body_t, sel) + 3u) & ~3u)
+#define PRJ_LEN37 ((__builtin_offsetof(prj_body49_t, sel) + 3u) & ~3u)
 typedef char prj_len37[PRJ_LEN37 == 2780u && PRJ_LEN34 == 2772u && PRJ_LEN32 == 2760u ? 1 : -1];   /* (as saved) */
 static void prj_lp0(prj_body_t *b)               /* (a session from before build 38: track 1, no loops) */
 {
@@ -186,16 +214,45 @@ static void prj_head_fill(uint32_t magic, uint32_t what, uint32_t len)
     h->head_crc = prj_crc(prj_buf, __builtin_offsetof(prj_head_t, head_crc));
 }
 /* sector s of project k into prj_buf; 0 if it is whole */
-/* a session saved before build 18, in prj_buf, made one of now in place: each sound moved up to its new place, the
- * last first (each lands at or after where it was), MANGLE all off; its head as if saved so */
+/* a session as builds 18 .. 49 saved it (len bytes of it), in prj_buf, made one of now in place (build 50): the part
+ * after the sounds moved up first, then each sound to its new place, the last first (each lands at or after where it
+ * was), its LFOs off; what a build before had not, its start values; its head as if saved so */
+static void prj_up(uint32_t len)
+{
+    uint8_t *b = prj_buf + sizeof(prj_head_t);
+    prj_body_t *nb = (prj_body_t *)(void *)b;
+    const uint32_t so = __builtin_offsetof(prj_body_t, snd), o49 = PRJ_LEN23, o = __builtin_offsetof(prj_body_t, cp);
+    int32_t n;
+    if (len > o49)
+        memmove(b + o, b + o49, len - o49);
+    for (n = NTRACK * NENG - 1; n >= 0; n--) {
+        memmove(b + so + (uint32_t)n * sizeof(sound_t), b + so + (uint32_t)n * sizeof(sound49_t), sizeof(sound49_t));
+        lfos_off(&nb->snd[0][0] + n);
+    }
+    if (len <= PRJ_LEN23) {                      /* (builds 18 .. 23: no compressor -- its start values) */
+        memcpy(nb->cp, CP0, NCP);
+        prj_sc0(nb);
+    } else if (len <= PRJ_LEN28)                 /* (builds 24 .. 28: no track's sidechain) */
+        prj_sc0(nb);
+    else if (len <= PRJ_LEN32)                   /* (builds 29 .. 32: no CHORD mode) */
+        prj_ch0(nb);
+    else if (len <= PRJ_LEN34)                   /* (builds 33 .. 34: no mutes) */
+        prj_mu0(nb);
+    else if (len <= PRJ_LEN37)                   /* (builds 35 .. 37: no loops) */
+        prj_lp0(nb);
+    prj_head_fill(PRJ_MAGIC, ((prj_head_t *)(void *)prj_buf)->what, sizeof(prj_body_t));
+}
+/* a session saved before build 18, in prj_buf: each sound made one of builds 18 .. 49 in place (MANGLE all off), the
+ * last first; then as theirs (prj_up) */
 static void prj_from17(void)
 {
-    prj_body_t *b = (prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t));
-    const sound17_t *o = (const sound17_t *)(const void *)((const uint8_t *)b + __builtin_offsetof(prj_body_t, snd));
+    uint8_t *b = prj_buf + sizeof(prj_head_t);
+    const sound17_t *o = (const sound17_t *)(const void *)(b + __builtin_offsetof(prj_body_t, snd));
+    sound49_t *d0 = (sound49_t *)(void *)(b + __builtin_offsetof(prj_body_t, snd));
     int32_t n;
     for (n = NTRACK * NENG - 1; n >= 0; n--) {
         sound17_t a = o[n];
-        sound_t *d = &b->snd[0][0] + n;
+        sound49_t *d = d0 + n;
         memset(d, 0, sizeof *d);
         d->mach = a.mach;
         d->fmach = a.fmach;
@@ -207,54 +264,25 @@ static void prj_from17(void)
         d->family = a.family;
         d->seed = a.seed;
     }
-    memcpy(((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->cp, CP0, NCP);
-    prj_sc0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
-    prj_head_fill(PRJ_MAGIC, ((prj_head_t *)(void *)prj_buf)->what, sizeof(prj_body_t));
+    prj_up(PRJ_LEN23);
 }
+/* sector s of project k into prj_buf; 0 if it is whole (a session saved by an earlier build: made one of now) */
 static int prj_read(uint32_t k, uint32_t s)
 {
-    uint32_t magic = s ? PAT_MAGIC : PRJ_MAGIC, len = s ? PAT_PER * sizeof(pat_t) : sizeof(prj_body_t);
+    static const uint16_t OLD[7] = {sizeof(prj_body17_t), PRJ_LEN23, PRJ_LEN28, PRJ_LEN32, PRJ_LEN34, PRJ_LEN37,
+                                    PRJ_LEN49};
+    uint32_t magic = s ? PAT_MAGIC : PRJ_MAGIC, len = s ? PAT_PER * sizeof(pat_t) : sizeof(prj_body_t), i;
     const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
     if (!prj_ok || k >= PRJ_SLOTS || prj_flash_read(prj_sector(k, s), prj_buf, sizeof(prj_head_t) + len))
         return -1;
-    if (!s && prj_head_ok(h, magic, k * 16u, sizeof(prj_body17_t)) &&
-        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), sizeof(prj_body17_t))) {
-        prj_from17();                            /* (saved before build 18) */
-        return 0;
-    }
-    if (!s && prj_head_ok(h, magic, k * 16u, PRJ_LEN23) &&
-        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN23)) {   /* (builds 18 .. 23: no compressor --
-                                                                             * its start values) */
-        memcpy(((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->cp, CP0, NCP);
-        prj_sc0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
-        prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
-        return 0;
-    }
-    if (!s && prj_head_ok(h, magic, k * 16u, PRJ_LEN28) &&
-        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN28)) {   /* (builds 24 .. 28: no track's
-                                                                             * sidechain) */
-        prj_sc0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
-        prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
-        return 0;
-    }
-    if (!s && prj_head_ok(h, magic, k * 16u, PRJ_LEN32) &&
-        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN32)) {   /* (builds 29 .. 32: no CHORD mode) */
-        prj_ch0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
-        prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
-        return 0;
-    }
-    if (!s && prj_head_ok(h, magic, k * 16u, PRJ_LEN34) &&
-        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN34)) {   /* (builds 33 .. 34: no mutes) */
-        prj_mu0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
-        prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
-        return 0;
-    }
-    if (!s && prj_head_ok(h, magic, k * 16u, PRJ_LEN37) &&
-        h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), PRJ_LEN37)) {   /* (builds 35 .. 37: no loops) */
-        prj_lp0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
-        prj_head_fill(PRJ_MAGIC, k * 16u, sizeof(prj_body_t));
-        return 0;
-    }
+    for (i = 0; !s && i < 7u; i++)
+        if (prj_head_ok(h, magic, k * 16u, OLD[i]) && h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), OLD[i])) {
+            if (i == 0u)
+                prj_from17();
+            else
+                prj_up(OLD[i]);
+            return 0;
+        }
     if (!prj_head_ok(h, magic, k * 16u + s, len) || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
         return -2;
     return 0;
@@ -591,9 +619,13 @@ static void prj_scan(int flash_ok)
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN28) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN32) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN34) ||
-                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN37));
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN37) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49));
             if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)))   /* (its loops' generation) */
                 prj_flash_read(prj_sector(k, 0) + sizeof h + __builtin_offsetof(prj_body_t, loop_gen), &prj_lgen[k], 4u);
+            else if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49))   /* (builds 38 .. 49: at their place -- else their
+                                                  * loops' sectors would count as free; build 50) */
+                prj_flash_read(prj_sector(k, 0) + sizeof h + __builtin_offsetof(prj_body49_t, loop_gen), &prj_lgen[k], 4u);
         }
         if (prj_lgen[k] > lop_gmax)
             lop_gmax = prj_lgen[k];
