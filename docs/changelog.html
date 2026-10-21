@@ -42,6 +42,30 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-54">Build 54</h2>
+<p>Changed</p>
+<ul>
+<li>Transposition takes the loops too: in the step view OCT− and OCT+ move the chosen track's loops with its steps, and SHIFT + OCT− or OCT+ every track's, each note one step of the scale (CHROMATIC: a semitone), as the steps'. A loop's notes are moved in place and saved with the session; the loop being recorded is left alone. The TRN count shown stays the pattern's.</li>
+</ul>
+<h2 id="build-53">Build 53</h2>
+<p>Changed</p>
+<ul>
+<li>The arpeggiator's page: holding the 5th black key 0.8 s opens it, or closes it, in place of SHIFT + the key. A short press still turns the arpeggiator on or off, now as the key is let go.</li>
+<li>BREAK: one way per press. The way drawn when the key is pressed (REPEAT, HALF TIME, DOUBLE, REVERSE, CHOP, ROLL) plays for as long as it is held; until now another was drawn every two bars held. Within the way, its ratchets, flams, leaps and gap are as before. The next press draws another, never the same twice running.</li>
+</ul>
+<h2 id="build-52">Build 52</h2>
+<p>Added</p>
+<ul>
+<li>An arpeggiator for each track: the 5th black key (the track's view, the step view off) turns it on or off (lit while on; ARP at the top left). The keys held, and MIDI notes for the track, go to it; it plays them one at a time on the tempo's grid — the sequencer's 16ths while it plays, its own clock at the tempo while stopped, the first note of a chord at once. It runs in the audio interrupt with the sequencer.</li>
+<li>SHIFT + the 5th black key: the ARP page, per track. MODE (UP, DOWN, UP DOWN, DOWN UP, ORDER, RANDOM, CONVERGE, DIVERGE, PINKY, THUMB), RATE (1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4), RANGE (1 to 4 octaves), GATE, LATCH, DENSITY (the chance each note plays), OCT RND (the chance a note jumps an octave), BASS (every 2 to 8 notes, the lowest held an octave down). DENSITY, OCT RND and BASS follow the NGEN's ARPER generator's ideas.</li>
+<li>Recording: REC puts the arpeggio into the steps, each note at the step it was played on (where the sequencer was as it played, not where the main loop found it), with its velocity and length; SHIFT + REC records it into a loop. Armed, its first note starts the sequencer and is step 1.</li>
+<li>Each track's arpeggiator and its settings are saved with the session (9 bytes a track at the end of the session's body). Sessions from builds 50 and 51, and earlier, load with it off.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>SAVED, SESSION 16 and the like: the second line in the largest size that fits, no longer squeezed past the screen's edges.</li>
+<li>In CHROMATIC the 5th black key no longer plays a note out of the step view.</li>
+</ul>
 <h2 id="build-51">Build 51</h2>
 <p>Added</p>
 <ul>

@@ -58,6 +58,7 @@
 <a href="#playing">Playing</a>
 <a href="#transposition" class="sub">Transposition</a>
 <a href="#chord-mode" class="sub">CHORD mode</a>
+<a href="#arpeggiator" class="sub">Arpeggiator</a>
 <a href="#mute-mode" class="sub">MUTE mode</a>
 <a href="#break" class="sub">BREAK</a>
 <a href="#the-effects-seq">The effects (SEQ)</a>
@@ -94,6 +95,7 @@
 <tr><td>2nd black key</td><td>MUTE mode on or off</td></tr>
 <tr><td>3rd black key</td><td>BREAK, while held; SHIFT + it: on every track</td></tr>
 <tr><td>4th black key</td><td>MIDI LEARN on or off</td></tr>
+<tr><td>5th black key</td><td>The track's arpeggiator on or off; held 0.8 s: the ARP page</td></tr>
 <tr><td>Black key before the last</td><td>EDIT: the sound's pages</td></tr>
 <tr><td>3rd black key from the right</td><td>STEP: the step view</td></tr>
 <tr><td>Last black key</td><td>SHIFT</td></tr>
@@ -161,16 +163,30 @@
 <li>SLICE, SLICE RATE, SLC DEPTH, SLC EDGE, SLC SHIFT: a slicer gate synced to the tempo — sixteen patterns at 1/8, 1/16, 1/32 or 1/16 triplets, how deep, how soft its edges, shifted in steps</li>
 </ul>
 <h2 id="playing">Playing</h2>
-<p>The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first three), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, IN. OCT− and OCT+ move the track's octave. USB MIDI notes play the chosen track as the keys do.</p>
+<p>The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first five), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, IN. OCT− and OCT+ move the track's octave. USB MIDI notes play the chosen track as the keys do.</p>
 <h3 id="transposition">Transposition</h3>
-<p>In the step view, OCT− and OCT+ transpose the chosen track's steps; SHIFT + OCT− or OCT+ (in the track's view or the step view) transposes every track's steps at once. Each press moves every note one step of the scale and root chosen, down or up (in CHROMATIC, a semitone), so the notes stay in the scale; a note that is not in it moves to the scale's next. The transposition shows at the top right in the track's colour (T+2, T−1), up to 24 steps each way, and TRN with its value on the screen as it changes. It is part of the pattern: the moved notes and the count are saved with it and with the session, and a copied pattern takes them along. The loops and the keys' octave are left as they are.</p>
+<p>In the step view, OCT− and OCT+ transpose the chosen track's steps and its loops; SHIFT + OCT− or OCT+ (in the track's view or the step view) transposes every track's steps and loops at once. Steps and loops move by the same amount, each from the notes it plays. Each press moves every note one step of the scale and root chosen, down or up (in CHROMATIC, a semitone), so the notes stay in the scale; a note that is not in it moves to the scale's next. The transposition shows at the top right in the track's colour (T+2, T−1), up to 24 steps each way, and TRN with its value on the screen as it changes. It is part of the pattern: the moved notes and the count are saved with it and with the session, and a copied pattern takes them along. A loop's notes are moved in place and saved with the session (loops belong to the session, not to a pattern; a loop being recorded is left as it is). The keys' octave is left as it is.</p>
 <h3 id="chord-mode">CHORD mode</h3>
 <p>In the track's view, the step view off, the 1st black key turns CHORD mode on or off for the track (lit while on, dim off). Each white key then plays a triad from its note, in the scale: TRIAD, INV 1, INV 2, SUS2, SUS4, OPEN or FOURTHS (in CHROMATIC, the same shapes in semitones). SHIFT and the key choose the next form. The form shows at the top left. A step put in takes the chord last played; REC records chords into the steps; the looper records their notes. DRUM tracks play no chords.</p>
+<h3 id="arpeggiator">Arpeggiator</h3>
+<p>In the track's view, the step view off, a short press of the 5th black key turns the track's arpeggiator on or off (lit while on; ARP shows at the top left). While it is on, the keys held (and USB or TRS MIDI notes for the track) are not played directly: the arpeggiator plays them one at a time, on the tempo's grid. While the sequencer plays it follows the sequencer's 16ths; stopped, it runs on its own at the tempo, and the first note of a chord plays at once. With CHORD mode on, each key gives it the chord's three notes.</p>
+<p>Holding the 5th black key for 0.8 s opens the ARP page of the chosen track, or closes it (KNOB 1 to 4 the rows A to D, PRESETS turned right E to H; a track's button also goes back). The arpeggiator turns on or off as the key is let go after a short press.</p>
+<ul>
+<li>MODE: UP, DOWN, UP DOWN, DOWN UP (the end notes once), ORDER (as played), RANDOM, CONVERGE (from the ends in), DIVERGE (from the middle out), PINKY (the top note between each of the others), THUMB (the lowest between each).</li>
+<li>RATE: 1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4.</li>
+<li>RANGE: 1 to 4 octaves.</li>
+<li>GATE: each note's length, 0 to 100 of the rate's.</li>
+<li>LATCH: on, the notes keep playing with the keys up; the next chord played replaces them. Turning it off lets them go.</li>
+<li>DENSITY: 0 to 100, the chance that each note plays (otherwise a rest).</li>
+<li>OCT RND: 0 to 100, the chance that a note jumps an octave up or down.</li>
+<li>BASS: OFF, or EVERY 2 to EVERY 8: every so many notes, the lowest note held an octave down.</li>
+</ul>
+<p>The arpeggio is recorded as played notes are: REC puts each note into the step it falls on, with its velocity and its length; SHIFT + REC records it into a loop. With REC or the looper armed, the arpeggiator's first note starts the sequencer. Each track's arpeggiator, on or off, and its settings are saved with the session; sessions from earlier builds load with it off.</p>
 <h3 id="mute-mode">MUTE mode</h3>
 <p>In the track's view, the step view off, the 2nd black key turns MUTE mode on or off (lit while on; the name band reads MUTE MODE). The track buttons then mute instead of choosing: lit, a track plays; dim, it is muted. A button let go soon mutes its track or plays it again. Held 1 s, its track is soloed, every other muted; held 1 s again, the mutes come back as they were. MUTE mode off, the mutes stay, and the buttons choose tracks again. A muted track fades out over ~9 ms, its sends with it; its steps keep playing silently. The chosen track's number is dark grey while it is muted. Mutes are kept with the session.</p>
 <h3 id="break">BREAK</h3>
 <p>While the sequencer plays, holding the 3rd black key (the step view off) breaks up the chosen track's pattern; SHIFT and the key, every track at once. Nothing is written into the steps: each track's position keeps running underneath, and when the key is let go the pattern carries on from where it would have been; ratchets and echoes the break had started stop at once. The key is lit while held.</p>
-<p>The break stays on the pattern's beat. A track goes into it on its next beat (its next half bar for REPEAT 8) and plays as written until then. Each press draws a way of playing the steps, shown in the name band; held two bars, a new one is drawn on the next bar line (never the same twice running). Every way keeps what is on a beat on a beat:</p>
+<p>The break stays on the pattern's beat. A track goes into it on its next beat (its next half bar for REPEAT 8) and plays as written until then. Each press draws one way of playing the steps, shown in the name band, and keeps it for as long as the key is held; the next press draws another (never the same twice running). Every way keeps what is on a beat on a beat:</p>
 <table>
 <tr><th>Way</th><th>What plays</th></tr>
 <tr><td>REPEAT 1, 2, 4 or 8</td><td>A window of that many steps, from the beat the break began on, played over and over</td></tr>
