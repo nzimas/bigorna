@@ -1,5 +1,20 @@
 # Changelog
 
+## Build 55
+
+Added
+- A Backup page on the website (backup.html, after Tonitor's): it saves the sessions on the FM-1 -- each with its
+  patterns and loops -- and GLOBAL SETUP to a JSON file, and restores them, over Web MIDI. The firmware answers
+  Tonitor's backup commands in the installer's framing (0x50 list, 0x51 read, 0x52 / 0x53 / 0x54 write and
+  commit, 256-byte pieces; firmware/src/backup.c). A record is a 4 KB sector as the flash holds it: a session's
+  own, its pattern sectors, the loop sectors it holds, GLOBAL SETUP's.
+- A restore checks each record whole (its head, length, body CRC and number) before writing it. A session's loops
+  go first, into free sectors under a new generation; then its patterns; then the session, pointed at that
+  generation, so a restore cut off leaves the session before it as it was. Sessions saved by older builds are
+  restored as they are and converted when loaded, as from the flash. RESTORED S3 or RESTORED SETUP shows on the
+  screen.
+- The update loader is unchanged (its binary identical): the commands are answered by the firmware only.
+
 ## Build 54
 
 Changed

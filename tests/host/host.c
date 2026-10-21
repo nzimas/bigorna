@@ -136,6 +136,7 @@ static void fm1_led_key(uint32_t id, int on) { if (id < 64u) host_led[id] = (uin
 #include "ui.c"
 #include "projects.c"
 #include "setup.c"
+#include "backup.c"
 #include "phrase.c"
 
 /* the flash, emulated: NOR (erased to 0xFF, programming only clears bits) */
@@ -3743,9 +3744,98 @@ static int cmd_arp(const char *dir)
     return fails != 0;
 }
 
+/* bkserve (build 55): the FM-1's side of the backup page, for tests/web/test_backup.mjs -- two sessions (one with
+ * loops, one without) and GLOBAL SETUP in the flash, then each line from stdin a message (hex) or a command (WIPE,
+ * SCAN, LOAD k: its tempo and loops), the replies to stdout as hex */
+static int bk_serving;
+static int bk_wire(const uint8_t *p, uint32_t n)
+{
+    uint32_t i;
+    if (!bk_serving)
+        return 0;
+    for (i = 0; i < n; i++)
+        printf("%02x", p[i]);
+    printf("\n");
+    return 0;
+}
+static int cmd_bkserve(void)
+{
+    char line[4096];
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    ui.tempo = 133;
+    loops[1][0].n = 3; loops[1][0].len = 32; loops[1][0].on = 1;
+    loops[1][0].ev[0].note = 60; loops[1][0].ev[1].note = 63; loops[1][0].ev[2].note = 67;
+    loops[1][0].ev[1].step = 8; loops[1][0].ev[2].step = 20;
+    loops[4][0].n = loops[4][1].n = loops[4][2].n = 250;   /* (three long ones: the stream over two sectors) */
+    loops[4][0].len = loops[4][1].len = loops[4][2].len = 512;
+    loops[4][0].on = loops[4][1].on = loops[4][2].on = 1;
+    if (prj_save(2))
+        printf("SAVE FAILED\n");
+    memset(loops, 0, sizeof loops);
+    ui.tempo = 97;
+    if (prj_save(9))
+        printf("SAVE FAILED\n");
+    mcfg.send_cc = 1;
+    setup_write();
+    prj_scan(1);
+    bk_serving = 1;
+    printf("READY\n");
+    fflush(stdout);
+    while (fgets(line, sizeof line, stdin)) {
+        static uint8_t w[2048], m[2048];
+        uint32_t n = 0, i, d = 0, acc = 0, nb = 0, sm = 0;
+        if (!strncmp(line, "WIPE", 4)) {
+            memset(host_flash + 0x97000u, 0x5A, 0xFE000u - 0x97000u);
+            prj_scan(1);
+            printf("OK\n");
+        } else if (!strncmp(line, "SCAN", 4)) {
+            prj_scan(1);
+            printf("OK\n");
+        } else if (!strncmp(line, "LOAD", 4)) {
+            int rc = prj_load((uint32_t)atoi(line + 5));
+            uint32_t t, l, nl = 0;
+            for (t = 0; t < NTRACK; t++)
+                for (l = 0; l < NLOOP; l++)
+                    nl += loops[t][l].on ? loops[t][l].n : 0u;
+            setup_load();
+            printf(rc ? "FAIL %d\n" : "OK %d %u %u\n", rc ? rc : ui.tempo, nl, mcfg.send_cc);
+        } else {
+            for (i = 0; line[i] && line[i + 1] && line[i] != '\n'; i += 2) {
+                unsigned v;
+                sscanf(line + i, "%2x", &v);
+                w[n++] = (uint8_t)v;
+            }
+            for (i = 1; i + 1u < n; i++) {             /* (ota_unpack7) */
+                acc |= (uint32_t)(w[i] & 0x7Fu) << nb;
+                nb += 7u;
+                while (nb >= 8u) {
+                    m[d++] = (uint8_t)acc;
+                    acc >>= 8;
+                    nb -= 8u;
+                }
+            }
+            for (i = 6; i + 1u < d; i++)
+                sm += m[i];
+            if (d >= 7u && m[0] == 0 && m[1] == 0x59 && (uint32_t)(m[3] | m[4] << 8 | m[5] << 16) + 7u == d &&
+                (uint8_t)~sm == m[d - 1u] && m[2] >= 0x50 && m[2] <= 0x54)
+                bk_handle(m, d);
+            else
+                printf("BAD\n");
+        }
+        fflush(stdout);
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
+    if (argc >= 2 && !strcmp(argv[1], "bkserve"))
+        return cmd_bkserve();
     if (argc >= 3 && !strcmp(argv[1], "arp"))
         return cmd_arp(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "trn"))

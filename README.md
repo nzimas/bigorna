@@ -385,6 +385,16 @@ nothing is saved and NO ROOM FOR LOOPS shows; deleting a session, or saving one 
 The FM-1 starts with the last session loaded or saved (SESSION n shows for a moment). Changes not saved before it
 was switched off are not kept.
 
+### Backup
+
+The website's [Backup page](https://nzimas.github.io/bigorna/backup.html) copies the sessions on the FM-1 — each
+with its patterns and loops — and GLOBAL SETUP to a file on the computer, over USB MIDI (desktop Chrome, Edge or
+Opera), and restores them from it. Use it before installing another firmware: Bigorna keeps its sessions where
+Tonitor keeps its own, so either may overwrite the other's. A restore writes each session back into the slot it
+came from (the others on the FM-1 are kept), each part checked before it is written; RESTORED S3 (or SETUP) shows
+on the screen as each lands. The session playing is not changed: load it to hear what was restored. Build 55 or
+later.
+
 ## GLOBAL SETUP (SHIFT + SAVE)
 
 SHIFT + SAVE (outside the sessions' pages) opens GLOBAL SETUP: the settings of the machine rather than of a session.

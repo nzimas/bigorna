@@ -136,7 +136,7 @@ def to_html(md, toc):
 
 def page(title, current, body, desc, head=""):
     """every page: the menu down the left (above the content on a narrow screen), the content, the footer"""
-    nav = [("./", "Home"), ("screens.html", "Screens"), ("install.html", "Install"), ("manual.html", "Manual"),
+    nav = [("./", "Home"), ("screens.html", "Screens"), ("install.html", "Install"), ("backup.html", "Backup"), ("manual.html", "Manual"),
            ("changelog.html", "Changelog"), ("projects.html", "Other projects"), (REPO, "GitHub")]
     links = "\n      ".join(f'<a href="{h}"' + (' aria-current="page"' if n == current else "") + f">{n}</a>"
                            for h, n in nav)
@@ -214,6 +214,10 @@ def fragments():
         "Install Bigorna", "Install", (src / "install.html").read_text(),
         "Install Bigorna on an M-VAVE FM-1 from your browser, over USB MIDI.",
         '\n<script type="module" src="js/install.js"></script>'))
+    (DOCS / "backup.html").write_text(page(
+        "Back up Bigorna sessions", "Backup", (src / "backup.html").read_text(),
+        "Save the sessions on an M-VAVE FM-1 running Bigorna to a file, and restore them, from your browser.",
+        '\n<script type="module" src="js/backup.js"></script>'))
     (DOCS / "projects.html").write_text(page(
         "Other projects by Nuno Zimas", "Other projects", (src / "projects.html").read_text(),
         "Firmware and instruments by Nuno Zimas for the M-VAVE FM-1, the Elektron Model:Cycles and Digitone II, the "
@@ -262,4 +266,4 @@ if __name__ == "__main__":
     manual()
     changelog()
     firmware(Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build" / "bigorna.fwsc")
-    print("site: docs/index.html, install.html, manual.html, changelog.html, projects.html")
+    print("site: docs/index.html, install.html, backup.html, manual.html, changelog.html, projects.html")

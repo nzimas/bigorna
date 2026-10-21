@@ -19,3 +19,6 @@ build/host projects build/screens
 build/host lfo build/screens
 build/host trn build/screens
 build/host arp build/screens
+if command -v node >/dev/null; then                  # the backup page's protocol against the firmware's (build 55)
+    node tests/web/test_backup.mjs build/host
+fi

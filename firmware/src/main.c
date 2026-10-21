@@ -327,6 +327,7 @@ static int fl_erase4k_quiet(uint32_t off, uint32_t *took)
 
 #define OTA_IDENTITY (recovery_active ? "FM-1_000" : FW_ID)
 #include "ota.c"
+static int bk_wire(const uint8_t *p, uint32_t n) { return ota_wire_send(p, n); }   /* (backup.c's way out) */
 static void recovery_poll(void);
 static uint32_t ota_now_ms(void) { return fm1_ms; }
 static void ota_idle(void)
