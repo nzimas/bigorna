@@ -4,13 +4,12 @@
 
 Added
 - LFOs: three per track, on the pages LFO 1, LFO 2 and LFO 3 after REVERB (SEQ), in the chosen track's colour.
-  The Digitone II's parameters: SPEED, MULT (x1 to x2048 with the tempo, .1 to .2048 at 120 BPM), FADE, DEST, WAVE
+  The parameters: SPEED, MULT (x1 to x2048 with the tempo, .1 to .2048 at 120 BPM), FADE, DEST, WAVE
   (TRI, SINE, SQR, SAW, EXP, RAMP, RND), START, MODE (FREE, TRIG, HOLD, ONE, HALF), DEPTH. A cycle takes
   2048 / (|SPEED| × MULT) 16ths. DEST is a parameter of the sound's pages, or an earlier LFO's SPEED or DEPTH.
   FADE fades in or out over |FADE| 16ths from each note; DEPTH is the swing each way as a share of the destination's
-  range (±64 the whole). Those two laws are this firmware's; the Digitone II's are not published.
-- An LFO runs once per track, all its voices following it (the Digitone II runs one per voice, like POLY off on its
-  M.LFO). The LFOs are worked out every 4 blocks (2.9 ms); then the track's sound is cooked again with the LFOs'
+  range (±64 the whole).
+- An LFO runs once per track, all its voices following it (not one per voice). The LFOs are worked out every 4 blocks (2.9 ms); then the track's sound is cooked again with the LFOs'
   values, one sound in turn every 4 blocks (tracks with LFOs on, and voices with step locks).
 - The cost, measured on the FM-1 with three LFOs on each of six tracks: 2.0 % of the CPU on average (the steps
   0.75 %, the cooks 1.28 %); the stress arrangement's mean load 73.3 % -> 74.9 %, no half late. Done every block,
@@ -407,7 +406,7 @@ Fixed
   - the guard lets go of the quietest tails first, and of a voice struck in the last ~150 ms only if there is no other.
 - The compressor's sidechain still barely pumped: the compressor sat before the delay's and the reverb's returns, so
   a pad's reverb and delay tails -- much of what is heard of a pad -- never ducked. It is now the master's, after
-  the returns, as on the Digitone II (the source track's own dry sound still left out of it). A kick each beat as the
+  the returns (the source track's own dry sound still left out of it). A kick each beat as the
   source now takes a held pad, tails and all, from about -12 dBFS down to about -26 dBFS on each hit, swelling back
   over the beat (host duck); before, the pad as heard hardly moved.
 
@@ -426,7 +425,7 @@ Fixed
 ## Build 24
 
 Added
-- COMP, a master compressor after the Digitone II's (manual 12.5), on the effects' pages (SEQ): the pages now run
+- COMP, a master compressor, on the effects' pages (SEQ): the pages now run
   CHORUS, COMP, DELAY, REVERB. It works on the mix with the chorus's return in it, before the delay's and the
   reverb's returns are added. A-D: THRESHOLD (-60 to 0 dB), ATTACK (0.03 to 30 ms), RELEASE (10 ms to 2 s), RATIO
   (1.5, 2, 3, 4, 6, 8, 16, 20). E-H (PRESETS right): MAKEUP (0 to +24 dB), SC FILTER (bipolar: to the left a
@@ -713,7 +712,7 @@ Added
     - VEL: the velocity, 1 to 127 (100 for a new step).
     - LEN: the length in steps: 1/8, 1/4, 3/8, 1/2, 3/4, 1, 1.5, 2, 3, 4, 6, 8, 12, 16, INF (1/2 for a new step).
       INF holds until the step plays again or the sequencer stops.
-    - COND: the trig condition, as on the Digitone II: NONE; PRE, !PRE (the last condition on the track was
+    - COND: the trig condition: NONE; PRE, !PRE (the last condition on the track was
       true, or not); NEI, !NEI (the same on the track before); 1ST, !1ST (the first time through, or not); a
       probability, 1% to 99%; A:B and !A:B for B 2 to 8 (plays on time A of every B times through the track).
 - A track's steps keep up to four notes sounding at once, so a long step can ring under the next.
@@ -842,8 +841,7 @@ Changed
 ## Build 2
 
 Changed
-- The Digitone II's own curves, read from its DSP (docs/dt2-curves.md) and fitted (tools/gen_tables.py; the tables
-  are generated from the fits, not copied):
+- Measured curves, fitted (tools/gen_tables.py; the tables are generated from the fits):
   - AMP envelope: attack ~48 ms at 32, ~0.26 s at 64, 1 s at 110, then 1.25 to 30 s; hold up to 10 s; decay and
     release ~1 s at 32 and ~5.5 s at 64 to -60 dB, ~29 s at 126, 127 INF. AHD has no sustain; its release is the
     decay.
@@ -854,15 +852,15 @@ Changed
   - COMB- and COMB+: FREQ is a note number (220 x 2^((n - 69)/12) Hz), the envelope moves it 127 semitones, KEY.T
     follows the keys; the low-pass in the loop at 22 kHz x ((LPF/127)^2 + 0.2 f^2).
   - Base-width: one-pole high-pass and low-pass, 5 x 8000^(v/127) Hz.
-  - FM TONE: operator envelopes 20 s attack and 60 s decay at 127; modulation depth from the Digitone II's LEV
+  - FM TONE: operator envelopes 20 s attack and 60 s decay at 127; modulation depth from a fitted LEV
     curve, looked up at LEV x envelope, 2.2 cycles at full; B's LEV split between B1 and B2 by its law; DTUN adds
     up to 0.5 to A's ratio and 0.75 to B2's; feedback up to 2/pi of a cycle, scaled by the operator's own level;
-    key tracking from C1 to C7 in Hz; HARM's 26 waves as the Digitone II's partial sets; algorithm 8's outputs as
+    key tracking from C1 to C7 in Hz; HARM's 26 waves as measured partial sets; algorithm 8's outputs as
     its DSP sums them (X: C and B2, Y: B1).
   - FM DRUM: decays reach e^-6 in 8 (0.1p + 0.9p^4) s, holds 1000 p^2 ms, the sweep falls in 5 (0.1p + 0.9p^4) s
     and starts 16 p^2 times the note above it (linear in Hz); MOD, FDBK, LEV and the transient level p^2, noise
     2 p^3; GRAN as impulse odds 0.0001 + (0.992 - p)^2; the folder 1.12u - 0.672 tanh(4u) at gain p^2 + 0.07;
-    the 33 operator waves as the Digitone II's partial sets.
+    the 33 operator waves as measured partial sets.
   - WAVETONE: the noise envelope is the AMP envelope (AHD); levels p^2; wave positions v/127 along the tables.
   - SWARMER: the six voices' asymmetric spread (~19 cents for the outermost at 64, two semitones at 127); MIX as
     the main oscillator 0.25 to 0.13 against each swarm voice up to 0.105; animation and noise depth p^2.
@@ -894,20 +892,20 @@ Fixed
 
 Not yet
 - LFOs, the master compressor, sessions and presets, the sequencer. The track overdrive's drive curve, the EQ's
-  bandwidth and the WAVETONE wave contents are not read from the Digitone II yet.
+  bandwidth and the WAVETONE wave contents are not measured yet.
 
 ## Build 1
 
 First build. Based on Tonitor 0.46 (the HAL, boot, USB, the installer and rescue mode, the voice pool, the screen).
 
 Added
-- Six tracks, each playing one of four machines after the Digitone II's, chosen with PRESETS: FM TONE, FM DRUM,
+- Six tracks, each playing one of four machines, chosen with PRESETS: FM TONE, FM DRUM,
   WAVETONE, SWARMER. Each track keeps a sound of each machine.
-- FM TONE: operators C, A, B1, B2; the eight algorithms as the Digitone II's OS 1.12 draws them (modulation,
-  feedback operator, X and Y outputs direct or through the operator envelopes); the Digitone II's ratio lists
+- FM TONE: operators C, A, B1, B2; the eight algorithms (modulation, feedback operator, X and Y outputs
+  direct or through the operator envelopes); the ratio lists
   (C and B: 19 values, A: 36; RATIO B as B1 x 19 + B2); HARM, DTUN, FDBK, MIX; A and B envelopes (delay, attack,
   decay, end level, triggered or gated, reset); phase reset; ratio offsets; key tracking.
-- FM DRUM: operators C, A, B in the Digitone II's seven algorithms (B also heard in 5 to 7); ratios A and B
+- FM DRUM: operators C, A, B in seven algorithms (B also heard in 5 to 7); ratios A and B
   linear from 0.001 to 31.75; pitch sweep, wavefolder, body, noise (grain, ring modulation, base-width band) and
   eight transient types.
 - WAVETONE: two oscillators on PRIM (sine, triangle, saw, square) or HARM (16 waves), phase distortion, linear
@@ -915,7 +913,7 @@ Added
   GRAIN, TUNED and S&H types and a base-width band.
 - SWARMER: a main oscillator and six detuned ones, swarm and main waveforms, detune, mix, main octave, animation
   (three LFOs, one per pair), noise modulation.
-- Per voice, in the Digitone II's order: SRR and overdrive (PRE or POST the filter), base-width filter (PRE or
+- Per voice, in this order: SRR and overdrive (PRE or POST the filter), base-width filter (PRE or
   POST), the FLTR machine (MULTI-MODE, LOWPASS 4, LEGACY LP/HP, COMB-, COMB+, EQUALIZER) with its envelope and key
   tracking, bit reduction, the AMP envelope (AHD with HOLD fixed or NOTE, or ADSR; 127 on decays and releases is
   INF).
@@ -934,5 +932,4 @@ Added
 
 Not yet
 - LFOs, sessions and presets, the sequencer. SAVE shows NOT YET.
-- Envelope times, filter frequency and resonance curves are this firmware's own estimates until the Digitone II's
-  are read from its DSP.
+- Envelope times, filter frequency and resonance curves are this firmware's own estimates until measured.
