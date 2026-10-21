@@ -732,6 +732,23 @@ static void midi_take(void)
             memset(mlearn, 0, sizeof mlearn);
             ui.learn_dirty = 1;
         }
+#if FELUCCA_UAC
+        else if (a == 9u) {                      /* (USB audio's counters, F0 7D 5D: usb.c's uac) */
+            uint8_t f[64];
+            uint32_t n = 0, v[16], i;
+            v[0] = uac.alt; v[1] = uac.r48; v[2] = uac.go; v[3] = uac.flowing; v[4] = uac.starts; v[5] = uac.pkts;
+            v[6] = uac.frames; v[7] = uac.underruns; v[8] = uac.overruns; v[9] = uac.missed; v[10] = uac.stalls;
+            v[11] = uac.adj_up; v[12] = uac.adj_down; v[13] = uac.fill_lo; v[14] = uac.fill_hi; v[15] = uac.rate_sets;
+            f[n++] = 0xF0; f[n++] = 0x7D; f[n++] = 0x5D;
+            for (i = 0; i < 16u; i++) {
+                f[n++] = (uint8_t)(v[i] >> 14 & 0x7Fu);
+                f[n++] = (uint8_t)(v[i] >> 7 & 0x7Fu);
+                f[n++] = (uint8_t)(v[i] & 0x7Fu);
+            }
+            f[n++] = 0xF7;
+            ota_wire_send(f, n);
+        }
+#endif
         else if (a == 7u) {                      /* (the MIDI inputs' report, F0 7D 5C: the TRS jack's bytes and
                                                   * drops, the clock's pulses and interval, the settings, PLAY) */
             uint8_t f[40];

@@ -72,15 +72,27 @@ static struct {
  * 48..119 with no glitch; one render was once seen 29 frames under the floor: a packet (46) must
  * still be in hand then. */
 #define UA_N 512u                /* ring, frames (16-bit L | R << 16); a power of two */
+#if HALF_FRAMES >= 256u          /* (BIGORNA: 256-frame halves -- the 96 .. 160 band, as above) */
+#define UA_PRIME 128u
+#define UA_LO 96u
+#define UA_HI 160u
+#else
 #define UA_PRIME 104u            /* silence ahead of the first rendered frame */
 #define UA_LO 80u                /* a render may start late: keep a packet and more in hand */
 #define UA_HI 128u
+#endif
 #define UAC_RATE 44100u
 #if FELUCCA_UAC_48K
 /* 48 kHz: the same times in 48 kHz frames (x 160 / 147); a render of HALF_FRAMES gives 139..140 frames */
+#if HALF_FRAMES >= 256u
+#define UA_PRIME48 139u
+#define UA_LO48 104u
+#define UA_HI48 174u
+#else
 #define UA_PRIME48 113u
 #define UA_LO48 87u
 #define UA_HI48 139u
+#endif
 #define UA_REND48 ((HALF_FRAMES * 160u + 146u) / 147u)
 #define UA_MAXF 49u              /* frames in the largest packet: 48 + 1 */
 _Static_assert(UA_HI48 + UA_REND48 + UA_MAXF < UA_N, "the ring holds the band, a render and a packet (48 kHz)");
@@ -1073,6 +1085,19 @@ static __attribute__((noinline)) void uac_tap(const int32_t *out, uint32_t n)   
     uint32_t w = ua_w, i;
     if (!uac.feed)
         return;
+#if FELUCCA_UAC_TONE
+    {   /* bench (BIGORNA build 49): a 441 Hz sine, 100 frames a period (L and R a quarter apart), in place of
+         * the music, at either rate: a lost or repeated frame stands out of the sine's smooth second
+         * difference (~16 times it), the 48 kHz resampler's output too */
+        static int32_t tb[2u * 64u];
+        static uint32_t tp;
+        for (i = 0; i < n && i < 64u; i++, tp = tp == 99u ? 0u : tp + 1u) {
+            tb[2u * i] = sin_ph(tp * 42949673u) * 20000 / 32768;
+            tb[2u * i + 1u] = sin_ph(tp * 42949673u + 0x40000000u) * 20000 / 32768;
+        }
+        out = tb;
+    }
+#endif
 #if FELUCCA_UAC_48K
     if (uac.ring48) {
         uac_tap48(out, n);
@@ -1083,22 +1108,9 @@ static __attribute__((noinline)) void uac_tap(const int32_t *out, uint32_t n)   
         uac.overruns++;
         return;
     }
-#if FELUCCA_UAC_TONE
-    {   /* bench: triangles of period 100 frames instead of the music (L, R in antiphase): every
-         * recorded frame must follow the one before, so a lost or repeated frame shows exactly */
-        static uint32_t ph;
-        for (i = 0; i < n; i++, ph = ph == 99u ? 0u : ph + 1u) {
-            uint32_t q = ph < 50u ? ph : 100u - ph, q2 = ph < 50u ? 50u - ph : ph - 50u;
-            ua_ring[(w + i) & (UA_N - 1u)] = (uint32_t)(uint16_t)(int16_t)((int32_t)q * 1000 - 25000) |
-                                             (uint32_t)(uint16_t)(int16_t)((int32_t)q2 * 1000 - 25000) << 16;
-        }
-        (void)out;
-    }
-#else
     for (i = 0; i < n; i++)
         ua_ring[(w + i) & (UA_N - 1u)] = (uint32_t)(uint16_t)uac_s16(out[2u * i]) |
                                          (uint32_t)(uint16_t)uac_s16(out[2u * i + 1u]) << 16;
-#endif
     RING_PUBLISH();
     ua_w = w + n;
 }

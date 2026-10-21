@@ -422,6 +422,19 @@ LEARN is turned off.
 The jack takes notes, CCs, program changes, the clock, START, CONTINUE, STOP and the song position, as USB does
 (not SysEx). With both inputs on, the two are merged; a clock should come from one of them only.
 
+## USB audio
+
+The FM-1 is also a USB audio device: plugged into a computer, a phone or a tablet, it shows up as an audio input
+named FM-1 Bigorna, carrying its master output in stereo, 16-bit, at 44.1 kHz -- the rate it is made at, sent as it
+is. Record it or monitor it like any
+class-compliant audio interface; nothing to install. Its MIDI stays as it was, on the same cable. The FM-1's own
+output (the headphone jack) plays on as usual. The USB stream does not follow the MASTER knob: the knob sets the jack's
+level only, so a recording keeps its level whatever the headphones are set to.
+
+The host has to be the USB host: a computer, or a phone or tablet that takes USB audio devices (on Android, most do
+through USB-C). The FM-1 offers 44.1 kHz only; a host or app that works at 48 kHz converts it (Android, macOS and
+Windows do). Streaming takes about 2 % of the FM-1's processing time.
+
 ## The screen
 
 Few words, very large type, high contrast, and a colour for each track. The track's view shows the track's number,

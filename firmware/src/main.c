@@ -6,7 +6,9 @@ extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
 extern uint32_t _ft_start[], _ft_end[], _ft_load[];
 
 /* ------------------------------------------------------------ audio --- */
-#define HALF_FRAMES 256u         /* an I2S half buffer: 5.8 ms */
+#ifndef HALF_FRAMES
+#define HALF_FRAMES 256u         /* an I2S half buffer: 5.8 ms (fw.c) */
+#endif
 #define HALF_WORDS (HALF_FRAMES * 2u)
 #define OUT_SHIFT 7              /* Q15 -> 24 bit, a -6 dBFS ceiling */
 static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
@@ -167,8 +169,14 @@ void fm1_alnk0_irq(void)         /* via isr_alnk0 (hal/fm1_isr.S) */
     if (p & FM1_AUDIO_HALF) {
         uint32_t half = fm1_audio_free_half(), b, i, all, us;
         int32_t *o = &abuf[half * HALF_WORDS];
+#if FELUCCA_UAC
+        uac_render_start();                      /* (USB audio: the ring checked, primed if the host starts reading) */
+#endif
         for (b = 0; b < HALF_FRAMES; b += CTL) {
             mix_block(o + 2u * b);
+#if FELUCCA_UAC
+            uac_tap(usb_blk, CTL);               /* (the block, Q15, to the host -- before the MASTER knob: usb.c) */
+#endif
             for (i = 0; i < 2u * CTL; i++)
                 o[2u * b + i] <<= OUT_SHIFT;
         }
@@ -209,7 +217,8 @@ static void audio_init(void)
 
 /* --------------------------------------- TIMER5: the panel, time, USB --- */
 /* 10 kHz, above the audio (it may nest in the render: the scan keeps its pace, the LEDs do not shimmer);
- * USB is polled at 2 kHz, never nested; the TRS MIDI IN jack at 2 kHz too, nested as well (as MELODEE does: a clock
+ * USB is polled at 2 kHz, never nested -- but for its audio endpoint, which is served nested too (a packet a 1 ms
+ * frame: the host must not find it empty while a half renders, 5.8 ms; usb.c uac_service); the TRS MIDI IN jack at 2 kHz too, nested as well (as MELODEE does: a clock
  * byte timed as it comes, not after the render; it touches only its DMA ring, the MIDI ring and midi.c's clock) */
 void fm1_timer5_irq(void)
 {
@@ -230,6 +239,10 @@ void fm1_timer5_irq(void)
     if (++sub == 10u)
         sub = 0;
     if (dbg.in_audio) {
+#if FELUCCA_UAC
+        if (owed & 1u)
+            uac_service();                       /* (owed stays: usb_poll runs after the render, as before) */
+#endif
         t5_nested_ticks += fm1_ticks() - t0;
         return;
     }

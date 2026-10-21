@@ -1,5 +1,16 @@
 # Changelog
 
+## Build 49
+
+Added
+- USB audio: the FM-1 is a class-compliant USB audio input (FM-1 Bigorna) carrying its master output, stereo,
+  16-bit, 44.1 kHz -- as it is rendered, with no resampling. It is Felucca's and SLOOP's USB audio, switched on, fed
+  by the render (each block as it is made) and served at every 1 ms USB frame, also while a half buffer renders; its
+  ring is sized for Bigorna's 256-frame halves. The stream is the master before the MASTER knob (the knob sets the
+  jack's level only). Streaming costs 1.8 % of the CPU (measured: idle 24.1 % -> 25.9 %; six tracks of eighth notes
+  peak at 99.7 %, no half late, no frame repeated). SLOOP's 48 kHz option is left out: its resampler cost 6.7 %, and
+  under heavy playing it made halves late. MIDI goes on as before on the same cable; the update loader is unchanged.
+
 ## Build 48
 
 Added

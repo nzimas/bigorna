@@ -159,6 +159,10 @@ static uint32_t blk_clock;
 static volatile uint8_t shed_req;
 static volatile uint8_t load_pct;
 static int32_t master_q12 = 2048;
+#if defined(FELUCCA_UAC) && FELUCCA_UAC
+static int32_t usb_blk[2 * CTL];                 /* (the block for USB audio: the master before the MASTER knob, at
+                                                  * unity -- a recording does not follow the headphones' level) */
+#endif
 
 /* --------------------------------------------------------------- events --- */
 enum { EV_ON, EV_OFF, EV_STOP };
@@ -1856,6 +1860,12 @@ static void mix_block(int32_t *out)
             out[2u * i + 1u] = ceiling(mulq12(r_[i], master_q12));
         })
     }
+#if defined(FELUCCA_UAC) && FELUCCA_UAC
+    for (i = 0; i < CTL; i++) {
+        usb_blk[2u * i] = ceiling(l_[i]);
+        usb_blk[2u * i + 1u] = ceiling(r_[i]);
+    }
+#endif
     blk_last = COST_NOW() - c0;
 #if TELEMETRY
     tl_all += blk_last;

@@ -7,10 +7,10 @@
  * (isod89), GPL-3.0: the HAL, the boot, the USB stack, the update entry and loader, the rescue mode. */
 #include <stdint.h>
 #ifndef FW_ID
-#define FW_ID "FM-1_8048"         /* the package identity (tools/build.py sets it) */
+#define FW_ID "FM-1_8049"         /* the package identity (tools/build.py sets it) */
 #endif
 #ifndef FW_VERSION
-#define FW_VERSION "BUILD 48"
+#define FW_VERSION "BUILD 49"
 #endif
 #define FW_NAME "BIGORNA"
 #define FELUCCA_ID FW_ID
@@ -20,7 +20,9 @@
 #define FELUCCA_OTA 1            /* the update entry (the installer), and the rescue mode */
 #define FELUCCA_OTA_DRYRUN 0
 #define FELUCCA_CDC 0
-#define FELUCCA_UAC 0
+#define FELUCCA_UAC 1            /* USB audio out to the host: the master, stereo, 44.1 kHz (build 49; usb.c) */
+#define FELUCCA_UAC_48K 0        /* (no 48 kHz: the resampler cost 6.7 % of the CPU, and 44.1 is what is rendered) */
+#define HALF_FRAMES 256u         /* an I2S half buffer: 5.8 ms (main.c renders it; usb.c's audio ring is sized on it) */
 #define FM1_CORE1 1              /* CPU1 renders half the voices (BIGORNA build 32; hal/fm1_multicore.h) */
 
 #include "fm1_time.h"
