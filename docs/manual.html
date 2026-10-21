@@ -61,6 +61,7 @@
 <a href="#break" class="sub">BREAK</a>
 <a href="#the-effects-seq">The effects (SEQ)</a>
 <a href="#sidechain" class="sub">Sidechain</a>
+<a href="#lfos" class="sub">LFOs</a>
 <a href="#the-sequencer">The sequencer</a>
 <a href="#the-step-view" class="sub">The step view</a>
 <a href="#a-steps-own-pages" class="sub">A step&#x27;s own pages</a>
@@ -101,7 +102,7 @@
 <tr><td>PLAY</td><td>The sequencer plays or stops; held 0.8 s, the TEMPO page; SHIFT + PLAY: the metronome on or off</td></tr>
 <tr><td>REC</td><td>Records the keys into the track's steps; SHIFT + REC: the looper</td></tr>
 <tr><td>ARP</td><td>The patterns</td></tr>
-<tr><td>SEQ</td><td>The effects' pages</td></tr>
+<tr><td>SEQ</td><td>The effects' pages, then the track's LFOs</td></tr>
 <tr><td>SAVE</td><td>The sessions; held 0.8 s, the session saved; SHIFT + SAVE: GLOBAL SETUP (MIDI)</td></tr>
 <tr><td>MASTER</td><td>The output level</td></tr>
 </table>
@@ -111,7 +112,7 @@
 <p>Twelve voices are shared by the tracks: a track takes as many as its notes need. When all twelve sound, a new note takes the quietest one fading out. The FM-1's second processor core renders half the voices and the send effects; should it ever fault, it is stopped and the first core carries on alone until the FM-1 is switched off (the screen says <b>1 CORE</b>).</p>
 <p>DRUM tracks choke: each hit fades the track's previous one, as on a drum machine.</p>
 <h2 id="sounds">Sounds</h2>
-<p>HOME draws a new sound for the track from a recipe of its machine — a family such as TIGHT KICK, METAL HAT, FM BASS or SWARM DRONE — its values drawn within the recipe's ranges, leaning each time towards industrial, IDM or abstract. SHIFT + HOME draws again from the same family. SHIFT + PRESETS moves to the family before or after. The screen shows the machine and the family. 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE.</p>
+<p>HOME draws a new sound for the track from a recipe of its machine — a family such as TIGHT KICK, METAL HAT, FM BASS or SWARM DRONE — its values drawn within the recipe's ranges, leaning each time towards industrial, IDM or abstract. SHIFT + HOME draws again from the same family. SHIFT + PRESETS moves to the family before or after. The screen shows the machine and the family. 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE. The drone, pad and texture families and FM LEAD set LFOs as SynthSeeder's recipes do (those on PAN left out); the other families, kicks aside, may get a sample-and-hold LFO on the filter's FREQ.</p>
 <h2 id="the-sounds-pages-edit">The sound's pages (EDIT)</h2>
 <p>EDIT shows the sound's pages: SYN 1 to 4 (the machine's), FLTR 1, FLTR 2, AMP, FX and MANGLE. Each page has eight parameters: KNOB 1 to 4 set A to D; PRESETS turned right shows E to H (left: back). OCT− and OCT+ move between the pages. EDIT again leaves.</p>
 <h3 id="4-op">4-OP</h3>
@@ -186,7 +187,7 @@
 </ul>
 <p>The role of each track's sound (as the phrase generator reads it) keeps the result coherent: a kick keeps the bar's first step and takes no leaps, no gap and few ratchets; a drone (HIVE's pads and drones, dark washes) is left alone. The looper's loops are not broken up: they play on as recorded, and the pattern falls back in with them when the key is let go.</p>
 <h2 id="the-effects-seq">The effects (SEQ)</h2>
-<p>SEQ shows CHORUS, COMP, DELAY and REVERB in turn, then goes back (OCT− and OCT+ move between them; a track's button goes back to the track's view). KNOB 1 to 4 set the first four rows; PRESETS turned right shows the next four.</p>
+<p>SEQ shows CHORUS, COMP, DELAY, REVERB, then the chosen track's LFO 1, LFO 2 and LFO 3 in turn, then goes back (OCT− and OCT+ move between them; a track's button goes back to the track's view). KNOB 1 to 4 set the first four rows; PRESETS turned right shows the next four.</p>
 <ul>
 <li>CHORUS: DEPTH, SPEED, HPF, WIDTH, DELAY (its send to the delay), REVERB, VOLUME</li>
 <li>DELAY: TIME (synced to the tempo), PING PONG, WIDTH, FEEDBACK, HPF, LPF, REVERB, VOLUME</li>
@@ -195,6 +196,19 @@
 </ul>
 <h3 id="sidechain">Sidechain</h3>
 <p>Any track can be ducked under another's hits: SC SOURCE chooses the track whose notes duck it (OFF: none), SC LEVEL how deep, 0 to 100 — at 100 the track is all but gated on each hit. The duck follows the source's level and lets go at the compressor's RELEASE; the track's delay, reverb and chorus returns duck with it. The two rows show in the chosen track's colour; SHIFT and a track's button choose another track while staying on the page.</p>
+<h3 id="lfos">LFOs</h3>
+<p>Each track's sound has three LFOs, on the pages LFO 1, LFO 2 and LFO 3 after REVERB, shown in the track's colour (SHIFT and a track's button choose another track while staying on the page). They are part of the sound: each machine's sound on a track has its own, saved with the session. An LFO runs once for the track, and all the track's voices follow it (the Digitone II runs one per voice).</p>
+<ul>
+<li>SPEED: −64 to +63; negative runs the wave backwards. One cycle takes 2048 / (|SPEED| × MULT) 16ths: SPEED +32 with MULT x4 is one bar.</li>
+<li>MULT: x1 to x2048 follow the tempo; .1 to .2048 run as at 120 BPM whatever the tempo.</li>
+<li>FADE: 0 none; negative fades the LFO in, positive fades it out, over |FADE| 16ths from each note.</li>
+<li>DEST: NONE, or a parameter of the sound's pages, named with its page (S1 to S4 the machine's SYN pages, F1, F2, AMP, FX, MNG; the page left out where the name would not fit). LFO 2 can also move LFO 1's SPEED or DEPTH, and LFO 3 those of LFO 1 or LFO 2. Parameters the machine does not have are skipped.</li>
+<li>WAVE: TRI, SINE, SQR, SAW, EXP, RAMP, RND (a new random value each cycle).</li>
+<li>START: where the wave starts on a note (TRIG, ONE, HALF), 0 to 127 a whole cycle. For RND: how slowly it moves to each new value (below 48 it jumps).</li>
+<li>MODE: FREE runs on; TRIG starts again at START on each note; HOLD runs on, but its value is held from each note to the next; ONE runs one cycle from each note and stops; HALF half a cycle.</li>
+<li>DEPTH: −64 to +63, the swing each way as a share of the destination's range (+32: half the range); negative turns the wave upside down; 0 off.</li>
+</ul>
+<p>The LFOs are worked out every 2.9 ms. The track's sound is then made anew with the LFOs' values, one sound at a time in turn: with LFOs on several tracks (and voices with step locks), each moves in steps of 2.9 ms times their number. The LFOs' parameters cannot be step-locked.</p>
 <h2 id="the-sequencer">The sequencer</h2>
 <p>Each track has 16 steps, its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X the tempo's sixteenths) and direction. PLAY starts and stops it.</p>
 <h3 id="the-step-view">The step view</h3>
@@ -286,7 +300,7 @@
 <li>SAVE: the chosen row waits for a CC (WAIT). The next CC to come in, from USB or the jack, on any channel, is learned for it, and its number shows. SAVE again stops waiting.</li>
 <li>SHIFT + SAVE: the chosen row's CC forgotten.</li>
 </ul>
-<p>A CC learned for a sound's parameter turns it on the track it was learned on; one learned for an effect's turns it for all (COMP's SC SOURCE and SC LEVEL: on the track it was learned on). A CC and channel are learned for one parameter at a time, and a parameter has one CC: learning again moves it. A learned CC comes before the CC map above, on its channel; it needs RECEIVE CC on. Up to 64 are kept, in the flash with GLOBAL SETUP, written when MIDI LEARN is turned off.</p>
+<p>A CC learned for a sound's parameter turns it on the track it was learned on; one learned for an effect's turns it for all (COMP's SC SOURCE and SC LEVEL, and the LFOs' rows: on the track it was learned on; an LFO's DEST cannot be learned). A CC and channel are learned for one parameter at a time, and a parameter has one CC: learning again moves it. A learned CC comes before the CC map above, on its channel; it needs RECEIVE CC on. Up to 64 are kept, in the flash with GLOBAL SETUP, written when MIDI LEARN is turned off.</p>
 <p>The jack takes notes, CCs, program changes, the clock, START, CONTINUE, STOP and the song position, as USB does (not SysEx). With both inputs on, the two are merged; a clock should come from one of them only.</p>
 <h2 id="usb-audio">USB audio</h2>
 <p>The FM-1 is also a USB audio device: plugged into a computer, a phone or a tablet, it shows up as an audio input named FM-1 Bigorna, carrying its master output in stereo, 16-bit, at 44.1 kHz — the rate it is made at, sent as it is. Record it or monitor it like any class-compliant audio interface; nothing to install. Its MIDI stays as it was, on the same cable. The FM-1's own output (the headphone jack) plays on as usual. The USB stream does not follow the MASTER knob: the knob sets the jack's level only, so a recording keeps its level whatever the headphones are set to.</p>
