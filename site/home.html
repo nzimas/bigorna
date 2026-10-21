@@ -11,36 +11,15 @@
   </div>
 </div>
 
-<div class="major">
-  <div class="big riveted">
-    <h2>Parameter locks on nearly everything</h2>
-    <p>Any step can lock any parameter of the sound: all of the machine's SYN pages, the filters, the envelope,
-      overdrive and reduction, MANGLE's destruction and slicer, the track's level, pan and effect sends. Up to eight
-      locks a step, on every track.</p>
-    <p>On top of the usual note, velocity, length, trig condition and ratchet, each step has its own:</p>
-    <ul>
-      <li><b>MUTATE</b> moves the note up or down the scale by a set number of steps, or at random, every
-        so many times the step plays.</li>
-      <li><b>MIDI FX</b> is a per-step note effect: ECHO, ECHO UP, ECHO DN, STUTTER, FLAM, LATE, GRACE, FIFTH,
-        TRIAD, OCT UP, OCT DN, DROP. It can also fire only every so many times the step plays.</li>
-    </ul>
-    <p>Most sequencers with parameter locks have neither of these per step.</p>
-  </div>
-  <div class="big riveted">
-    <h2>Long, quantized loops over the sequence</h2>
-    <p>The looper records what you play over the running steps: up to 32 bars a loop, three loops a track, on all
-      six tracks. Notes are quantized to the step on the way in, and the loop's length to whole bars when REC ends
-      it, so it never drifts from the pattern. Each note keeps its velocity and the length it was held, and a note
-      can be held for the whole loop. Loops are saved with the session.</p>
-    <p>This makes it suited to slow chord progressions with CHORD mode: long pad chords and held atmospheric
-      layers, over a 16-step drum pattern. It suits improvised lines just as well, kept as played. Each loop can be
-      muted or cleared on its own. A looper of this length, synced to the sequencer, is rare on hardware of this
-      kind.</p>
-  </div>
-</div>
-
 <h2>Features</h2>
 <dl class="features">
+  <dt>Parameter locks</dt>
+  <dd>Any step can lock any parameter of the sound: all of the machine's SYN pages, the filters, the envelope,
+    overdrive and reduction, MANGLE's destruction and slicer, the track's level, pan and effect sends. Up to eight
+    locks a step, on every track. Each step also has MUTATE, which moves the note up or down the scale by a set
+    number of steps, or at random, every so many times the step plays; and MIDI FX, a note effect per step (ECHO,
+    ECHO UP, ECHO DN, STUTTER, FLAM, LATE, GRACE, FIFTH, TRIAD, OCT UP, OCT DN, DROP), which can also fire only every
+    so many times the step plays.</dd>
   <dt>Six tracks</dt>
   <dd>Each with its own machine, sound, octave, level, pan, steps and loops.</dd>
   <dt>Four machines</dt>
@@ -57,12 +36,18 @@
     drones — leaning each time towards industrial, IDM or abstract. SHIFT + PRESETS moves through the families.</dd>
   <dt>Sequencer</dt>
   <dd>16 steps a track, each track with its own length, clock and direction. Per step: note, velocity, length,
-    trig condition, ratchet, MUTATE, MIDI FX, and up to eight parameter locks (described above).</dd>
+    trig condition, ratchet, MUTATE, MIDI FX, and up to eight parameter locks.</dd>
   <dt>Phrase generator</dt>
   <dd>Writes a phrase for the track from the role its sound plays (kick, snare, hat, noise, bass ..), with
     conditions, ratchets and locks; DENSITY and COMPLEXITY per track.</dd>
+  <dt>Long, quantized loops</dt>
+  <dd>The looper records what you play over the running steps: up to 32 bars a loop, three loops a track, on all six
+    tracks. Notes are quantized to the step on the way in, and the loop's length to whole bars when REC ends it, so
+    it stays in time with the pattern. Each note keeps its velocity and the length it was held; a note can be held
+    for the whole loop. Each loop can be muted or cleared on its own, and loops are saved with the session. Suited to
+    long pad chords in CHORD mode over a 16-step drum pattern, or to improvised lines kept as played.</dd>
   <dt>Recording</dt>
-  <dd>REC records the keys into the steps (velocity and length as played). The looper is described above.</dd>
+  <dd>REC records the keys into the steps (velocity and length as played).</dd>
   <dt>CHORD mode</dt>
   <dd>Each key plays a triad in the scale: triad, inversions, sus2, sus4, open, fourths. Chords go into the steps
     and the loops.</dd>
