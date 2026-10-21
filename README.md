@@ -44,7 +44,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | 2nd black key | MUTE mode on or off |
 | 3rd black key | BREAK, while held; SHIFT + it: on every track |
 | 4th black key | MIDI LEARN on or off |
-| 5th black key | The track's arpeggiator on or off; SHIFT + it: the ARP page |
+| 5th black key | The track's arpeggiator on or off; held 0.8 s: the ARP page |
 | Black key before the last | EDIT: the sound's pages |
 | 3rd black key from the right | STEP: the step view |
 | Last black key | SHIFT |
@@ -168,14 +168,15 @@ notes. DRUM tracks play no chords.
 
 ### Arpeggiator
 
-In the track's view, the step view off, the 5th black key turns the track's arpeggiator on or off (lit while on; ARP
-shows at the top left). While it is on, the keys held (and USB or TRS MIDI notes for the track) are not played
+In the track's view, the step view off, a short press of the 5th black key turns the track's arpeggiator on or off
+(lit while on; ARP shows at the top left). While it is on, the keys held (and USB or TRS MIDI notes for the track) are not played
 directly: the arpeggiator plays them one at a time, on the tempo's grid. While the sequencer plays it follows the
 sequencer's 16ths; stopped, it runs on its own at the tempo, and the first note of a chord plays at once. With CHORD
 mode on, each key gives it the chord's three notes.
 
-SHIFT + the 5th black key opens the ARP page of the chosen track (KNOB 1 to 4 the rows A to D, PRESETS turned right
-E to H; a track's button goes back):
+Holding the 5th black key for 0.8 s opens the ARP page of the chosen track, or closes it (KNOB 1 to 4 the rows A to
+D, PRESETS turned right E to H; a track's button also goes back). The arpeggiator turns on or off as the key is let
+go after a short press.
 
 - MODE: UP, DOWN, UP DOWN, DOWN UP (the end notes once), ORDER (as played), RANDOM, CONVERGE (from the ends in),
   DIVERGE (from the middle out), PINKY (the top note between each of the others), THUMB (the lowest between each).
@@ -210,8 +211,9 @@ underneath, and when the key is let go the pattern carries on from where it woul
 the break had started stop at once. The key is lit while held.
 
 The break stays on the pattern's beat. A track goes into it on its next beat (its next half bar for REPEAT 8) and
-plays as written until then. Each press draws a way of playing the steps, shown in the name band; held two bars, a
-new one is drawn on the next bar line (never the same twice running). Every way keeps what is on a beat on a beat:
+plays as written until then. Each press draws one way of playing the steps, shown in the name band, and keeps it
+for as long as the key is held; the next press draws another (never the same twice running). Every way keeps what
+is on a beat on a beat:
 
 | Way | What plays |
 | --- | --- |

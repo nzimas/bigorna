@@ -23,7 +23,7 @@
  *                             -- other steps played, ratchets, flams, leaps, a gap -- its position kept; SHIFT and
  *                             it, every track. Let go, each plays on from where it is. The way shows in the band
  *   the 5th black key         (the step view off) the track's arpeggiator on or off (tracks.c; lit while on): the keys
- *                             held go to it, it plays them in turn; SHIFT and it: its page (ARP). Build 52
+ *                             held go to it, it plays them in turn (build 52); held 0.8 s: its page (ARP) up or down
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
  *                             16 steps: a key on an empty step puts the track's last note played there; a key on a
@@ -148,6 +148,9 @@ static struct {
     uint32_t gen_until;          /* the phrase key lit fully until */
     uint8_t gen_down, gen_long, gen_sh;   /* the phrase key held: since gen_t0; held 0.8 s (its page); SHIFT with it */
     uint32_t gen_t0;
+    uint8_t ak_down, ak_long;    /* the 5th black key (the arpeggiator's) held: since ak_t0; held 0.8 s (its page;
+                                  * build 53) */
+    uint32_t ak_t0;
     int8_t trn[NTRACK];          /* each track's transposition in the pattern playing, steps of the scale (build 51) */
     uint8_t gen_den[NTRACK], gen_cx[NTRACK];   /* the phrase generator's DENSITY and COMPLEXITY, 0 .. 100, a track's */
     uint8_t trig;                /* TRIG on (the 3rd black key): a step held shows its own page */
@@ -2012,6 +2015,30 @@ static void ui_input(void)
             ui.force = 1;
         }
     }
+    if (ui.ak_down) {                                /* the arpeggiator's key: let go soon, the track's arpeggiator on
+                                                      * or off; held 0.8 s, its page (ARP) up or down */
+        if (!((keys >> KEY_ARP) & 1u)) {
+            ui.ak_down = 0;
+            if (!ui.ak_long) {
+                arp_on[ui.sel] = (uint8_t)!arp_on[ui.sel];
+                if (!arp_on[ui.sel])
+                    ev_post(EV_ARP_CLR, ui.sel, 0, 0);
+                say(arp_on[ui.sel] ? "ARP ON" : "ARP OFF", 900);
+                prj_dirty = 1;
+                ui.force = 1;
+            }
+        } else if (!ui.ak_long && (uint32_t)(fm1_ms - ui.ak_t0) >= 800u) {
+            ui.ak_long = 1;
+            if (ui.page == PG_FXP && fx_arp())
+                ui.page = PG_MAIN;
+            else {
+                ui.page = PG_FXP;
+                ui.fx_pg = FXP_ARP;
+                ui.ehalf = ui.lsel = ui.listen = 0;
+            }
+            ui.force = 1;
+        }
+    }
     if ((ch & keys) >> KEY_STEP & 1u) {              /* STEP: the step view on or off */
         ui.sv = (uint8_t)!ui.sv;
         if (!ui.sv && ui.step_key != KEY_NONE)
@@ -2040,20 +2067,11 @@ static void ui_input(void)
             ui.force = 1;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_ARP && !pg_any()) {   /* the arpeggiator on or off;
-                                                                         * SHIFT: its page */
-            if (sh) {
-                ui.page = PG_FXP;
-                ui.fx_pg = FXP_ARP;
-                ui.ehalf = ui.lsel = ui.listen = 0;
-            } else {
-                arp_on[ui.sel] = (uint8_t)!arp_on[ui.sel];
-                if (!arp_on[ui.sel])
-                    ev_post(EV_ARP_CLR, ui.sel, 0, 0);
-                say(arp_on[ui.sel] ? "ARP ON" : "ARP OFF", 900);
-                prj_dirty = 1;
-            }
-            ui.force = 1;
+        if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_ARP && !pg_any()) {   /* the arpeggiator's key: on
+                                                                         * its release or held */
+            ui.ak_down = 1;
+            ui.ak_long = 0;
+            ui.ak_t0 = fm1_ms;
             continue;
         }
         if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_MOD &&

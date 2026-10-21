@@ -886,8 +886,8 @@ static uint32_t seq_next(uint32_t t, uint32_t len)
  * before 41).
  * It stays on the pattern's beat (build 45): a track goes into the break on its next beat (its next half bar for
  * REPEAT 8), playing as written until then; every way keeps what is on a beat on a beat -- windows of 1, 2, 4 or 8
- * steps, REVERSE keeping each window's first step, CHOP moving whole beats; a new plan is drawn only on a bar line,
- * after two bars held, never the same way twice running. The kick keeps the bar's first step and takes no leaps, no
+ * steps, REVERSE keeping each window's first step, CHOP moving whole beats. One plan a press (build 53: until then
+ * another every two bars held), never the same way twice running. The kick keeps the bar's first step and takes no leaps, no
  * gap and few ratchets; a drone is left alone */
 enum { BR_REPEAT, BR_HALF, BR_DOUBLE, BR_REVERSE, BR_CHOP, BR_ROLL, NBR };
 static const char *const BR_NAME[NBR] = {"REPEAT", "HALF TIME", "DOUBLE", "REVERSE", "CHOP", "ROLL"};
@@ -953,9 +953,8 @@ static void brk_tick(void)                       /* (each of the tempo's 16ths, 
         brk_draw();
         return;
     }
-    brk_n16++;
-    if (++brk_since >= 32u && seq_gcount % 16u == 0u)   /* two bars held, on a bar line: another */
-        brk_draw();
+    brk_n16++;                                   /* (one way a press, however long it is held: build 53) */
+    brk_since++;
 }
 /* the way's step for step p of len, from anchor a (a beat) */
 static uint32_t brk_map(uint32_t a, uint32_t p, uint32_t len, uint32_t kick)

@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 53
+
+Changed
+- The arpeggiator's page: holding the 5th black key 0.8 s opens it, or closes it, in place of SHIFT + the key. A
+  short press still turns the arpeggiator on or off, now as the key is let go.
+- BREAK: one way per press. The way drawn when the key is pressed (REPEAT, HALF TIME, DOUBLE, REVERSE, CHOP, ROLL)
+  plays for as long as it is held; until now another was drawn every two bars held. Within the way, its ratchets,
+  flams, leaps and gap are as before. The next press draws another, never the same twice running.
+
 ## Build 52
 
 Added

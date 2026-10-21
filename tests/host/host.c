@@ -1459,7 +1459,7 @@ static int cmd_projects(const char *dir)
     {   /* BREAK: the 3rd black key held, other steps played while the track's own position goes on; let go, it plays
          * on from where it is (build 37) */
         int32_t out[2 * CTL];
-        uint32_t i, last, moved = 0, kept = 1, on = 1, snd;
+        uint32_t i, last, moved = 0, kept = 1, on = 1, snd, way = 0xFFu, ways = 0;
         ui.sel = 0;
         ui.page = PG_MAIN;
         ui.sv = 0;
@@ -1483,8 +1483,12 @@ static int cmd_projects(const char *dir)
         key(KEY_TRIG, 1);
         brk_keep = 0;                            /* (whatever the sound: not left alone) */
         EXPECT(ui.brk == 1u && brk_mask == 1u && !key_plays(KEY_TRIG), "the 3rd black key held: track 1 under BREAK");
-        for (i = 0, last = seq_pos[0]; i < 48u; i++) {   /* (three bars: a plan drawn again after two) */
+        for (i = 0, last = seq_pos[0]; i < 64u; i++) {   /* (four bars: one way all through -- build 53) */
             snd = seq_sounded[0];
+            if (brk_shown != 0xFFu && brk_shown != way) {
+                way = brk_shown;
+                ways++;
+            }
             while (seq_pos[0] == last)
                 mix_block(out);
             on &= seq_pos[0] == (last + 1u) % 16u;
@@ -1494,6 +1498,7 @@ static int cmd_projects(const char *dir)
         }
         EXPECT(on, "under BREAK the track's own position goes on, a step at a time");
         EXPECT(moved > 0u, "under BREAK other steps play (or none, or leaps)");
+        EXPECT(ways == 1u, "BREAK held four bars: one way all through (build 53)");
         ui_input();
         ui_draw();
         shot(dir, "break");
@@ -2164,10 +2169,17 @@ static int cmd_projects(const char *dir)
             int32_t out[2 * CTL];
             uint32_t i, kind;
             double e[3];
+            uint8_t run0 = seq_run;
+            seq_run = 0;                         /* (the note alone: not the steps, wherever the tests before left
+                                                  * the sequencer) */
+            for (i = 0; i < 400u; i++)
+                mix_block(out);
             for (kind = 0; kind < 3u; kind++) {
                 sound_t *sn = &ui.snd[0][ui.eng[0]];
                 int32_t gmin = Q15, gmax = 0;
                 memset(sn->mg, 0, NM);
+                lfos_off(sn);                    /* (the same note each time: no LFO, a recipe's sample-and-hold on
+                                                  * the cutoff, drawn anew each note) */
                 if (kind == 1u) {
                     sn->mg[M_SLICE] = 1;             /* (every other 1/16) */
                     sn->mg[M_SRATE] = 1;
@@ -2198,6 +2210,7 @@ static int cmd_projects(const char *dir)
                     EXPECT(gmin < 1000 && gmax > 32000, "SLICE: the gate shut and open, in time");
             }
             EXPECT(e[1] < e[0] * 0.8 && e[2] != e[0], "SLICE cuts, DESTROY changes the sound");
+            seq_run = run0;
             memset(ui.snd[0][ui.eng[0]].mg, 0, NM);
             ui.dirty[0] = 1;
             for (i = 0; i < 8u && ui.dirty[0]; i++) {
@@ -3677,10 +3690,15 @@ static int cmd_arp(const char *dir)
 
     /* its page; kept with the session */
     btn(B_PLAY, 0);
-    fm1_in.notes |= 1u << KEY_SHIFT;
-    tap(KEY_ARP);
-    fm1_in.notes &= ~(1u << KEY_SHIFT);
-    AEXPECT(ui.page == PG_FXP && ui.fx_pg == FXP_ARP, "SHIFT + the 5th black key: the ARP page");
+    {
+        uint32_t was = arp_on[0];
+        key(KEY_ARP, 1);
+        fm1_ms += 900;
+        ui_input();
+        key(KEY_ARP, 0);
+        AEXPECT(ui.page == PG_FXP && ui.fx_pg == FXP_ARP && arp_on[0] == was,
+                "the 5th black key held 0.8 s: the ARP page, the arpeggiator as it was");
+    }
     fx_turn(AR_MODE, 8);                         /* PINKY */
     fx_turn(AR_DENS, -20);
     ui_draw();
