@@ -150,13 +150,15 @@ MIDI notes play the chosen track as the keys do.
 
 ### Transposition
 
-In the step view, OCT− and OCT+ transpose the chosen track's steps; SHIFT + OCT− or OCT+ (in the track's view or the
-step view) transposes every track's steps at once. Each press moves every note one step of the scale and root
+In the step view, OCT− and OCT+ transpose the chosen track's steps and its loops; SHIFT + OCT− or OCT+ (in the
+track's view or the step view) transposes every track's steps and loops at once. Steps and loops move by the same
+amount, each from the notes it plays. Each press moves every note one step of the scale and root
 chosen, down or up (in CHROMATIC, a semitone), so the notes stay in the scale; a note that is not in it moves to the
 scale's next. The transposition shows at the top right in the track's colour (T+2, T−1), up to 24 steps each way,
 and TRN with its value on the screen as it changes. It is part of the pattern: the moved notes and the count are
-saved with it and with the session, and a copied pattern takes them along. The loops and the keys' octave are left
-as they are.
+saved with it and with the session, and a copied pattern takes them along. A loop's notes are moved in place and
+saved with the session (loops belong to the session, not to a pattern; a loop being recorded is left as it is). The
+keys' octave is left as it is.
 
 ### CHORD mode
 

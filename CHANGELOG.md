@@ -1,5 +1,13 @@
 # Changelog
 
+## Build 54
+
+Changed
+- Transposition takes the loops too: in the step view OCT− and OCT+ move the chosen track's loops with its steps,
+  and SHIFT + OCT− or OCT+ every track's, each note one step of the scale (CHROMATIC: a semitone), as the steps'.
+  A loop's notes are moved in place and saved with the session; the loop being recorded is left alone. The TRN
+  count shown stays the pattern's.
+
 ## Build 53
 
 Changed

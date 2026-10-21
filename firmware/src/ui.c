@@ -361,7 +361,8 @@ static int32_t scale_move(int32_t n, int32_t d)
     return n;
 }
 /* transposition (build 51): track t's steps moved d steps of the scale (CHROMATIC: semitones), each note to the
- * scale's next; TRN counts how far, kept with the pattern */
+ * scale's next; TRN counts how far, kept with the pattern. Its loops too (build 54), each note the same way -- not
+ * the one being recorded -- kept with the session */
 #define TRN_MAX 24
 static int32_t trn_track(uint32_t t, int32_t d)
 {
@@ -373,6 +374,17 @@ static int32_t trn_track(uint32_t t, int32_t d)
     for (i = 0; i < NSTEP; i++)
         if (seq_note[t][i])
             seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], d);
+    {
+        uint32_t l, e;
+        for (l = 0; l < NLOOP; l++) {
+            loop_t *p = &loops[t][l];
+            if (!p->on || (ui.lrec && ui.lt == t && ui.ll == l))
+                continue;
+            for (e = 0; e < p->n; e++)
+                p->ev[e].note = (uint8_t)scale_move((int32_t)p->ev[e].note, d);
+            prj_dirty = 1;
+        }
+    }
     ui.trn[t] = (int8_t)v;
     pat_dirty = 1;
     return d;

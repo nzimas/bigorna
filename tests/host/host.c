@@ -3502,6 +3502,24 @@ static int cmd_trn(const char *dir)
     btn(B_OCTUP, 1);
     TEXPECT(seq_note[0][0] == 60 && seq_note[0][2] == 71 && !ui.trn[0] && seq_note[1][0] == 50 && ui.trn[1] == 1 &&
             !ui.oct[0], "SHIFT + OCT+: every track's steps up a step of the scale, the octave kept");
+    {   /* the track's loops with its steps (build 54): a loop on track 1 (C, A), another not on */
+        loop_t *p = &loops[0][0];
+        memset(loops, 0, sizeof loops);
+        p->n = 2; p->len = 16; p->ev[0].note = 60; p->ev[1].note = 69; p->ev[0].step = 0; p->ev[1].step = 8;
+        p->on = 1;
+        loops[0][1].n = 1; loops[0][1].ev[0].note = 60;   /* (not on: an empty slot's leftovers) */
+        ui.sv = 1;
+        ui.sel = 0;
+        btn(B_OCTUP, 0);
+        TEXPECT(p->ev[0].note == 62 && p->ev[1].note == 71 && loops[0][1].ev[0].note == 60 && seq_note[0][0] == 62 &&
+                ui.trn[0] == 1, "the step view: OCT+ the track's loop up a step of the scale too, with its steps");
+        btn(B_OCTDN, 1);
+        TEXPECT(p->ev[0].note == 60 && p->ev[1].note == 69 && seq_note[0][0] == 60 && !ui.trn[0] && ui.trn[1] == 0,
+                "SHIFT + OCT-: every track's steps and loops down");
+        btn(B_OCTUP, 1);                         /* (back as the tests below had it: track 1 at 0, track 2 at +1) */
+        btn(B_OCTDN, 0);
+        memset(loops, 0, sizeof loops);
+    }
     ui.scale = 0;                                /* CHROMATIC: semitones */
     ui.sv = 1;
     ui.sel = 1;
