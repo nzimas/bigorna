@@ -24,6 +24,7 @@
       <a href="./">Home</a>
       <a href="screens.html">Screens</a>
       <a href="install.html">Install</a>
+      <a href="backup.html">Backup</a>
       <a href="manual.html" aria-current="page">Manual</a>
       <a href="changelog.html">Changelog</a>
       <a href="projects.html">Other projects</a>
@@ -73,6 +74,7 @@
 <a href="#tempo">Tempo</a>
 <a href="#patterns-arp">Patterns (ARP)</a>
 <a href="#sessions-save">Sessions (SAVE)</a>
+<a href="#backup" class="sub">Backup</a>
 <a href="#global-setup-shift-save">GLOBAL SETUP (SHIFT + SAVE)</a>
 <a href="#midi" class="sub">MIDI</a>
 <a href="#tested-with" class="sub">Tested with</a>
@@ -268,6 +270,8 @@
 <p>A session holds the whole state of the machine: every track's machine, sounds, octave, level, pan, chord mode and mutes, the track chosen, the effects, the tempo, the root and scale, its 16 patterns and the pattern playing, and every loop on every track (notes, length, mute). Loading a session gives all of it back; its loops start at the next bar if the sequencer is playing. A session saved by build 37 or earlier has no loops: loading it empties them.</p>
 <p>The loops are kept in a loop store shared by the 16 sessions (31 sectors of flash, about 125 KB). A session takes what its loops need: up to 7 sectors with all 18 loops full (256 notes each). If the store has no room left, nothing is saved and NO ROOM FOR LOOPS shows; deleting a session, or saving one with fewer loops, frees room.</p>
 <p>The FM-1 starts with the last session loaded or saved (SESSION n shows for a moment). Changes not saved before it was switched off are not kept.</p>
+<h3 id="backup">Backup</h3>
+<p>The website's <a href="https://nzimas.github.io/bigorna/backup.html">Backup page</a> copies the sessions on the FM-1 — each with its patterns and loops — and GLOBAL SETUP to a file on the computer, over USB MIDI (desktop Chrome, Edge or Opera), and restores them from it. Use it before installing another firmware: Bigorna keeps its sessions where Tonitor keeps its own, so either may overwrite the other's. A restore writes each session back into the slot it came from (the others on the FM-1 are kept), each part checked before it is written; RESTORED S3 (or SETUP) shows on the screen as each lands. The session playing is not changed: load it to hear what was restored. Build 55 or later.</p>
 <h2 id="global-setup-shift-save">GLOBAL SETUP (SHIFT + SAVE)</h2>
 <p>SHIFT + SAVE (outside the sessions' pages) opens GLOBAL SETUP: the settings of the machine rather than of a session. They are kept in the FM-1's flash and read at every start. PRESETS moves through a list and SAVE goes into the entry chosen; on a setting, SAVE moves the focus to its value, PRESETS changes it and SAVE sets it. SHIFT + SAVE leaves a value as it was, or goes back a level; from the top it leaves GLOBAL SETUP, as a track's button does. Every level below the top begins with BACK: SAVE on it goes back a level (a level opens on the entry below BACK). Changes are written to the flash as it is left.</p>
 <h3 id="midi">MIDI</h3>
