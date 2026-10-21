@@ -6,7 +6,8 @@
  *                             each, so turning back finds it) -- on the track's view only: on the EDIT pages it moves
  *                             through them, on the effects' pages the half shown
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
- *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after
+ *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after; in the step
+ *                             view, the track's steps transposed a step of the scale (build 51); SHIFT: every track's
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
  *   the 1st black key         (the track's view, the step view off) CHORD mode on or off for the track (lit while
  *                             on, dim off): each white key then plays a triad from its note, in the scale (after
@@ -143,6 +144,7 @@ static struct {
     uint32_t gen_until;          /* the phrase key lit fully until */
     uint8_t gen_down, gen_long, gen_sh;   /* the phrase key held: since gen_t0; held 0.8 s (its page); SHIFT with it */
     uint32_t gen_t0;
+    int8_t trn[NTRACK];          /* each track's transposition in the pattern playing, steps of the scale (build 51) */
     uint8_t gen_den[NTRACK], gen_cx[NTRACK];   /* the phrase generator's DENSITY and COMPLEXITY, 0 .. 100, a track's */
     uint8_t trig;                /* TRIG on (the 3rd black key): a step held shows its own page */
     uint8_t mod;                 /* MOD on (the 4th): a step held shows its MOD page */
@@ -344,6 +346,28 @@ static int32_t scale_move(int32_t n, int32_t d)
         n = m;
     }
     return n;
+}
+/* transposition (build 51): track t's steps moved d steps of the scale (CHROMATIC: semitones), each note to the
+ * scale's next; TRN counts how far, kept with the pattern */
+#define TRN_MAX 24
+static int32_t trn_track(uint32_t t, int32_t d)
+{
+    int32_t v = clampi(ui.trn[t] + d, -TRN_MAX, TRN_MAX);
+    uint32_t i;
+    d = v - ui.trn[t];
+    if (!d)
+        return 0;
+    for (i = 0; i < NSTEP; i++)
+        if (seq_note[t][i])
+            seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], d);
+    ui.trn[t] = (int8_t)v;
+    pat_dirty = 1;
+    return d;
+}
+static void trn_text(char *b, int32_t v)          /* +2, -1, 0 */
+{
+    str_cpy(b, v > 0 ? "+" : "", 2);
+    fmt_int(b + str_len(b), v);
 }
 static int step_view(void) { return ui.sv; }
 static int step_held(void) { return ui.sv && ui.step_key != KEY_NONE; }
@@ -1709,6 +1733,21 @@ static void ui_input(void)
             ui.fx_pg = (uint8_t)((ui.fx_pg + NFXP + (uint32_t)(d + (int)NFXP)) % NFXP);
             ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
             ui.force = 1;
+        } else if (sh || step_view()) {             /* transposition: SHIFT every track's steps; the step view the
+                                                      * track's */
+            char m[16];
+            uint32_t t;
+            if (sh) {
+                for (t = 0; t < NTRACK; t++)
+                    trn_track(t, d);
+                str_cpy(m, "TRN ALL ", 16);
+            } else {
+                trn_track(ui.sel, d);
+                str_cpy(m, "TRN ", 16);
+            }
+            trn_text(m + str_len(m), ui.trn[ui.sel]);
+            say(m, 1200);
+            ui.force = 1;
         } else {
             char m[8] = "OCT  ";
             int32_t o = clampi(ui.oct[ui.sel] + d, -3, 3);
@@ -2055,8 +2094,8 @@ static void ui_leds(void)
     fm1_led_key(PANEL_BTN[B_SEQ], ui.page == PG_FXP);
     fm1_led_key(PANEL_BTN[B_ARP], ui.page == PG_PAT);
     fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD || ui.page == PG_SET);
-    fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || ui.oct[ui.sel] < 0);
-    fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || ui.oct[ui.sel] > 0);
+    fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || (step_view() ? ui.trn[ui.sel] < 0 : ui.oct[ui.sel] < 0));
+    fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || (step_view() ? ui.trn[ui.sel] > 0 : ui.oct[ui.sel] > 0));
     fm1_led_key(PANEL_BTN[B_REC], ui.rec == REC_ON || ui.lrec == 2 ||
                                       ((ui.rec == REC_ARMED || ui.lrec == 1) && (fm1_ms / 250u) & 1u));
     fm1_led_key(PANEL_BTN[B_PLAY], seq_run && (seq_pos[ui.sel] & 3u) == 0u);   /* (the beat, while it plays) */
@@ -2172,9 +2211,19 @@ static void draw_number(void)
                         ui.lrec == 2 || ui.rec == REC_ON ? C_BAD : RGB(255, 140, 0));
             }
         }
-        if (ui.oct[ui.sel]) {                         /* the octave, top right: +1, -2 */
-            char o[4] = {ui.oct[ui.sel] < 0 ? '-' : '+', (char)('0' + (ui.oct[ui.sel] < 0 ? -ui.oct[ui.sel] : ui.oct[ui.sel])), 0, 0};
-            cv_text(236 - text_w(&FONT_S, o), 2, &FONT_S, o, C_WHITE);
+        {
+            int32_t x = 236;
+            if (ui.oct[ui.sel]) {                     /* the octave, top right: +1, -2 */
+                char o[4] = {ui.oct[ui.sel] < 0 ? '-' : '+', (char)('0' + (ui.oct[ui.sel] < 0 ? -ui.oct[ui.sel] : ui.oct[ui.sel])), 0, 0};
+                x -= text_w(&FONT_S, o);
+                cv_text(x, 2, &FONT_S, o, C_WHITE);
+                x -= 10;
+            }
+            if (ui.trn[ui.sel]) {                     /* the track's transposition, left of it, in its colour: T+2 */
+                char o[8] = "T";
+                trn_text(o + 1, ui.trn[ui.sel]);
+                cv_text(x - text_w(&FONT_S, o), 2, &FONT_S, o, TRACK_COL[ui.sel]);
+            }
         }
     }
 }
@@ -2830,7 +2879,7 @@ static void ui_draw(void)
                      (seq_pend == 1u ? 1024 + (int32_t)((fm1_ms / 300u) & 1u) * 2048 : 0) +
                      (ui.oct[ui.sel] + 3) * 4096 +
                      (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD ? (ui.chord_form[ui.sel] + 1) * 32768 : 0) +
-                     trk_mute[ui.sel] * (1 << 20);   /* (the
+                     trk_mute[ui.sel] * (1 << 20) + (ui.trn[ui.sel] + 64) * (1 << 21);   /* (the
                                                       * octave and the chord shown: drawn again as they change) */
         if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pk) {
             ui.shown_prj = pk;

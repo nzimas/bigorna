@@ -145,6 +145,8 @@ typedef struct {
 #define SEQ_DIR 8u
 #define SEQ_DEN 14u
 #define SEQ_CX 20u
+#define SEQ_TRN 26u              /* (build 51: seq[26 + t] track t's transposition, steps of the scale, signed -- 0 in
+                                  * every pattern before: pat_encode clears them) */
 #define SEQ_REC4 32u
 #define SEQ_NREC 7u
 #define SEQ_REC 8u
@@ -692,6 +694,7 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
         p->seq[SEQ_DIR + t] = b->dir[t];
         p->seq[SEQ_DEN + t] = b->den[t];
         p->seq[SEQ_CX + t] = b->cx[t];
+        p->seq[SEQ_TRN + t] = (uint8_t)b->trn[t];
         for (i = 0; i < NSTEP; i++) {
             uint32_t j, nl = pl_nb(b, t, i), at, md = (uint32_t)mod_on(b, t, i), ch = b->chf[t][i] != 0;
             if (!b->note[t][i] || o + 6u > PAT_SEQ_ROOM)
@@ -743,6 +746,7 @@ static void pat_take(pat_t *p)                   /* the pattern playing, as a pa
     seq_copy_out(&sb_tmp);
     memcpy(sb_tmp.den, ui.gen_den, NTRACK);
     memcpy(sb_tmp.cx, ui.gen_cx, NTRACK);
+    memcpy(sb_tmp.trn, ui.trn, NTRACK);
     pat_encode(p, &sb_tmp);
 }
 /* a pattern as steps, into b (empty: none) */
@@ -767,6 +771,7 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
         b->dir[t] = (uint8_t)(v4 && p->seq[SEQ_DIR + t] < NDIR ? p->seq[SEQ_DIR + t] : DIR_FWD);
         b->den[t] = (uint8_t)(v4 && p->seq[SEQ_DEN + t] <= 100u ? p->seq[SEQ_DEN + t] : 50u);
         b->cx[t] = (uint8_t)(v4 && p->seq[SEQ_CX + t] <= 100u ? p->seq[SEQ_CX + t] : 50u);
+        b->trn[t] = (int8_t)(v4 ? clampi((int8_t)p->seq[SEQ_TRN + t], -TRN_MAX, TRN_MAX) : 0);
     }
     if (p->used && (p->seq[SEQ_FMT] == SEQ_V3 || p->seq[SEQ_FMT] == SEQ_V4)) {
         uint32_t v4 = p->seq[SEQ_FMT] == SEQ_V4, o = v4 ? SEQ_REC4 : SEQ_REC, r;
@@ -844,6 +849,7 @@ static void pat_give(uint32_t k)
     seq_copy_in(&sb_tmp);
     memcpy(ui.gen_den, sb_tmp.den, NTRACK);
     memcpy(ui.gen_cx, sb_tmp.cx, NTRACK);
+    memcpy(ui.trn, sb_tmp.trn, NTRACK);
     pat_cur = (uint8_t)k;
     pat_tempo = p->used ? p->tempo : 0;
     pat_dirty = pat_dirtyv[k];
@@ -1334,11 +1340,13 @@ static void pat_poll(void)
     if (pat_dirty) {
         memcpy(sb_old.den, ui.gen_den, NTRACK);
         memcpy(sb_old.cx, ui.gen_cx, NTRACK);
+        memcpy(sb_old.trn, ui.trn, NTRACK);
         pat_encode(&pat_store[pat_cur], &sb_old);
         pat_dirtyv[pat_cur] = 1;
     }
     memcpy(ui.gen_den, sb_next.den, NTRACK);
     memcpy(ui.gen_cx, sb_next.cx, NTRACK);
+    memcpy(ui.trn, sb_next.trn, NTRACK);
     pat_cur = seq_pend_k;
     pat_tempo = pat_store[pat_cur].used ? pat_store[pat_cur].tempo : 0;
     pat_dirty = pat_dirtyv[pat_cur];

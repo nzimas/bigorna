@@ -38,7 +38,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | PRESETS (knob) | The track's machine: 4-OP, DRUM, WAVY, HIVE |
 | SHIFT + PRESETS | A new sound of the family before / after |
 | HOME | A new sound for the track, on its machine; SHIFT + HOME: of the same family. Held: the session saved, as SAVE held |
-| OCT− / OCT+ | The track's octave, −3 to +3 (shown at the top right) |
+| OCT− / OCT+ | The track's octave, −3 to +3 (shown at the top right); in the step view, the track's transposition; SHIFT + OCT− / OCT+: every track's transposition |
 | White keys | Play the track in the scale chosen |
 | 1st black key | CHORD mode on or off |
 | 2nd black key | MUTE mode on or off |
@@ -146,6 +146,16 @@ root are set on the session's page (SAVE): CHROMATIC (the black keys play too, b
 MAJOR, MINOR NATURAL, MINOR
 HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, IN. OCT− and OCT+ move the track's octave. USB
 MIDI notes play the chosen track as the keys do.
+
+### Transposition
+
+In the step view, OCT− and OCT+ transpose the chosen track's steps; SHIFT + OCT− or OCT+ (in the track's view or the
+step view) transposes every track's steps at once. Each press moves every note one step of the scale and root
+chosen, down or up (in CHROMATIC, a semitone), so the notes stay in the scale; a note that is not in it moves to the
+scale's next. The transposition shows at the top right in the track's colour (T+2, T−1), up to 24 steps each way,
+and TRN with its value on the screen as it changes. It is part of the pattern: the moved notes and the count are
+saved with it and with the session, and a copied pattern takes them along. The loops and the keys' octave are left
+as they are.
 
 ### CHORD mode
 

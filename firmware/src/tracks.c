@@ -1081,6 +1081,7 @@ typedef struct {
     int16_t lv[NTRACK][NSTEP][NPL];
     uint8_t len[NTRACK], div[NTRACK], dir[NTRACK];
     uint8_t den[NTRACK], cx[NTRACK];             /* (the phrase generator's, the main loop's: not the ISR's) */
+    int8_t trn[NTRACK];                          /* (each track's transposition, steps of the scale: the main loop's) */
 } seqbuf_t;
 static void seq_copy_out(seqbuf_t *b)            /* the steps playing, into b */
 {

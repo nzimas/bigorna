@@ -1961,7 +1961,8 @@ static int cmd_projects(const char *dir)
             btn(B_OCTUP, 0);
             ui_draw();
             EXPECT(ui.oct[ui.sel] == o0 + 1 && ui.shown_prj == (int32_t)(pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec) +
-                   (ui.oct[ui.sel] + 3) * 4096 + (ui.chord_on[ui.sel] ? (ui.chord_form[ui.sel] + 1) * 32768 : 0),
+                   (ui.oct[ui.sel] + 3) * 4096 + (ui.chord_on[ui.sel] ? (ui.chord_form[ui.sel] + 1) * 32768 : 0) +
+                   (ui.trn[ui.sel] + 64) * (1 << 21),
                    "the octave shown follows OCT+");
             btn(B_OCTDN, 0);
         }
@@ -3453,9 +3454,77 @@ static int cmd_lfo(const char *dir)
     return fails != 0;
 }
 
+/* transposition (build 51): OCT- / OCT+ the keys' octave in the track's view, the track's steps in the step view,
+ * SHIFT every track's; in steps of the scale; kept with the pattern */
+#define TEXPECT(c, what) do { if (!(c)) { printf("FAIL trn: %s\n", what); fails++; } } while (0)
+static int cmd_trn(const char *dir)
+{
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    memset((void *)seq_note, 0, sizeof seq_note);
+    ui.scale = 1;                                /* MAJOR, from C */
+    ui.root = 0;
+    seq_note[0][0] = 60; seq_note[0][1] = 64; seq_note[0][2] = 71;
+    seq_note[1][0] = 48;
+    ui.sel = 0;
+    ui.sv = 0;
+    ui.oct[0] = 0;
+    btn(B_OCTUP, 0);
+    TEXPECT(ui.oct[0] == 1 && seq_note[0][0] == 60 && !ui.trn[0], "the track's view: OCT+ the keys' octave, the steps kept");
+    btn(B_OCTDN, 0);
+    ui.sv = 1;
+    btn(B_OCTUP, 0);
+    TEXPECT(seq_note[0][0] == 62 && seq_note[0][1] == 65 && seq_note[0][2] == 72 && ui.trn[0] == 1 && !ui.oct[0] &&
+            seq_note[1][0] == 48 && !ui.trn[1], "the step view: OCT+ the track's steps a step of the scale up (C E B: D F C)");
+    ui_draw();
+    shot(dir, "trn_step");
+    btn(B_OCTDN, 0);
+    btn(B_OCTDN, 0);
+    TEXPECT(seq_note[0][0] == 59 && seq_note[0][1] == 62 && seq_note[0][2] == 69 && ui.trn[0] == -1,
+            "OCT- twice: a step of the scale below where they were (B D A)");
+    ui.sv = 0;
+    btn(B_OCTUP, 1);
+    TEXPECT(seq_note[0][0] == 60 && seq_note[0][2] == 71 && !ui.trn[0] && seq_note[1][0] == 50 && ui.trn[1] == 1 &&
+            !ui.oct[0], "SHIFT + OCT+: every track's steps up a step of the scale, the octave kept");
+    ui.scale = 0;                                /* CHROMATIC: semitones */
+    ui.sv = 1;
+    ui.sel = 1;
+    btn(B_OCTUP, 0);
+    TEXPECT(seq_note[1][0] == 51 && ui.trn[1] == 2, "CHROMATIC: a semitone");
+    ui.scale = 1;
+    btn(B_OCTDN, 0);
+    TEXPECT(seq_note[1][0] == 50 && ui.trn[1] == 1, "a note out of the scale: to the scale's next");
+
+    /* the pattern keeps it: pattern 1 copied to 2, 2 transposed, each as it was left */
+    pat_take(&pat_store[0]);
+    pat_store[1] = pat_store[0];
+    pat_give(1);
+    TEXPECT(ui.trn[1] == 1 && seq_note[1][0] == 50, "a copy of the pattern: its transposition with it");
+    btn(B_OCTUP, 1);
+    TEXPECT(ui.trn[0] == 1 && ui.trn[1] == 2 && seq_note[0][0] == 62 && seq_note[1][0] == 52, "pattern 2 transposed");
+    pat_take(&pat_store[1]);
+    pat_give(0);
+    TEXPECT(!ui.trn[0] && ui.trn[1] == 1 && seq_note[0][0] == 60 && seq_note[1][0] == 50, "pattern 1 as it was");
+    pat_give(1);
+    TEXPECT(ui.trn[0] == 1 && ui.trn[1] == 2 && seq_note[0][0] == 62 && seq_note[1][0] == 52, "pattern 2 as transposed");
+    {   /* a pattern saved before build 51: no transposition */
+        pat_t p = pat_store[1];
+        memset(p.seq + SEQ_TRN, 0, NTRACK);
+        pat_decode(&p, &sb_tmp);
+        TEXPECT(!sb_tmp.trn[0] && !sb_tmp.trn[1] && sb_tmp.note[1][0] == 52, "an older pattern: TRN 0, its notes");
+    }
+    printf("trn: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
+    if (argc >= 3 && !strcmp(argv[1], "trn"))
+        return cmd_trn(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "lfo"))
         return cmd_lfo(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "projects"))

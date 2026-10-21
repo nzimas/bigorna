@@ -1,5 +1,18 @@
 # Changelog
 
+## Build 51
+
+Added
+- Transposition. In the step view, OCT− and OCT+ transpose the chosen track's steps; SHIFT + OCT− or OCT+ (in the
+  track's view or the step view) transposes every track's. Each press moves each note one step of the scale and
+  root chosen (CHROMATIC: a semitone); a note out of the scale moves to the scale's next. In the track's view, OCT−
+  and OCT+ alone still move the keys' octave. The loops are not transposed.
+- The transposition shows at the top right in the track's colour (T+2), up to 24 steps each way, and TRN with its
+  value as it changes; the OCT keys' lights follow it in the step view.
+- It is part of the pattern: the notes are moved in place and the count is kept in the pattern (bytes 26 to 31 of
+  its steps, empty in every pattern before), so it is saved with the session and goes with a copied pattern.
+  Patterns from earlier builds read as TRN 0.
+
 ## Build 50
 
 Added

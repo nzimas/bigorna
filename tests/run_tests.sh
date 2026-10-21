@@ -17,3 +17,4 @@ build/host check
 build/host screens build/screens
 build/host projects build/screens
 build/host lfo build/screens
+build/host trn build/screens
