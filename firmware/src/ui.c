@@ -211,6 +211,7 @@ static struct {
     int8_t shown_touch;
     uint8_t shown_page, shown_half, shown_sub, shown_learn;
     int32_t shown_prj;           /* (the pattern shown at the top left, its changes, the octave and chord) */
+    int32_t shown_batt;          /* (the battery shown: its level, USB power) */
     uint32_t meter_at;
     uint8_t force;
 } ui;
@@ -2316,6 +2317,38 @@ static void ui_leds(void)
 #define BAND_M 192
 #define BAND_D 216
 
+/* the battery (build 56): ADC 3, the cell's divider, smoothed (main.c; 0 not read yet); its level 0 .. 3 by
+ * MELODEE's thresholds (531, 561, 591). On a USB host's power the divider reads the supply, not the charge: a bolt */
+static int32_t batt_raw;
+static int32_t batt_level(void) { return batt_raw >= 591 ? 3 : batt_raw >= 561 ? 2 : batt_raw >= 531 ? 1 : 0; }
+static int32_t batt_key(void)                    /* what the battery shows: -1 none, 0 .. 3 its level, 4 USB */
+{
+    if (!batt_raw)
+        return -1;
+    return usb.config && !usb.suspended ? 4 : batt_level();
+}
+/* a small battery, right edge at x, its top at y (21 x 10): green with three bars full, two; amber with one; red,
+ * empty; a USB host's power: green, a white bolt in it */
+static int32_t draw_batt(int32_t x, int32_t y)
+{
+    int32_t k = batt_key(), i, w = 18, h = 10, x0 = x - w - 3;
+    uint16_t c = k == 1 ? RGB(255, 170, 0) : k == 0 ? C_BAD : C_OK;
+    if (k < 0)
+        return x;
+    cv_rect(x0, y, w, 2, c);                     /* (its case: 2 px) */
+    cv_rect(x0, y + h - 2, w, 2, c);
+    cv_rect(x0, y, 2, h, c);
+    cv_rect(x0 + w - 2, y, 2, h, c);
+    cv_rect(x0 + w, y + 3, 3, h - 6, c);         /* (its tip) */
+    if (k == 4) {                                /* (a bolt) */
+        cv_rect(x0 + 8, y + 2, 3, 3, C_WHITE);
+        cv_rect(x0 + 6, y + 4, 6, 2, C_WHITE);
+        cv_rect(x0 + 7, y + 5, 3, 3, C_WHITE);
+    } else
+        for (i = 0; i < (k ? k : 1); i++)        /* (empty: one bar, red) */
+            cv_rect(x0 + 3 + i * 4, y + 3, 3, h - 6, c);
+    return x0 - 8;
+}
 static void draw_number(void)
 {
     char d[2] = {(char)('1' + ui.sel), 0};
@@ -2333,25 +2366,24 @@ static void draw_number(void)
                 cv_text(4 + (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD
                              ? text_w(&FONT_S, CH_ABBR[ui.chord_form[ui.sel] % CHF_N]) + 8 : 0),
                         6 + FONT_S.h, &FONT_S, "ARP", TRACK_COL[ui.sel]);
-            if (ui.rec || ui.lrec) {                 /* (recording, right, under the octave: REC or LOOP in red;
-                                                      * armed: ARM) */
+            if (ui.rec || ui.lrec) {                 /* (recording, right, under the transposition: REC or LOOP in
+                                                      * red; armed: ARM) */
                 const char *r = ui.lrec == 2 ? "LOOP" : ui.rec == REC_ON ? "REC" : "ARM";
-                cv_text(236 - text_w(&FONT_S, r), 6 + FONT_S.h, &FONT_S, r,
+                cv_text(236 - text_w(&FONT_S, r), 10 + 2 * FONT_S.h, &FONT_S, r,
                         ui.lrec == 2 || ui.rec == REC_ON ? C_BAD : RGB(255, 140, 0));
             }
         }
         {
-            int32_t x = 236;
+            int32_t x = draw_batt(237, 2 + ((int32_t)FONT_S.h - 10) / 2);   /* (the battery, top right; then the octave) */
             if (ui.oct[ui.sel]) {                     /* the octave, top right: +1, -2 */
                 char o[4] = {ui.oct[ui.sel] < 0 ? '-' : '+', (char)('0' + (ui.oct[ui.sel] < 0 ? -ui.oct[ui.sel] : ui.oct[ui.sel])), 0, 0};
                 x -= text_w(&FONT_S, o);
                 cv_text(x, 2, &FONT_S, o, C_WHITE);
-                x -= 10;
             }
-            if (ui.trn[ui.sel]) {                     /* the track's transposition, left of it, in its colour: T+2 */
+            if (ui.trn[ui.sel]) {                     /* the track's transposition, under them, in its colour: T+2 */
                 char o[8] = "T";
                 trn_text(o + 1, ui.trn[ui.sel]);
-                cv_text(x - text_w(&FONT_S, o), 2, &FONT_S, o, TRACK_COL[ui.sel]);
+                cv_text(236 - text_w(&FONT_S, o), 6 + FONT_S.h, &FONT_S, o, TRACK_COL[ui.sel]);
             }
         }
     }
@@ -3030,8 +3062,9 @@ static void ui_draw(void)
                      (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD ? (ui.chord_form[ui.sel] + 1) * 32768 : 0) +
                      trk_mute[ui.sel] * (1 << 20) + (ui.trn[ui.sel] + 64) * (1 << 21) + arp_on[ui.sel] * (1 << 28);   /* (the
                                                       * octave and the chord shown: drawn again as they change) */
-        if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pk) {
+        if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pk || ui.shown_batt != batt_key()) {
             ui.shown_prj = pk;
+            ui.shown_batt = batt_key();
             draw_number();
             ui.shown_sel = ui.sel;
             ui.shown_eng = ui.shown_msg = ui.shown_pan = ui.shown_level = -100;

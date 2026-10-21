@@ -480,6 +480,11 @@ static void fm1_main(void)
         usb_retry(fm1_ms);
         if ((uint32_t)(m - healthy_since) >= 30000u && bootguard.pending)
             bootguard_clear(&bootguard);             /* 30 s of this boot: a good one */
+        {   /* the battery's divider (ADC 3), smoothed slowly (build 56; as MELODEE's) */
+            int32_t b = fm1_adc_read(FM1_ADC_BATT);
+            if (b > 0)
+                batt_raw = batt_raw ? batt_raw + (b - batt_raw) / 32 : b;
+        }
         {
             int32_t a = fm1_adc_read(FM1_ADC_MASTER);
             if (a >= 0) {

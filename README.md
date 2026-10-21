@@ -154,7 +154,7 @@ In the step view, OCT− and OCT+ transpose the chosen track's steps and its loo
 track's view or the step view) transposes every track's steps and loops at once. Steps and loops move by the same
 amount, each from the notes it plays. Each press moves every note one step of the scale and root
 chosen, down or up (in CHROMATIC, a semitone), so the notes stay in the scale; a note that is not in it moves to the
-scale's next. The transposition shows at the top right in the track's colour (T+2, T−1), up to 24 steps each way,
+scale's next. The transposition shows at the top right, under the octave, in the track's colour (T+2, T−1), up to 24 steps each way,
 and TRN with its value on the screen as it changes. It is part of the pattern: the moved notes and the count are
 saved with it and with the session, and a copied pattern takes them along. A loop's notes are moved in place and
 saved with the session (loops belong to the session, not to a pattern; a loop being recorded is left as it is). The
@@ -533,7 +533,12 @@ The FM-1's own MIDI goes on alongside the audio on the same cable.
 
 Few words, very large type, high contrast, and a colour for each track. The track's view shows the track's number,
 its machine and its sound's family; at the top left the pattern playing (orange with changes not saved) and the
-chord form; at the top right the octave and, while recording, REC or LOOP.
+chord form (and ARP while the arpeggiator is on); at the top right the battery, the octave, under them the
+track's transposition (T+2) and, while recording, REC or LOOP.
+
+The battery shows three bars in green when full, two in green, one in amber, and one in red when it runs low. On a
+computer's or phone's USB power it shows a white bolt instead (the reading is then the supply's, not the charge's).
+The levels are read from the battery's voltage, smoothed over a few seconds; they are coarse, not a percentage.
 
 ## Rescue
 

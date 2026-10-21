@@ -1,5 +1,16 @@
 # Changelog
 
+## Build 56
+
+Added
+- A battery meter at the top right of the track's view: a small battery, three bars green, two green, one amber,
+  one red when low; a white bolt on a USB host's power. Read from the battery's divider (ADC channel 3) in the
+  main loop, smoothed; its levels use MELODEE's thresholds (531, 561, 591 of 1023).
+
+Changed
+- The track's view, top right: the battery, then the octave; the transposition (T+2) under them; REC or LOOP
+  under that (one row lower than before).
+
 ## Build 55
 
 Added

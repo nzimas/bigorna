@@ -131,6 +131,7 @@ static int32_t fm1_enc_take(uint32_t e)
     host_enc[e] = 0;
     return s;
 }
+static struct { uint8_t config; volatile uint8_t suspended; } usb;   /* (usb.c's, as the battery reads it) */
 static uint8_t host_led[64];
 static void fm1_led_key(uint32_t id, int on) { if (id < 64u) host_led[id] = (uint8_t)!!on; }
 #include "ui.c"
@@ -3551,6 +3552,28 @@ static int cmd_trn(const char *dir)
     flash("SAVED", "SESSION 16", C_OK);          /* (the second line in the size that fits: build 52) */
     ui_draw();
     shot(dir, "saved_session16");
+    {   /* the battery, top right (build 56): each level, and on a USB host's power; redrawn as it changes */
+        static const int32_t RAW[5] = {600, 570, 540, 500, 600};
+        static const int32_t KEY[5] = {3, 2, 1, 0, 4};
+        uint32_t i;
+        char nm[32];
+        ui.oct[ui.sel] = 1;
+        ui.sv = 0;
+        ui.page = PG_MAIN;
+        ui.flash_on = 0;
+        for (i = 0; i < 5u; i++) {
+            batt_raw = RAW[i];
+            usb.config = i == 4u;
+            ui_draw();
+            TEXPECT(ui.shown_batt == KEY[i], "the battery shown as its level (USB: the bolt)");
+            snprintf(nm, sizeof nm, "batt_%u", i);
+            shot(dir, nm);
+        }
+        batt_raw = 0;
+        usb.config = 0;
+        ui_draw();
+        TEXPECT(ui.shown_batt == -1, "the battery not read yet: none shown");
+    }
     printf("trn: %d failures\n", fails);
     return fails != 0;
 }
