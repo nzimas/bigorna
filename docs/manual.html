@@ -74,6 +74,8 @@
 <a href="#midi" class="sub">MIDI</a>
 <a href="#tested-with" class="sub">Tested with</a>
 <a href="#midi-learn" class="sub">MIDI LEARN</a>
+<a href="#usb-audio">USB audio</a>
+<a href="#tested-with" class="sub">Tested with</a>
 <a href="#the-screen">The screen</a>
 <a href="#rescue">Rescue</a>
 </nav>
@@ -286,6 +288,15 @@
 </ul>
 <p>A CC learned for a sound's parameter turns it on the track it was learned on; one learned for an effect's turns it for all (COMP's SC SOURCE and SC LEVEL: on the track it was learned on). A CC and channel are learned for one parameter at a time, and a parameter has one CC: learning again moves it. A learned CC comes before the CC map above, on its channel; it needs RECEIVE CC on. Up to 64 are kept, in the flash with GLOBAL SETUP, written when MIDI LEARN is turned off.</p>
 <p>The jack takes notes, CCs, program changes, the clock, START, CONTINUE, STOP and the song position, as USB does (not SysEx). With both inputs on, the two are merged; a clock should come from one of them only.</p>
+<h2 id="usb-audio">USB audio</h2>
+<p>The FM-1 is also a USB audio device: plugged into a computer, a phone or a tablet, it shows up as an audio input named FM-1 Bigorna, carrying its master output in stereo, 16-bit, at 44.1 kHz — the rate it is made at, sent as it is. Record it or monitor it like any class-compliant audio interface; nothing to install. Its MIDI stays as it was, on the same cable. The FM-1's own output (the headphone jack) plays on as usual. The USB stream does not follow the MASTER knob: the knob sets the jack's level only, so a recording keeps its level whatever the headphones are set to.</p>
+<p>The host has to be the USB host: a computer, or a phone or tablet that takes USB audio devices (on Android, most do through USB-C). The FM-1 offers 44.1 kHz only; a host or app that works at 48 kHz converts it (Android, macOS and Windows do). Streaming takes about 2 % of the FM-1's processing time.</p>
+<h3 id="tested-with">Tested with</h3>
+<ul>
+<li><b>POCO X7 Pro (HyperOS), over a USB-C cable:</b> the phone's own camera app records video with the FM-1's sound as its audio, as it plays. The phone needs OTG switched on before the FM-1 is plugged in: Settings &gt; Additional settings &gt; OTG. The switch is greyed out while anything is plugged into the phone's USB-C port (a charger too): unplug, switch it on, then connect the FM-1. HyperOS turns it off again after 10 minutes with no device.</li>
+<li><b>MacBook Air M5 (macOS), over a USB-C cable:</b> the FM-1 shows up as FM-1 Bigorna, 2 input channels, 44,100 Hz, next to its MIDI port. Measured with a test tone in place of the music: the FM-1 sends a packet every 1 ms USB frame, every frame in order (none repeated, none dropped), under six tracks playing eighth notes; streaming costs 1.8 % of the FM-1's processing time. Music recorded from it peaked at -3 dBFS, the MASTER knob not changing it.</li>
+</ul>
+<p>The FM-1's own MIDI goes on alongside the audio on the same cable.</p>
 <h2 id="the-screen">The screen</h2>
 <p>Few words, very large type, high contrast, and a colour for each track. The track's view shows the track's number, its machine and its sound's family; at the top left the pattern playing (orange with changes not saved) and the chord form; at the top right the octave and, while recording, REC or LOOP.</p>
 <h2 id="rescue">Rescue</h2>

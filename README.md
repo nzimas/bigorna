@@ -435,6 +435,19 @@ The host has to be the USB host: a computer, or a phone or tablet that takes USB
 through USB-C). The FM-1 offers 44.1 kHz only; a host or app that works at 48 kHz converts it (Android, macOS and
 Windows do). Streaming takes about 2 % of the FM-1's processing time.
 
+### Tested with
+
+- **POCO X7 Pro (HyperOS), over a USB-C cable:** the phone's own camera app records video with the FM-1's sound
+  as its audio, as it plays. The phone needs OTG switched on before the FM-1 is plugged in: Settings > Additional
+  settings > OTG. The switch is greyed out while anything is plugged into the phone's USB-C port (a charger too):
+  unplug, switch it on, then connect the FM-1. HyperOS turns it off again after 10 minutes with no device.
+- **MacBook Air M5 (macOS), over a USB-C cable:** the FM-1 shows up as FM-1 Bigorna, 2 input channels, 44,100 Hz,
+  next to its MIDI port. Measured with a test tone in place of the music: the FM-1 sends a packet every 1 ms USB
+  frame, every frame in order (none repeated, none dropped), under six tracks playing eighth notes; streaming costs
+  1.8 % of the FM-1's processing time. Music recorded from it peaked at -3 dBFS, the MASTER knob not changing it.
+
+The FM-1's own MIDI goes on alongside the audio on the same cable.
+
 ## The screen
 
 Few words, very large type, high contrast, and a colour for each track. The track's view shows the track's number,
