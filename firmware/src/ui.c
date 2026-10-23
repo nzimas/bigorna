@@ -2911,7 +2911,8 @@ static void draw_dial(void)
         t[str_len(t) + 1] = 0;
         t[str_len(t)] = (char)('1' + ui.sel);
     }
-    tf = text_w(&FONT_M, t) <= 236 ? &FONT_M : &FONT_S;
+    tf = text_w(&FONT_M, t) <= 232 ? &FONT_M : text_w(&FONT_S, t) <= 232 ? &FONT_S : &FONT_XS;   /* (the size that
+                                                  * fits: REVERB SEND 6 only in the smallest; build 59) */
     par_text(&p, v, m);
     fr = p.hi > p.lo ? (v - p.lo) * 1000 / (p.hi - p.lo) : 0;   /* 0 .. 1000 */
     if (p.kind == PK_BIP) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## Build 59
+
+Fixed
+- The knobs' dial in the track's view: its name and the track's number (DELAY SEND 6, REVERB SEND 6, CHORUS SEND 6,
+  RESONANCE 4 ..) ran past the screen's left and right edges. It now takes the largest of the three sizes that fits.
+
 ## Build 58
 
 Added

@@ -3617,6 +3617,32 @@ static int cmd_trn(const char *dir)
         ui_draw();
         TEXPECT(ui.shown_batt == -1, "the battery not read yet: none shown");
     }
+    {   /* the knobs' dial (build 59): its name and the track's number within the screen -- REVERB SEND 6, CHORUS
+         * SEND 6 in the size that fits; nothing at its edges */
+        static const uint32_t K[4] = {EN_K1, EN_K2, EN_K3, EN_K4};
+        uint32_t j, sh, y, x, edge = 0;
+        ui.page = PG_MAIN;
+        ui.sv = 0;
+        ui.sel = 5;
+        for (sh = 0; sh < 2u; sh++)
+            for (j = 0; j < 4u; j++) {
+                char nm[32];
+                if (sh)
+                    fm1_in.notes |= 1u << KEY_SHIFT;
+                host_enc[PANEL_ENC[K[j]]] = 1;
+                ui_input();
+                fm1_in.notes &= ~(1u << KEY_SHIFT);
+                ui.force = 1;
+                ui_draw();
+                for (y = 0; y < 40u; y++)
+                    for (x = 0; x < 240u; x += 239u)
+                        edge += fb[y * 240u + x] != C_BLACK;
+                snprintf(nm, sizeof nm, "dial_k%u%s", j + 1u, sh ? "_shift" : "");
+                shot(dir, nm);
+                fm1_ms += 2000;
+            }
+        TEXPECT(!edge, "the knobs' dial: its name and the track within the screen (track 6, KNOB 1 .. 4, SHIFT too)");
+    }
     printf("trn: %d failures\n", fails);
     return fails != 0;
 }
