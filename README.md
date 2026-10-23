@@ -54,7 +54,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | PLAY | The sequencer plays or stops; held 0.8 s, the TEMPO page; SHIFT + PLAY: the metronome on or off |
 | REC | Records the keys into the track's steps; SHIFT + REC: the looper |
 | ARP | The patterns |
-| SEQ | The effects' pages, then the track's LFOs |
+| SEQ | The effects' pages, then the track's LFOs; SHIFT + SEQ: the track's LFOs thrown anew (LFO RANDOM) |
 | SAVE | The sessions; held 0.8 s, the session saved; SHIFT + SAVE: GLOBAL SETUP (MIDI) |
 | MASTER | The output level |
 
@@ -278,6 +278,13 @@ voices follow it (the Digitone II runs one per voice).
   the next; ONE runs one cycle from each note and stops; HALF half a cycle.
 - DEPTH: −64 to +63, the swing each way as a share of the destination's range (+32: half the range); negative
   turns the wave upside down; 0 off.
+
+SHIFT + SEQ throws the chosen track's three LFOs anew (LFO RANDOM shows): two or three of them on, each to a
+parameter of the machine's pages that moves smoothly (not a switch, a list or an FM ratio), none to the same one
+twice, LFO 2 or 3 now and then on an earlier LFO's SPEED or DEPTH instead; any wave, a speed from slow to fast
+(with the tempo, mostly), a mode, now and then a fade, a start and a depth that may go far either way. It takes
+risks on purpose: press it again for another, or set what you like on the LFO pages. The other tracks are left as
+they are. It works from the track's view and from the effects' and LFO pages.
 
 The LFOs are worked out every 2.9 ms. The track's sound is then made anew with the LFOs' values, one sound at a
 time in turn: with LFOs on several tracks (and voices with step locks), each moves in steps of 2.9 ms times their

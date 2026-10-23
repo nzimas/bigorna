@@ -995,6 +995,52 @@ static const recipe_t RECIPES[] = {
 };
 #define NRECIPE (sizeof RECIPES / sizeof RECIPES[0])
 
+/* SHIFT + SEQ (build 58, after TONITOR's MOD RANDOM): the sound's three LFOs thrown anew -- two or three of them
+ * on, each to a parameter of the machine's pages that moves smoothly (no switches, lists or ratios), none twice; LFO 2
+ * or 3 now and then on an earlier one's SPEED or DEPTH instead; any wave, a speed from slow to fast, synced mostly,
+ * a mode, a fade now and then, a start, a depth that may go far either way. It takes risks on purpose */
+static int lfo_rnd_dest_ok(const sound_t *s, uint32_t d)
+{
+    par_t p;
+    return lfo_par(s, d, &p) && (p.kind == PK_NUM || p.kind == PK_BIP || p.kind == PK_HOLD);
+}
+static void lfo_random(sound_t *s, uint32_t seed)
+{
+    gctx_t g;
+    uint8_t cand[LFO_D_LFO];
+    uint32_t n, on, nc = 0, d, i;
+    rnd_seed(&g.r, seed);
+    for (d = 1; d < LFO_D_LFO; d++)
+        if (lfo_rnd_dest_ok(s, d))
+            cand[nc++] = (uint8_t)d;
+    lfos_off(s);
+    on = CH(&g, 55) ? 2u : 3u;
+    for (n = 0; n < on && nc; n++) {
+        lfo_t *l = &s->lfo[n];
+        int32_t sp = RI(&g, 4, 44), dp;
+        for (i = 0; i < 8u; i++) {               /* (a destination not taken yet) */
+            uint32_t j;
+            d = n && CH(&g, 22) ? LFO_D_LFO + (uint32_t)RI(&g, 0, 2 * (int32_t)n - 1)   /* (an earlier LFO's) */
+                : CH(&g, 25) ? 1u + PG_FLT1 * 8u + F_FREQ : cand[RI(&g, 0, (int32_t)nc - 1)];
+            if (d < LFO_D_LFO && !lfo_rnd_dest_ok(s, d))
+                continue;
+            for (j = 0; j < n && s->lfo[j].dest != d; j++)
+                ;
+            if (j == n)
+                break;
+        }
+        l->dest = (uint8_t)d;
+        l->wave = (uint8_t)RI(&g, 0, NLW - 1);
+        l->spd = (uint8_t)(64 + (CH(&g, 85) ? sp : -sp));
+        l->mult = (uint8_t)(CH(&g, 85) ? RI(&g, 0, 7) : 12 + RI(&g, 0, 7));   /* (with the tempo, mostly) */
+        l->mode = (uint8_t)(CH(&g, 55) ? LM_FREE : RI(&g, LM_TRIG, LM_HALF));
+        l->fade = (uint8_t)(CH(&g, 65) ? 64 : 64 + (CH(&g, 50) ? -1 : 1) * RI(&g, 6, 40));
+        l->sph = (uint8_t)RI(&g, 0, 127);
+        dp = RI(&g, 10, d >= LFO_D_LFO ? 40 : 56);
+        l->dep = (uint8_t)(64 + (CH(&g, 50) ? dp : -dp));
+    }
+}
+
 /* a new sound for machine m: of family fam (>= 0), or of any family but avoid (-1: none) */
 static void gen_sound(sound_t *s, uint32_t m, int32_t fam, int32_t avoid, uint32_t seed)
 {

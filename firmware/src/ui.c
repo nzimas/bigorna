@@ -1536,7 +1536,12 @@ static void ui_input(void)
                 ui.edit_pg = 0;
             ui.force = 1;
         }
-    if (btn_bit(press, B_SEQ)) {                     /* CHORUS, COMP, DELAY, REVERB, LFO 1 .. 3, back */
+    if (btn_bit(press, B_SEQ) && sh && !pg_any()) {   /* SHIFT + SEQ: the chosen track's LFOs thrown anew (build 58) */
+        lfo_random(cur(), next_seed());
+        mark(ui.sel);
+        say("LFO RANDOM", 900);
+        ui.force = 1;
+    } else if (btn_bit(press, B_SEQ)) {              /* CHORUS, COMP, DELAY, REVERB, LFO 1 .. 3, back */
         if (ui.page != PG_FXP) {
             ui.page = PG_FXP;
             ui.fx_pg = 0;

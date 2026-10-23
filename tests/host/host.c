@@ -3465,6 +3465,49 @@ static int cmd_lfo(const char *dir)
     LEXPECT(ui.fx_pg == FXP_L3, "SEQ: LFO 2, LFO 3");
     btn(B_SEQ, 0);
     LEXPECT(ui.page == PG_MAIN, "SEQ after LFO 3: back");
+    {   /* SHIFT + SEQ (build 58): the chosen track's three LFOs thrown anew, the others' kept; 400 throws, each
+         * machine: two or three on, each to a parameter that moves smoothly or an earlier LFO, none twice */
+        uint32_t i, bad = 0, dup = 0, onl = 0, ok3 = 0, lfo2 = 0, seen = 0;
+        sound_t keep = ui.snd[1][ui.eng[1]];
+        ui.page = PG_MAIN;
+        ui.sel = 0;
+        for (i = 0; i < 400u; i++) {
+            sound_t *sn = cur();
+            uint32_t n, on = 0, j;
+            if (i % 100u == 0u) {
+                ui.eng[0] = (uint8_t)(i / 100u);
+                gen_sound(cur(), ui.eng[0], -1, -1, 7u + i);
+                sn = cur();
+            }
+            btn(B_SEQ, 1);
+            for (n = 0; n < NLFO; n++) {
+                const lfo_t *l = &sn->lfo[n];
+                if (!lfo_on(l)) {
+                    bad += l->dest != 0;
+                    continue;
+                }
+                on++;
+                bad += !lfo_dest_ok(sn, n, l->dest) || (l->dest < LFO_D_LFO && !lfo_rnd_dest_ok(sn, l->dest)) ||
+                       l->spd == 64 || l->wave >= NLW || l->mode >= NLM || l->mult >= NLMULT;
+                lfo2 += l->dest >= LFO_D_LFO;
+                for (j = 0; j < n; j++)
+                    dup += sn->lfo[j].dest == l->dest;
+                seen |= 1u << l->wave;
+            }
+            onl += on < 2u || on > 3u;
+            ok3 += on == 3u;
+        }
+        printf("lfo: SHIFT + SEQ 400 throws: %u with 3 on, %u on another LFO, %u twice to one, %u bad\n", ok3, lfo2, dup,
+               bad);
+        LEXPECT(!bad && !onl && ok3 > 100u && ok3 < 300u && lfo2 > 20u && dup < 20u && seen == (1u << NLW) - 1u,
+                "SHIFT + SEQ: two or three LFOs on, each to a smooth parameter or an earlier LFO, every wave");
+        LEXPECT(!memcmp(&keep, &ui.snd[1][ui.eng[1]], sizeof keep) && ui.dirty[0] && !strcmp(ui.msg, "LFO RANDOM"),
+                "SHIFT + SEQ: the chosen track's alone, published, LFO RANDOM shown");
+        ui.fx_pg = FXP_L1;
+        ui.page = PG_FXP;
+        ui_draw();
+        shot(dir, "lfo_random");
+    }
     printf("lfo: %d failures\n", fails);
     return fails != 0;
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## Build 58
+
+Added
+- SHIFT + SEQ: the chosen track's three LFOs thrown anew (LFO RANDOM), after Tonitor's MOD RANDOM. Two or three
+  LFOs on, each to a parameter of the machine's pages that moves smoothly (NUM, BIP and HOLD parameters: no
+  switches, lists or FM ratios), none to the same one twice; LFO 2 or 3 sometimes on an earlier LFO's SPEED or
+  DEPTH; any wave, speed and mode, synced to the tempo most of the time, a fade now and then, a start, a depth up to
+  56 either way. The other tracks are not changed. From the track's view and the effects' and LFO pages (not the
+  sessions' and patterns' pages).
+
 ## Build 57
 
 Changed
