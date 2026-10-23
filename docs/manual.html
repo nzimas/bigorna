@@ -107,7 +107,7 @@
 <tr><td>PLAY</td><td>The sequencer plays or stops; held 0.8 s, the TEMPO page; SHIFT + PLAY: the metronome on or off</td></tr>
 <tr><td>REC</td><td>Records the keys into the track's steps; SHIFT + REC: the looper</td></tr>
 <tr><td>ARP</td><td>The patterns</td></tr>
-<tr><td>SEQ</td><td>The effects' pages, then the track's LFOs</td></tr>
+<tr><td>SEQ</td><td>The effects' pages, then the track's LFOs; SHIFT + SEQ: the track's LFOs thrown anew (LFO RANDOM)</td></tr>
 <tr><td>SAVE</td><td>The sessions; held 0.8 s, the session saved; SHIFT + SAVE: GLOBAL SETUP (MIDI)</td></tr>
 <tr><td>MASTER</td><td>The output level</td></tr>
 </table>
@@ -229,6 +229,7 @@
 <li>MODE: FREE runs on; TRIG starts again at START on each note; HOLD runs on, but its value is held from each note to the next; ONE runs one cycle from each note and stops; HALF half a cycle.</li>
 <li>DEPTH: −64 to +63, the swing each way as a share of the destination's range (+32: half the range); negative turns the wave upside down; 0 off.</li>
 </ul>
+<p>SHIFT + SEQ throws the chosen track's three LFOs anew (LFO RANDOM shows): two or three of them on, each to a parameter of the machine's pages that moves smoothly (not a switch, a list or an FM ratio), none to the same one twice, LFO 2 or 3 now and then on an earlier LFO's SPEED or DEPTH instead; any wave, a speed from slow to fast (with the tempo, mostly), a mode, now and then a fade, a start and a depth that may go far either way. It takes risks on purpose: press it again for another, or set what you like on the LFO pages. The other tracks are left as they are. It works from the track's view and from the effects' and LFO pages.</p>
 <p>The LFOs are worked out every 2.9 ms. The track's sound is then made anew with the LFOs' values, one sound at a time in turn: with LFOs on several tracks (and voices with step locks), each moves in steps of 2.9 ms times their number. The LFOs' parameters cannot be step-locked.</p>
 <h2 id="the-sequencer">The sequencer</h2>
 <p>Each track has 16 steps, its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X the tempo's sixteenths) and direction. PLAY starts and stops it.</p>
