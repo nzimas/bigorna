@@ -221,6 +221,11 @@ fades out over ~9 ms, its sends with it; its steps keep playing silently. The ch
 while it is muted. Mutes are kept with the pattern (and with the session): saving a pattern saves them, and loading
 a pattern gives them back (see Patterns).
 
+MUTE mode also works on the PATTERNS grid (ARP). It stays on when the grid opens, and the 2nd black key turns it on
+or off there, with the step view on or off. While it is on, the grid's title shows the six tracks (in their colour
+playing, dark grey muted), the track buttons mute and solo as above, and the grid stays up; the white keys still load,
+copy and empty patterns. With MUTE mode off, a track button goes back to the track as before.
+
 ### BREAK
 
 While the sequencer plays, holding the 3rd black key (the step view off) breaks up the chosen track's pattern;

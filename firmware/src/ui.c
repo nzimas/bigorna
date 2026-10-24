@@ -1481,8 +1481,9 @@ static void ui_input(void)
         seq_smask = (uint16_t)m;
         seq_sroot = ui.root;
     }
-    if (ui.mute_mode && (ui.page != PG_MAIN || step_view()))
-        ui.mute_mode = 0;                            /* (MUTE mode: the track's view only) */
+    if (ui.mute_mode && ui.page != PG_PAT && (ui.page != PG_MAIN || step_view()))
+        ui.mute_mode = 0;                            /* (MUTE mode: the track's view and the PATTERNS grid only, build
+                                                      * 63) */
     for (t = 0; ui.mute_mode && t < NTRACK; t++) {   /* MUTE mode: a track's button let go soon, muted or not; held
                                                       * 1 s, soloed (every other muted) */
         uint32_t b = 1u << t;
@@ -1975,7 +1976,13 @@ static void ui_input(void)
     ui.lv_k = KEY_NONE;
     if (ui.page == PG_PAT) {                         /* the PATTERNS grid: a white key let go soon, its pattern
                                                       * loaded; held 0.8 s, copied -- or, a pattern copied, pasted there
-                                                      * (projects.c); SHIFT and held, emptied */
+                                                      * (projects.c); SHIFT and held, emptied. The 2nd black key: MUTE
+                                                      * mode on or off, as in the track's view (build 63) */
+        if ((ch & keys) >> KEY_TRK & 1u) {
+            ui.mute_mode = (uint8_t)!ui.mute_mode;
+            ui.tb_down = ui.tb_long = 0;
+            ui.force = 1;
+        }
         for (k = 0; k < NKEY; k++) {
             if (((ch & ~keys) >> k & 1u) && ui.key_track[k] != KEY_NONE) {   /* (a note held from before: let go) */
                 key_off(k);
@@ -2251,7 +2258,8 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (!step_view() && k == KEY_TRK && ui.page == PG_MAIN) {   /* (the MUTE key: lit while on, dim off) */
+        if (k == KEY_TRK && (ui.page == PG_PAT || (ui.page == PG_MAIN && !step_view()))) {   /* (the MUTE key: lit
+                                                                         * while on, dim off) */
             fm1_led_key(14u + k, ui.mute_mode);
             led_dim_key(14u + k, 1);
             continue;

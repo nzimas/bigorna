@@ -4218,6 +4218,38 @@ static int cmd_pstate(const char *dir)
     }
     ui_draw();
     shot(dir, "pattern_state");
+    /* (build 63) MUTE mode on the PATTERNS grid: kept when the grid opens, the 2nd black key turns it on or off there,
+     * the tracks' buttons mute and the grid stays */
+    ui.page = PG_MAIN;
+    ui.sv = 0;
+    ui.mute_mode = 0;
+    memset((void *)trk_mute, 0, NTRACK);
+    tap(KEY_TRK);
+    btn(B_ARP, 0);
+    PEXPECT(ui.page == PG_PAT && ui.mute_mode, "MUTE mode on, ARP: the grid, MUTE mode still on");
+    btn((uint32_t)TRACK_BTN[3], 0);
+    ui_input();
+    ui_leds();
+    PEXPECT(trk_mute[3] && ui.page == PG_PAT && host_led[14u + KEY_TRK] && !host_led[PANEL_BTN[TRACK_BTN[3]]] &&
+            host_led[PANEL_BTN[TRACK_BTN[0]]], "on the grid: a track's button mutes it (dim), the grid stays");
+    ui_draw();
+    shot(dir, "pat_grid_mute");
+    tap(KEY_TRK);
+    ui_leds();
+    PEXPECT(!ui.mute_mode && ui.page == PG_PAT && !host_led[14u + KEY_TRK], "the 2nd black key on the grid: MUTE mode off");
+    tap(KEY_TRK);
+    PEXPECT(ui.mute_mode && ui.page == PG_PAT, "and on again, on the grid");
+    tap(KEY_TRK);
+    btn((uint32_t)TRACK_BTN[0], 0);
+    ui_input();
+    PEXPECT(ui.page == PG_MAIN && ui.sel == 0u && trk_mute[3], "MUTE mode off: a track's button back to the track, the mutes stay");
+    ui.sv = 1;                                   /* (the step view on: on the grid, MUTE mode all the same) */
+    btn(B_ARP, 0);
+    tap(KEY_TRK);
+    ui_input();
+    PEXPECT(ui.page == PG_PAT && ui.mute_mode, "the step view on: MUTE mode on the grid all the same");
+    tap(KEY_TRK);
+    ui.sv = 0;
     printf("pstate: %d failures\n", fails);
     return fails != 0;
 }

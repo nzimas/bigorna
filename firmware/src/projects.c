@@ -1261,7 +1261,14 @@ static struct {
 #define C_PAT RGB(255, 210, 120)
 #define C_DIRTY RGB(255, 170, 60)
 
-static int pg_pat(void) { return ui.page == PG_PAT; }   /* (the patterns' grid) */
+static int pg_pat(void) { return ui.page == PG_PAT; }
+static uint32_t px_mutes(void)                   /* (the tracks muted, a bit each) */
+{
+    uint32_t t, m = 0;
+    for (t = 0; t < NTRACK; t++)
+        m |= (uint32_t)(trk_mute[t] != 0) << t;
+    return m;
+}   /* (the patterns' grid) */
 static uint32_t pg_kind(void) { return (uint32_t)pg_pat(); }
 static uint32_t pg_rows(void) { return PR_N; }
 static uint32_t pg_slots(void) { return pg_pat() ? PAT_SLOTS : PRJ_SLOTS; }
@@ -1598,6 +1605,17 @@ static void draw_pat_grid(void)
             cv_text_fit((50 - (int32_t)FONT_M.h) / 2, &FONT_M, t, C_BLACK);
             cv_blit(0, 0);
         }
+    } else if (ui.mute_mode) {                   /* (MUTE mode: the tracks in the title, playing in their colour, muted
+                                                  * dark grey; build 63) */
+        uint32_t t;
+        cv_begin(240, 55, C_BLACK);
+        for (t = 0; t < NTRACK; t++) {
+            char n[2] = {(char)('1' + t), 0};
+            cv_text((int32_t)t * 40 + 20 - text_w(&FONT_M, n) / 2, (50 - (int32_t)FONT_M.h) / 2, &FONT_M, n,
+                    trk_mute[t] ? RGB(80, 80, 80) : TRACK_COL[t]);
+        }
+        cv_rect(0, 52, 240, 3, C_PAT);
+        cv_blit(0, 0);
     } else
         prj_title("PATTERNS", 0, C_PAT, C_PAT);
     for (r = 0; r < 4u; r++) {
@@ -1734,7 +1752,8 @@ static void prj_draw(void)
     int32_t key = ui.page * 1000000 + pj.slot[kind] * 10000 + pj.row * 1000 + pj.ask * 100 + pj.yes * 50 + pj.to +
                   ui.tempo * 7 + ui.root * 131 + ui.scale * 977 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 +
                   pj.val * 31 + pat_cur * 17 + pat_tempo * 11 + pat_dirty * 5 + pat_store[pj.slot[1]].used * 23 +
-                  (pat_clip_from + 1) * 41 + (pat_clip_from >= 0 ? (int32_t)((fm1_ms / 400u) & 1u) * 7777 : 0);
+                  (pat_clip_from + 1) * 41 + (pat_clip_from >= 0 ? (int32_t)((fm1_ms / 400u) & 1u) * 7777 : 0) +
+                  (ui.page == PG_PAT && ui.mute_mode ? (int32_t)(64u + px_mutes()) * 100003 : 0);
     if (!ui.force && ui.shown_page == ui.page && key == pj.shown) {
         uint32_t top = prj_top();
         char v[20];

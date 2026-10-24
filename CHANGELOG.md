@@ -1,5 +1,20 @@
 # Changelog
 
+## Build 63
+
+Added
+- MUTE mode on the PATTERNS grid. It stays on when the grid opens from the track's view, and the 2nd black key turns
+  it on or off on the grid (with the step view on or off). While it is on, the track buttons mute and solo tracks and
+  the grid stays up; the grid's title shows the six tracks, in their colour playing and dark grey muted, and the 2nd
+  black key is lit.
+
+Changed
+- On the grid with MUTE mode on, a track button no longer goes back to the track's view; turn MUTE mode off first,
+  or press ARP to load the pattern chosen.
+
+Compatibility
+- Nothing saved changes.
+
 ## Build 62
 
 Added
