@@ -165,14 +165,22 @@ typedef struct {
 #define SEQ_NREC 7u
 #define SEQ_REC 8u
 #define PAT_SEQ_ROOM 676u
-/* (build 62) the tracks' state as the pattern was saved, its last 78 bytes (st PX_ON; the records end before them,
- * so that an earlier build reads the steps as ever and leaves the state alone), 13 bytes a track: muted, CHORD mode
- * on (bit 1), the arpeggiator on (bit 2), the chord's form (bits 3 .. 5); the machine (bits 0, 1), the octave + 3
- * (bits 2 .. 4), the SC SOURCE (bits 5 .. 7); the level, the pan, the SC amount; the arpeggiator's settings */
-#define PX_ON 1u
+/* (build 62) the tracks' state as the pattern was saved, at the end of seq (the records end before it, so that an
+ * earlier build reads the steps as ever and leaves the state alone). As it plays (px_take), 13 bytes a track: muted,
+ * CHORD mode on (bit 1), the arpeggiator on (bit 2), the chord's form (bits 3 .. 5); the machine (bits 0, 1), the
+ * octave + 3 (bits 2 .. 4), the SC SOURCE (bits 5 .. 7); the level, the pan, the SC amount; the arpeggiator's
+ * settings. Builds 62 and 63 kept it so, its last 78 bytes (st PX_ON1); from build 64 packed, 9 bytes a track, the
+ * last 54 (st PX_ON: PX_W bits of each in turn, the pan + PAN_MAX), so that 96 steps of notes fit */
+#define PX_ON1 1u
+#define PX_ON 2u
 #define PX_T 13u
-#define SEQ_PX (PAT_SEQ_ROOM - NTRACK * PX_T)
-typedef char px_fits[NENG <= 4 && CHF_N <= 8 && NCP_SCS <= 8 && NARP == 8 ? 1 : -1];
+#define PX_P 9u
+#define SEQ_PX1 (PAT_SEQ_ROOM - NTRACK * PX_T)
+#define SEQ_PX (PAT_SEQ_ROOM - NTRACK * PX_P)
+static const uint8_t PX_W[PX_T] = {6, 8, 5, 6, 7, 4, 3, 2, 7, 1, 7, 7, 3};   /* (66 bits of 72) */
+typedef char px_fits[NENG <= 4 && CHF_N <= 8 && NCP_SCS <= 8 && NARP == 8 && LEVEL_MAX < 32 && 2 * PAN_MAX < 64 &&
+                     NAM <= 16 && NAR_RATE <= 8 && NAR_RNG <= 4 && NAR_BASS <= 8 && SEQ_REC4 + NTRACK * NSTEP * 6u <= SEQ_PX
+                     ? 1 : -1];
 #define SEQ_OLD_NOTE 8u          /* seq[8 + 16 t + i]: track t's step i, its note (0: empty) */
 #define SEQ_OLD_VEL 104u         /* .. its velocity (0: VEL_DEF, as build 9 left it) */
 #define SEQ_OLD_GLEN 200u        /* .. its length + 1 (0: GLEN_DEF) */
@@ -761,11 +769,44 @@ static void px_give(const uint8_t *x)
         ui.edit_pg = 0;
     ui.force = 1;
 }
+/* the state as it plays, packed (PX_ON) .. */
+static void px_pack(uint8_t *d, const uint8_t *x)
+{
+    uint32_t t, i, acc, nb, o;
+    memset(d, 0, NTRACK * PX_P);
+    for (t = 0; t < NTRACK; t++, x += PX_T, d += PX_P)
+        for (i = 0, acc = 0, nb = 0, o = 0; i < PX_T; i++) {
+            uint32_t v = i == 3u ? (uint32_t)((int8_t)x[3] + PAN_MAX) : x[i];
+            acc |= (v & ((1u << PX_W[i]) - 1u)) << nb;
+            for (nb += PX_W[i]; nb >= 8u; nb -= 8u, acc >>= 8)
+                d[o++] = (uint8_t)acc;
+            if (i == PX_T - 1u && nb)
+                d[o] = (uint8_t)acc;
+        }
+}
+static void px_unpack(uint8_t *x, const uint8_t *d)   /* .. and back */
+{
+    uint32_t t, i, acc, nb, o;
+    for (t = 0; t < NTRACK; t++, x += PX_T, d += PX_P)
+        for (i = 0, acc = 0, nb = 0, o = 0; i < PX_T; i++) {
+            for (; nb < PX_W[i]; nb += 8u)
+                acc |= (uint32_t)d[o++] << nb;
+            x[i] = (uint8_t)(acc & ((1u << PX_W[i]) - 1u));
+            if (i == 3u)
+                x[3] = (uint8_t)(int8_t)((int32_t)x[3] - PAN_MAX);
+            acc >>= PX_W[i];
+            nb -= PX_W[i];
+        }
+}
 /* the pattern's state: given (its own, or -- one saved before build 62, or empty -- what plays, left so), noted */
 static void px_load(const pat_t *p)
 {
-    if (p->used && p->st == PX_ON)
-        px_give(p->seq + SEQ_PX);
+    uint8_t x[NTRACK * PX_T];
+    if (p->used && p->st == PX_ON) {
+        px_unpack(x, p->seq + SEQ_PX);
+        px_give(x);
+    } else if (p->used && p->st == PX_ON1)       /* (builds 62, 63) */
+        px_give(p->seq + SEQ_PX1);
     px_take(px_base);
 }
 /* the state changed since the pattern playing was loaded or saved: the pattern changed (each pass of the main loop) */
@@ -787,8 +828,12 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
     p->used = 1;
     p->tempo = pat_tempo;
     p->seq[SEQ_FMT] = SEQ_V4;
-    p->st = PX_ON;
-    px_take(p->seq + SEQ_PX);
+    {
+        uint8_t x[NTRACK * PX_T];
+        px_take(x);
+        p->st = PX_ON;
+        px_pack(p->seq + SEQ_PX, x);
+    }
     for (t = 0; t < NTRACK; t++) {
         p->seq[SEQ_LEN + t] = (uint8_t)(b->len[t] | ((b->div[t] + SEQ_DIV1) % NDIV) << 5);
         p->seq[SEQ_DIR + t] = b->dir[t];
@@ -1039,6 +1084,107 @@ static void pat_copy_hold(uint32_t k)
         return;
     }
     pat_clip_from = (int8_t)k;
+}
+
+/* (build 64) the PATTERNS grid, the 3rd black key held (a break playing) and a white key held 0.8 s: the break saved
+ * as pattern k. Each track under it takes, at each of its steps, the step the break plays there (its plan: the way,
+ * from where the track went into it), with one throw of its layers -- a ratchet, an octave leap, a flam (MIDI FX
+ * FLAM), an accent, the gap emptying the bar's last steps; the other tracks, and the drones, as written. The pattern
+ * holds the tracks' state playing, as ARP held does; the one playing saved over: the break's steps play at the end
+ * of the chosen track's time through */
+static uint32_t rtg_of(uint32_t n)               /* (the ratchet nearest n hits, not more) */
+{
+    uint32_t r = 0, i;
+    for (i = 0; i < NRTG; i++)
+        if (RTG_N[i] <= n)
+            r = i;
+    return r;
+}
+static void brk_render(seqbuf_t *b, uint32_t t, uint32_t seed)
+{
+    uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, kick = brk_kick >> t & 1u, drum = brk_drum >> t & 1u, p,
+             a = brk_fresh >> t & 1u ? 0u : brk_anchor[t], r = seed | 1u;
+#define BRND(n) (r = r * 1664525u + 1013904223u, (r >> 16) % (n))
+    for (p = 0; p < len; p++) {
+        uint32_t src = brk_map(a, p, len, kick), ro;
+        b->note[t][p] = seq_note[t][src];
+        b->vel[t][p] = seq_vel[t][src];
+        b->glen[t][p] = seq_glen[t][src];
+        b->cond[t][p] = seq_cond[t][src];
+        b->rtg[t][p] = seq_rtg[t][src];
+        b->mut[t][p] = seq_mut[t][src];
+        b->mcy[t][p] = seq_mcy[t][src];
+        b->mfx[t][p] = seq_mfx[t][src];
+        b->fcy[t][p] = seq_fcy[t][src];
+        b->chf[t][p] = seq_chf[t][src];
+        memcpy(b->lid[t][p], (const void *)seq_lid[t][src], NPL);
+        memcpy(b->lv[t][p], (const void *)seq_lv[t][src], sizeof b->lv[t][p]);
+        if ((brk_lay & BL_GAP) && !kick && p % 16u >= brk_gap) {   /* (the gap: the kick alone) */
+            b->note[t][p] = 0;
+            continue;
+        }
+        if (!b->note[t][p])
+            continue;
+        ro = brk_rec == BR_ROLL ? (kick ? 10u : drum ? 70u : 35u) : (kick ? 5u : drum ? 35u : 15u);
+        if ((brk_lay & BL_RAT) && !b->rtg[t][p] && BRND(100u) < ro) {
+            uint32_t rate = 2u + (brk_rec == BR_ROLL) + brk_n16 / 16u + BRND(2u);
+            b->rtg[t][p] = (uint8_t)rtg_of(rate < 6u ? rate : 6u);
+        }
+        if ((brk_lay & BL_OCT) && !kick && !drum && BRND(100u) < 30u) {
+            int32_t n = (int32_t)b->note[t][p] + (BRND(2u) ? 12 : -12);
+            if (n >= 24 && n <= 108)
+                b->note[t][p] = (uint8_t)n;
+        }
+        if ((brk_lay & BL_FLAM) && !kick && drum && !b->mfx[t][p] && BRND(100u) < 25u) {
+            b->mfx[t][p] = MFX_FLAM;
+            b->fcy[t][p] = 0;
+        }
+        if (brk_lay & BL_ACC) {
+            uint32_t vp = p % 4u == 0u ? 100u : 55u + BRND(40u), v = b->vel[t][p] ? b->vel[t][p] : VEL_DEF;
+            b->vel[t][p] = (uint8_t)clampi((int32_t)(v * vp / 100u), 1, 127);
+        }
+    }
+#undef BRND
+}
+static void pat_brk_save(uint32_t k)
+{
+    char n[12] = "PATTERN ";
+    uint32_t t;
+    int rc;
+    if (k >= PAT_SLOTS)
+        return;
+    ui.force = 1;
+    if (!seq_run || brk_shown == 0xFFu) {
+        say("NOT PLAYING", 900);
+        return;
+    }
+    seq_copy_out(&sb_tmp);
+    memcpy(sb_tmp.den, ui.gen_den, NTRACK);
+    memcpy(sb_tmp.cx, ui.gen_cx, NTRACK);
+    memcpy(sb_tmp.trn, ui.trn, NTRACK);
+    for (t = 0; t < NTRACK; t++)
+        if ((ui.brk >> t & 1u) && !(brk_keep >> t & 1u))
+            brk_render(&sb_tmp, t, brk_seed + t * 977u);
+    pat_encode(&pat_store[k], &sb_tmp);
+    pat_dirtyv[k] = 0;
+    if (seq_pend == 1u && seq_pend_k == k)
+        seq_pend = 0;                            /* (it was waiting to play: as it was, not now) */
+    if (k == pat_cur) {                          /* (the one playing: its steps the break's, at the end of the chosen
+                                                  * track's time through) */
+        px_take(px_base);
+        pat_dirty = 0;
+        seq_pend = 0;
+        RING_PUBLISH();
+        pat_decode(&pat_store[k], &sb_next);
+        seq_pend_k = (uint8_t)k;
+        seq_pend_t = ui.sel;
+        RING_PUBLISH();
+        seq_pend = 1;
+    }
+    rc = pat_flush(k);
+    prj_dirty = 1;
+    fmt_int(n + 8, (int32_t)k + 1);
+    flash(rc ? "FAILED" : "BREAK SAVED", rc ? "" : n, rc ? C_BAD : C_OK);
 }
 
 /* ---------------------------------------------------------------- projects --- */
@@ -1505,7 +1651,7 @@ static void pat_poll(void)
     }
     if (seq_pend != 2u)
         return;
-    if (pat_dirty) {
+    if (pat_dirty && seq_pend_k != pat_cur) {   /* (the same: a break saved over it, kept) */
         memcpy(sb_old.den, ui.gen_den, NTRACK);
         memcpy(sb_old.cx, ui.gen_cx, NTRACK);
         memcpy(sb_old.trn, ui.trn, NTRACK);
@@ -1605,6 +1751,15 @@ static void draw_pat_grid(void)
             cv_text_fit((50 - (int32_t)FONT_M.h) / 2, &FONT_M, t, C_BLACK);
             cv_blit(0, 0);
         }
+    } else if (ui.brk && ui.brk_shown != 0xFFu) {   /* (a break playing: its way, as the name band says it; build 64) */
+        char m[16];
+        uint32_t w = ui.brk_shown % 16u, r = ui.brk_shown / 16u;
+        str_cpy(m, BR_NAME[r % NBR], sizeof m);
+        if (r == BR_REPEAT || r == BR_REVERSE) {
+            str_cpy(m + str_len(m), " ", 2);
+            fmt_int(m + str_len(m), (int32_t)w);
+        }
+        prj_title(m, 0, C_DIRTY, C_PAT);
     } else if (ui.mute_mode) {                   /* (MUTE mode: the tracks in the title, playing in their colour, muted
                                                   * dark grey; build 63) */
         uint32_t t;
@@ -1753,7 +1908,8 @@ static void prj_draw(void)
                   ui.tempo * 7 + ui.root * 131 + ui.scale * 977 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 +
                   pj.val * 31 + pat_cur * 17 + pat_tempo * 11 + pat_dirty * 5 + pat_store[pj.slot[1]].used * 23 +
                   (pat_clip_from + 1) * 41 + (pat_clip_from >= 0 ? (int32_t)((fm1_ms / 400u) & 1u) * 7777 : 0) +
-                  (ui.page == PG_PAT && ui.mute_mode ? (int32_t)(64u + px_mutes()) * 100003 : 0);
+                  (ui.page == PG_PAT && ui.mute_mode ? (int32_t)(64u + px_mutes()) * 100003 : 0) +
+                  (ui.page == PG_PAT && ui.brk ? (int32_t)ui.brk_shown * 3001 + 7 : 0);
     if (!ui.force && ui.shown_page == ui.page && key == pj.shown) {
         uint32_t top = prj_top();
         char v[20];

@@ -255,6 +255,20 @@ Over the way, some of these are drawn too:
 - a gap: every track but the kick silent for the last 2 or 4 steps of each bar;
 - accents: the steps on the beat full, the ones between softer.
 
+BREAK also works on the PATTERNS grid (ARP), with the step view on or off: the 3rd black key breaks up the chosen
+track, SHIFT and it every track, and the grid's title shows the way playing.
+
+**Saving a break as a pattern.** On the grid, with the 3rd black key held (with SHIFT or without) and the sequencer
+playing, hold a white key for 0.8 s: the break is saved into that pattern slot, empty or not (BREAK SAVED, PATTERN
+n). Each track under the break gets, at each of its steps, the step the break plays there, with one draw of its
+ratchets, octave leaps, flams (as the MIDI FX FLAM), accents and gap. The other tracks, and the drones the break
+leaves alone, are saved as written. The pattern also takes the tracks' state as it plays (mutes and the rest, as ARP
+held saves it) and is written to the flash if the session has a slot. The pattern playing goes on. Saving over the
+pattern playing replaces its steps at the end of the chosen track's time through. With the sequencer stopped there is
+no break, and NOT PLAYING shows. While the 3rd black key is held, a white key held does not copy or empty a pattern.
+A track saves the break's plan from the step it went into the break on; if it has not gone in yet (the break starts
+on the next beat), from its first step.
+
 The role of each track's sound (as the phrase generator reads it) keeps the result coherent: a kick keeps the
 bar's first step and takes no leaps, no gap and few ratchets; a drone (HIVE's pads and drones, dark washes) is
 left alone. The looper's loops are not broken up: they play on as recorded, and the pattern falls back in with
@@ -390,8 +404,9 @@ mode and form, and the arpeggiator (on or off and its settings). Loading a patte
 steps; while the sequencer plays, at the moment the pattern starts. Changing any of these marks the pattern as
 changed (its number orange), like editing a step. A pattern saved by build 61 or earlier, or an empty one, has no
 state: loading it leaves the state as it is. The sounds, the send effects, the compressor, the tempo, root and scale,
-and the loops belong to the session, not to a pattern. The state takes 78 bytes of the pattern's 644 for steps
-(566 are left: a step with a note takes 6 bytes, and 3 more for each lock). ARP shows the PATTERNS grid; the
+and the loops belong to the session, not to a pattern. The state takes 54 bytes of the pattern's 644 for steps
+(590 are left: a step with a note takes 6 bytes, 3 more for each lock and 3 for its MOD settings, so all 96 steps
+can hold a note). ARP shows the PATTERNS grid; the
 white keys are the 16 patterns (dim; the one playing brighter). A key let go soon loads its pattern — while the
 sequencer plays, at the end of the chosen track's steps. Held 0.8 s, copies it; another held 0.8 s pastes it there;
 SHIFT and held 0.8 s empties it. ARP held saves the pattern playing. A pattern keeps its edits when another is

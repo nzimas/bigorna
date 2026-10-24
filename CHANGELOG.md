@@ -1,5 +1,26 @@
 # Changelog
 
+## Build 64
+
+Added
+- BREAK on the PATTERNS grid: the 3rd black key (SHIFT and it: every track) breaks up the tracks as in the track's
+  view, with the step view on or off; the grid's title shows the way playing.
+- A break saved as a pattern: on the grid, with the 3rd black key held and the sequencer playing, a white key held
+  0.8 s saves the break into that slot. Each broken track's steps become the steps the break plays at each position,
+  with one draw of its ratchets, octave leaps, flams (MIDI FX FLAM), accents and gap; other tracks and drones are
+  saved as written; the tracks' state is saved as by ARP held. Saving over the pattern playing replaces its steps at
+  the end of the chosen track's time through.
+
+Changed
+- A pattern's track state (build 62) is packed into 54 bytes instead of 78, leaving 590 bytes for steps instead of
+  566. With 566, a pattern with all 96 steps holding a note lost its last notes when saved.
+- On the grid, while the 3rd black key is held, a white key held 0.8 s saves the break instead of copying or emptying
+  the pattern.
+
+Compatibility
+- Patterns saved by builds 62 and 63 load with their state (their layout is still read). Patterns saved by build 64
+  load in earlier builds with their steps; builds 62 and 63 ignore the new state layout, as build 61 does.
+
 ## Build 63
 
 Added

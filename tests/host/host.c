@@ -4216,6 +4216,35 @@ static int cmd_pstate(const char *dir)
         PEXPECT(!memcmp(sb2.note, sb.note, sizeof sb.note) && !memcmp(sb2.lid, sb.lid, sizeof sb.lid) &&
                 sb.note[0][0] == 48u, "a full pattern read without its state: the steps as ever");
     }
+    {   /* (build 64) 96 steps of notes, no locks: every one kept beside the state */
+        static pat_t pq;
+        static seqbuf_t sq;
+        uint32_t ok = 1;
+        for (t = 0; t < NTRACK; t++)
+            for (i = 0; i < NSTEP; i++) {
+                seq_note[t][i] = (uint8_t)(40u + i);
+                memset((void *)seq_lid[t][i], PL_NONE, NPL);
+            }
+        ps_set_a();
+        pat_take(&pq);
+        pat_decode(&pq, &sq);
+        for (t = 0; t < NTRACK; t++)
+            for (i = 0; i < NSTEP; i++)
+                ok &= sq.note[t][i] == 40u + i;
+        PEXPECT(ok && pq.seq[SEQ_NREC] == NTRACK * NSTEP, "96 steps of notes: all kept with the state");
+        /* a pattern of builds 62, 63: the state unpacked, its last 78 bytes */
+        {
+            uint8_t x[NTRACK * PX_T];
+            px_take(x);
+            pq.st = PX_ON1;
+            memset(pq.seq + SEQ_PX1, 0, PAT_SEQ_ROOM - SEQ_PX1);
+            memcpy(pq.seq + SEQ_PX1, x, sizeof x);
+            ps_set_b();
+            pat_store[8] = pq;
+            pat_give(8);
+            PEXPECT(ps_is_a(), "a pattern of build 62 or 63: its state, as they saved it");
+        }
+    }
     ui_draw();
     shot(dir, "pattern_state");
     /* (build 63) MUTE mode on the PATTERNS grid: kept when the grid opens, the 2nd black key turns it on or off there,
@@ -4254,6 +4283,149 @@ static int cmd_pstate(const char *dir)
     return fails != 0;
 }
 
+/* (build 64) BREAK on the PATTERNS grid; the 3rd black key held and a white key held 0.8 s: the break saved there */
+#define BEXPECT(c, what) do { if (!(c)) { printf("FAIL brksave: %s\n", what); fails++; } } while (0)
+static uint32_t bs_kw[16];
+static void bs_hold(uint32_t w)                  /* (white key w held 0.8 s, let go) */
+{
+    key(bs_kw[w], 1);
+    fm1_ms += 900;
+    ui_input();
+    key(bs_kw[w], 0);
+}
+static void bs_break(int all)                    /* (the 3rd black key down -- SHIFT too: every track -- its plan
+                                                  * drawn) */
+{
+    int32_t out[2 * CTL];
+    uint32_t i;
+    if (all)
+        fm1_in.notes |= 1u << KEY_SHIFT;
+    key(KEY_TRIG, 1);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    for (i = 0; i < 400u && brk_shown == 0xFFu; i++)
+        mix_block(out);
+    ui_input();
+}
+/* pattern k's steps: each broken track's step p the step its plan plays there (or 0 in the gap, or an octave
+ * away); the others as written (w) */
+static int bs_check(uint32_t k, const seqbuf_t *w, uint32_t mask)
+{
+    static seqbuf_t b;
+    uint32_t t, p, ok = 1;
+    pat_decode(&pat_store[k], &b);
+    for (t = 0; t < NTRACK; t++) {
+        uint32_t len = w->len[t] ? w->len[t] : NSTEP, a = brk_fresh >> t & 1u ? 0u : brk_anchor[t];
+        for (p = 0; p < NSTEP; p++) {
+            if (!(mask >> t & 1u) || (brk_keep >> t & 1u) || p >= len) {
+                ok &= b.note[t][p] == w->note[t][p];
+                continue;
+            }
+            {
+                uint32_t src = brk_map(a, p, len, brk_kick >> t & 1u), n = w->note[t][src], g = b.note[t][p];
+                ok &= g == n || (n && (g == n + 12u || g + 12u == n)) ||
+                      (!g && (brk_lay & BL_GAP) && p % 16u >= brk_gap);
+            }
+        }
+    }
+    return (int)ok;
+}
+static int cmd_brksave(const char *dir)
+{
+    static seqbuf_t w;
+    int32_t out[2 * CTL];
+    uint32_t k, t, i, cur0;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    for (k = 0; k < NKEY; k++)
+        if (white_ix(k) >= 0)
+            bs_kw[white_ix(k)] = k;
+    for (t = 0; t < NTRACK; t++)                 /* (three steps of four a note of its own: where it came from,
+                                                  * readable; the pattern's room not the question) */
+        for (i = 0; i < NSTEP; i++)
+            seq_note[t][i] = (uint8_t)(i % 4u == 3u ? 0u : 40u + t * 2u + i);
+    trk_mute[4] = 1;
+    BEXPECT(!prj_save(0), "(session 1 saved)");
+    seq_copy_out(&w);
+    btn(B_PLAY, 0);
+    for (i = 0; i < 40u; i++)
+        mix_block(out);
+    btn(B_ARP, 0);
+    cur0 = pat_cur;
+    bs_break(1);
+    ui_leds();
+    BEXPECT(ui.page == PG_PAT && ui.brk == (1u << NTRACK) - 1u && brk_shown != 0xFFu && host_led[14u + KEY_TRIG],
+            "the grid: SHIFT and the 3rd black key, every track broken, the key lit");
+    for (i = 0; i < 1500u; i++)                  /* (each track into it, on its next beat) */
+        mix_block(out);
+    ui_input();
+    ui_draw();
+    shot(dir, "pat_grid_break");
+    BEXPECT(!(brk_fresh & ~brk_keep & ((1u << NTRACK) - 1u)), "(every track into the break)");
+    bs_hold(6);
+    BEXPECT(pat_store[6].used && pat_cur == cur0 && ui.page == PG_PAT && str_eq(ui.flash_l1, "BREAK SAVED"),
+            "a white key held 0.8 s: the break saved as pattern 7, the one playing kept");
+    BEXPECT(bs_check(6, &w, (1u << NTRACK) - 1u), "pattern 7: each track's steps the ones its break plays");
+    {
+        uint8_t x[NTRACK * PX_T];
+        px_unpack(x, pat_store[6].seq + SEQ_PX);
+        BEXPECT(pat_store[6].st == PX_ON && (x[4u * PX_T] & 1u), "with the tracks' state (track 5 muted)");
+    }
+    {
+        int rc = prj_read(0, 2u);
+        const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
+        BEXPECT(!rc && !memcmp(&pp[0], &pat_store[6], sizeof pp[0]), "pattern 7 in the session's flash");
+    }
+    for (t = 0, i = 1; t < NTRACK; t++)
+        for (k = 0; k < NSTEP; k++)
+            i &= seq_note[t][k] == w.note[t][k];
+    BEXPECT(i, "the steps playing untouched");
+    key(KEY_TRIG, 0);
+    BEXPECT(!ui.brk && !brk_mask, "the key let go: the break over");
+    /* the chosen track alone (no SHIFT): the others as written; saved over an occupied slot */
+    ui.sel = 2;
+    bs_break(0);
+    for (i = 0; i < 1500u; i++)
+        mix_block(out);
+    bs_hold(6);
+    BEXPECT(bs_check(6, &w, 1u << 2), "the chosen track's break over pattern 7: the other tracks as written");
+    key(KEY_TRIG, 0);
+    /* over the pattern playing: its steps the break's, at the end of the chosen track's time through */
+    bs_break(1);
+    for (i = 0; i < 300u; i++)
+        mix_block(out);
+    bs_hold(cur0);
+    BEXPECT(bs_check(cur0, &w, (1u << NTRACK) - 1u), "over the one playing: the break saved there");
+    BEXPECT(seq_pend == 1u && !pat_dirty, "over the one playing: the break's steps waiting");
+    for (i = 0; i < 4000u && seq_pend; i++) {
+        mix_block(out);
+        pat_poll();
+    }
+    BEXPECT(!seq_pend && pat_cur == cur0, "taken in, at the end of the chosen track's time through");
+    key(KEY_TRIG, 0);
+    {
+        static seqbuf_t b;
+        pat_decode(&pat_store[cur0], &b);
+        for (t = 0, i = 1; t < NTRACK; t++)
+            for (k = 0; k < NSTEP; k++)
+                i &= seq_note[t][k] == b.note[t][k];
+        BEXPECT(i && !pat_dirty, "the break's steps playing, the pattern as saved");
+    }
+    /* stopped: nothing to save */
+    btn(B_PLAY, 0);
+    for (i = 0; i < 8u; i++)
+        mix_block(out);
+    memset(&pat_store[9], 0, sizeof pat_store[9]);
+    bs_break(1);
+    bs_hold(9);
+    BEXPECT(!pat_store[9].used, "stopped: no break, nothing saved");
+    key(KEY_TRIG, 0);
+    printf("brksave: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -4261,6 +4433,8 @@ int main(int argc, char **argv)
         return cmd_newses(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "pstate"))
         return cmd_pstate(argv[2]);
+    if (argc >= 3 && !strcmp(argv[1], "brksave"))
+        return cmd_brksave(argv[2]);
     if (argc >= 2 && !strcmp(argv[1], "bkserve"))
         return cmd_bkserve();
     if (argc >= 3 && !strcmp(argv[1], "arp"))

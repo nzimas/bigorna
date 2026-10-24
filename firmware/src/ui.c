@@ -269,6 +269,7 @@ static void phrase_brk_roles(void);   /* (phrase.c: BREAK's kicks, drums and dro
 static void pat_quick_save(void);
 static void pat_switch(uint32_t k);
 static void pat_copy_hold(uint32_t k);
+static void pat_brk_save(uint32_t k);
 static void pat_poll(void);
 static uint8_t seq_pend_k;                       /* (projects.c: the pattern waiting to play) */
 static void tempo_apply(void);
@@ -1903,9 +1904,9 @@ static void ui_input(void)
     }
     keys = fm1_in.notes;
     ch = keys ^ ui.keys;
-    /* BREAK: the 3rd black key held (the step view off), the chosen track broken up (tracks.c); SHIFT and it, every
-     * track. Let go, each plays on from where it is */
-    if (!ui.brk && ((ch & keys) >> KEY_TRIG & 1u) && !step_view() && ui.page != PG_PAT && !ui.lrec_down) {
+    /* BREAK: the 3rd black key held (the step view off; on the PATTERNS grid too, build 64), the chosen track broken
+     * up (tracks.c); SHIFT and it, every track. Let go, each plays on from where it is */
+    if (!ui.brk && ((ch & keys) >> KEY_TRIG & 1u) && (!step_view() || ui.page == PG_PAT) && !ui.lrec_down) {
         phrase_brk_roles();
         brk_seed = next_seed() | 1u;
         ui.brk = (uint8_t)(sh ? (1u << NTRACK) - 1u : 1u << ui.sel);
@@ -1916,7 +1917,7 @@ static void ui_input(void)
         else if (brk_keep >> ui.sel & 1u && !sh)
             say("DRONE: KEPT", 900);
         ui.force = 1;
-    } else if (ui.brk && (!((keys >> KEY_TRIG) & 1u) || step_view())) {
+    } else if (ui.brk && (!((keys >> KEY_TRIG) & 1u) || (step_view() && ui.page != PG_PAT))) {
         ui.brk = 0;
         brk_mask = 0;
         if (ui.brk_shown != 0xFFu)
@@ -2002,7 +2003,9 @@ static void ui_input(void)
                 ui.qk = KEY_NONE;
             } else if (!ui.qk_long && (uint32_t)(fm1_ms - ui.qk_t0) >= 800u) {
                 ui.qk_long = 1;
-                if (sh)
+                if (ui.brk)                      /* (a break playing: saved there, build 64) */
+                    pat_brk_save((uint32_t)white_ix(ui.qk));
+                else if (sh)
                     pat_clear((uint32_t)white_ix(ui.qk));
                 else
                     pat_copy_hold((uint32_t)white_ix(ui.qk));
@@ -2253,7 +2256,7 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (!step_view() && k == KEY_TRIG) {    /* (the BREAK key: lit while held, dim) */
+        if ((!step_view() || ui.page == PG_PAT) && k == KEY_TRIG) {   /* (the BREAK key: lit while held, dim) */
             fm1_led_key(14u + k, ui.brk != 0);
             led_dim_key(14u + k, 1);
             continue;
