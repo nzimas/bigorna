@@ -4704,7 +4704,24 @@ static int cmd_lptrn(const char *dir)
     }
     pat_switch(0);
     XEXPECT(lp_note(3, 0, lp->ev[0].note) == 60, "and pattern 1 from there: C");
-    (void)dir;
+    /* (build 69) the session loaded at a pattern: the grid's cursor (white) on it, not on pattern 1 */
+    {
+        int32_t out[2 * CTL];
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+        pat_switch(6);
+        XEXPECT(pat_cur == 6u && !prj_save(4), "(session 5 saved at pattern 7)");
+        pj.slot[1] = 0;
+        pat_switch(0);
+        pat_poll();
+        XEXPECT(!prj_load(4) && pat_cur == 6u, "(session 5 loaded: pattern 7 playing)");
+        pat_poll();
+        btn(B_ARP, 0);
+        XEXPECT(ui.page == PG_PAT && pj.slot[1] == 6u, "the grid: its cursor on pattern 7, the one playing");
+        ui_draw();
+        shot(dir, "pat_grid_loaded7");
+        btn(B_ARP, 0);
+    }
     printf("lptrn: %d failures\n", fails);
     return fails != 0;
 }

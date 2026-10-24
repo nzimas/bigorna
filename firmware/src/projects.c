@@ -1701,9 +1701,20 @@ static void pat_switch(uint32_t k)
 }
 /* each pass of the main loop: a pattern taken in by the sequencer, its switch finished (the one it left kept in the
  * store as it was, changes and all); stopped with one waiting, at once */
+static uint8_t pat_noted = 0xFF;                 /* (the pattern playing as the grid's cursor last followed it) */
+/* (build 69) the PATTERNS grid opened: its cursor (white) on the pattern playing -- or the one waiting to */
+static void pat_grid_open(void)
+{
+    pj.slot[1] = (uint8_t)(seq_pend == 1u ? seq_pend_k : pat_cur);
+}
 static void pat_poll(void)
 {
     uint32_t sp = seq_pend, was = sp == 2u ? seq_mu_was : 0u;
+    if (pat_cur != pat_noted) {                  /* (another playing -- a session loaded at it, a program change, a
+                                                  * switch done: the grid's cursor with it, build 69) */
+        pat_noted = pat_cur;
+        pj.slot[1] = pat_cur;
+    }
     if (was & 0x80u)                             /* (taken in, its mutes the sequencer's already: the one left noted and
                                                   * kept with its own, build 65) */
         px_mu_over = (int16_t)(was & 0x3Fu);

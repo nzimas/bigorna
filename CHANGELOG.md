@@ -1,5 +1,15 @@
 # Changelog
 
+## Build 69
+
+Fixed
+- PATTERNS grid: after a session was loaded at a pattern other than 1, the grid's cursor (the white square) stayed on
+  pattern 1 while the pattern playing had only its green frame. The cursor now opens on the pattern playing (or the
+  one waiting to play) and follows the pattern playing when it changes.
+
+Compatibility
+- Nothing saved changes.
+
 ## Build 68
 
 Fixed

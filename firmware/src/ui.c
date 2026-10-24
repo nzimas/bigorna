@@ -272,6 +272,7 @@ static void pat_switch(uint32_t k);
 static void pat_copy_hold(uint32_t k);
 static void pat_brk_save(uint32_t k);
 static void pat_save_as(uint32_t k);
+static void pat_grid_open(void);
 static void pat_poll(void);
 static uint8_t seq_pend_k;                       /* (projects.c: the pattern waiting to play) */
 static void tempo_apply(void);
@@ -1622,8 +1623,10 @@ static void ui_input(void)
             if (!ui.arp_long) {                      /* (the grid up; on it, the pattern chosen loaded) */
                 if (ui.page == PG_PAT)
                     prj_press(0);
-                else
+                else {
                     ui.page = PG_PAT;
+                    pat_grid_open();
+                }
                 ui.force = 1;
             }
         } else if (!ui.arp_long && (uint32_t)(fm1_ms - ui.arp_t0) >= 800u) {

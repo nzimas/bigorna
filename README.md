@@ -412,7 +412,10 @@ state: loading it leaves the state as it is. The sounds, the send effects, the c
 and the loops belong to the session, not to a pattern. The state takes 54 bytes of the pattern's 644 for steps
 (590 are left: a step with a note takes 6 bytes, 3 more for each lock and 3 for its MOD settings, so all 96 steps
 can hold a note). ARP shows the PATTERNS grid; the
-white keys are the 16 patterns (dim; the one playing brighter). A key let go soon loads its pattern — while the
+white keys are the 16 patterns (dim; the one playing brighter). On the screen the white square is the cursor: it
+opens on the pattern playing (or the one waiting to play), follows the pattern playing when that changes (a session
+loaded, a switch, a program change), and PRESETS moves it; ARP loads the pattern under it. The pattern playing has a
+green frame (orange with changes not saved); saved patterns are white, empty ones grey. A key let go soon loads its pattern — while the
 sequencer plays, at the end of the chosen track's steps. Held 0.8 s, copies it; another held 0.8 s pastes it there;
 SHIFT and held 0.8 s saves the pattern playing there (its changes and its state, as ARP held saves it), whether the
 slot is empty or not; SAVED, PATTERN n shows and the pattern playing plays on (SHIFT and its own key held saves it
