@@ -44,6 +44,64 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-69">Build 69</h2>
+<p>Fixed</p>
+<ul>
+<li>PATTERNS grid: after a session was loaded at a pattern other than 1, the grid's cursor (the white square) stayed on pattern 1 while the pattern playing had only its green frame. The cursor now opens on the pattern playing (or the one waiting to play) and follows the pattern playing when it changes.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Nothing saved changes.</li>
+</ul>
+<h2 id="build-68">Build 68</h2>
+<p>Fixed</p>
+<ul>
+<li>A pattern with another transposition, switched to while playing: its loops played the new transposition from their second note, not the first. The loop notes were moved by the main loop after the sequencer had already played the first one. Now the sequencer applies the new transposition to the loops at the step the pattern comes in on, including when the track's clock runs a little behind the tempo's 16ths.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>Loops keep their notes as recorded in RAM and are transposed as they play (by the track's transposition less the one they were recorded at), instead of being rewritten in place.</li>
+<li>At the step a waiting pattern comes in on, the sequencer takes the pattern in before playing that step's loop notes.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Nothing saved changes. A saved session still holds its loops as they play in the pattern it was saved playing.</li>
+</ul>
+<h2 id="build-67">Build 67</h2>
+<p>Fixed</p>
+<ul>
+<li>Loops did not follow a pattern's transposition. Transposing moves a track's loop notes as well as its steps, but the loops belong to the session, so switching to a pattern with another transposition (or none) left the loops transposed. Now, when a pattern comes in (switched to, playing or stopped, or emptied while playing), each track's loops move by the difference between the new pattern's transposition and the previous one. Loading a session leaves its loops as saved.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Nothing saved changes. Loops saved in a session are taken to be at the transposition of the pattern the session was saved playing, as before.</li>
+</ul>
+<h2 id="build-66">Build 66</h2>
+<p>Added</p>
+<ul>
+<li>PATTERNS grid: SHIFT and a white key held 0.8 s saves the pattern playing, with its changes and its tracks' state, into that slot, empty or not. The pattern playing plays on. A slot waiting to play takes the saved pattern.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>PATTERNS grid: emptying a pattern is now SHIFT and the 1st black key held, then the white key pressed (before: SHIFT and the white key held 0.8 s, which now saves).</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Nothing saved changes.</li>
+</ul>
+<h2 id="build-65">Build 65</h2>
+<p>Added</p>
+<ul>
+<li>A pattern change that unmutes a track with loops: each of the track's loops stays silent until it comes round to its first step, then plays on in its place, in time with the sequencer. The track's sequencer steps play at once. A loop at its first step as the pattern comes in plays it at once. Track unmutes by hand or by MIDI are unchanged.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>While the sequencer plays, a pattern's saved mutes are applied by the sequencer at the moment the pattern comes in (before: by the main loop, a moment later). A track the pattern unmutes has the notes it played while muted cut, so no tail of them is heard as it opens.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Nothing saved changes.</li>
+</ul>
 <h2 id="build-64">Build 64</h2>
 <p>Added</p>
 <ul>

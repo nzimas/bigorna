@@ -1,11 +1,11 @@
 {
  "note": "Bigorna alone (tools/make_site.py): the package the installer writes, from this site.",
- "default": "bigorna-64",
+ "default": "bigorna-69",
  "firmwares": [
   {
-   "id": "bigorna-64",
+   "id": "bigorna-69",
    "name": "Bigorna",
-   "version": "BUILD 64",
+   "version": "BUILD 69",
    "author": "Nuno Zimas",
    "license": "GPL-3.0",
    "about": "A firmware for rhythmic noise, power noise, industrial and IDM, after the Elektron Digitone II: six tracks, four machines, a 16-step sequencer, a looper, send effects.",
