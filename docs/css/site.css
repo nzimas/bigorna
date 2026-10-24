@@ -99,6 +99,37 @@ p.note { color: var(--dim); font-size: 15px; }
 .btn.primary:hover { background: #fff; border-color: #fff; color: #111; }
 .btn[disabled] { opacity: 0.35; cursor: not-allowed; }
 
+/* the demo pattern: a play button, its name, a spectrum while it plays (js/demo.js) */
+.demo { position: relative; display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 22px;
+        margin: 34px 0 8px; padding: 22px 30px; min-height: 112px; overflow: hidden;
+        background-color: #101114; border: 1px solid var(--line); border-top: 3px solid #3a3e45;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 40px -24px rgba(0, 0, 0, 0.9); }
+.demo-play { position: relative; z-index: 1; width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center;
+             border: 2px solid var(--hot); background: var(--hot); color: #111; cursor: pointer; padding: 0;
+             transition: transform 0.12s ease, background-color 0.15s ease, box-shadow 0.2s ease;
+             box-shadow: 0 0 0 6px rgba(210, 213, 218, 0.06); }
+.demo-play:hover { background: #fff; border-color: #fff; transform: scale(1.04); }
+.demo-play:active { transform: scale(0.97); }
+.demo-play:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.demo-play svg { width: 28px; height: 28px; fill: currentColor; }
+.demo-play .i-stop, .demo.on .demo-play .i-play { display: none; }
+.demo.on .demo-play .i-stop { display: block; }
+.demo.on .demo-play { background: transparent; color: var(--hot); box-shadow: 0 0 0 6px rgba(210, 213, 218, 0.1); }
+.demo.on .demo-play:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.demo.wait .demo-play { opacity: 0.6; cursor: progress; }
+.demo-text { position: relative; z-index: 1; min-width: 0; }
+.demo-title { margin: 0; font-family: var(--head); font-weight: 800; font-size: 34px; line-height: 1; letter-spacing: 0.05em;
+              text-transform: uppercase; color: var(--steel); }
+.demo-meta { margin: 8px 0 0; color: var(--dim); font-size: 15px; letter-spacing: 0.02em; white-space: nowrap; }
+.demo-scope { position: absolute; right: 30px; top: 16px; width: 44%; height: calc(100% - 32px); opacity: 0.9;
+              -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%); mask-image: linear-gradient(90deg, transparent, #000 22%); }
+@media (max-width: 600px) {
+  .demo { grid-template-columns: auto 1fr; padding: 18px 20px; gap: 16px; }
+  .demo-title { font-size: 28px; }
+  .demo-meta { white-space: normal; }
+  .demo-scope { right: 0; top: 0; width: 100%; height: 100%; opacity: 0.25; }
+}
+
 .features { display: grid; grid-template-columns: max-content 1fr; gap: 8px 26px; margin: 16px 0 0; }
 .features dt { font-weight: 700; }
 .features dd { margin: 0; color: var(--dim); }
@@ -182,11 +213,6 @@ main .project h2 { margin: 0; padding: 0; border: 0; font-size: 32px; }
 /* Try it: the emulator's window (its height set to its page's by js/try.js) */
 .emu { margin: 24px 0 8px; border: 1px solid var(--line); background: #0a0b0c; }
 .emu iframe { display: block; width: 100%; height: 760px; border: 0; }
-.takes { list-style: none; padding: 0; margin: 14px 0; }
-.takes li { display: grid; grid-template-columns: 13em 1fr; align-items: center; gap: 4px 16px; padding: 6px 0;
-            border-bottom: 1px solid var(--line); }
-.takes audio { width: 100%; height: 36px; }
-@media (max-width: 600px) { .takes li { grid-template-columns: 1fr; } }
 kbd { font: 700 0.85em/1 ui-monospace, Menlo, monospace; padding: 0.15em 0.4em; border: 1px solid var(--mid);
       border-bottom-width: 2px; border-radius: 3px; background: var(--plate2); color: var(--fg); }
 

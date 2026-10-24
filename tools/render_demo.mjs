@@ -1,22 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // BIGORNA: a pattern of the Try it page's demo, recorded offline in the emulator the page runs (docs/try: fm1-emu's
 // WebAssembly module, the site's package, the demo's sessions, docs/try/bigorna-demo.bin): booted at 240 MHz, MASTER
-// at 800 of 1023, ARP, the pattern's white key, PLAY; 20 s from PLAY, the last 1.5 s faded, as an MP3 (ffmpeg).
-// Slower than real time (the page cannot play it live: its sessions keep both cores busy), but every sample as the
-// firmware makes it.   node tools/render_demo.mjs PATTERN OUT.mp3      (PATTERN 1 .. 16)
+// at 800 of 1023, ARP, the pattern's white key, PLAY; SECONDS from PLAY, as raw audio (16-bit, stereo, 44.1 kHz:
+// tools/make_loop.py cuts the home page's loop from it). Slower than real time (the emulator cannot play it live: the
+// sessions keep both cores busy), but every sample as the firmware makes it.
+//   node tools/render_demo.mjs PATTERN SECONDS OUT.raw      (PATTERN 1 .. 16)
 // (after fm1-emu's web/bench.mjs, MIT: the same calls into the module)
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
-import { execFileSync } from "node:child_process";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
 import { jitImports } from "../docs/try/jit.js";
 
-const [pat, out] = [+process.argv[2], process.argv[3]];
-if (!(pat >= 1 && pat <= 16) || !out) {
-  console.log("render_demo: PATTERN OUT.mp3");
+const [pat, secs, out] = [+process.argv[2], +process.argv[3], process.argv[4]];
+if (!(pat >= 1 && pat <= 16) || !(secs > 0) || !out) {
+  console.log("render_demo: PATTERN SECONDS OUT.raw");
   process.exit(1);
 }
-const MHZ = 240, SECS = 23, PLAY_MS = 3000;
+const MHZ = 240, PLAY_MS = 3000;
 // the white keys from the left: the emulator's note keys n0 (F3) .. n26 (G5)
 const WHITE = [0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26];
 const key = `n${WHITE[pat - 1]}`;
@@ -42,19 +40,14 @@ if (x.fm1_bench_script(put(sb), sb.length)) throw new Error("render_demo: the in
 // as the page's worklet: 20 ms of emulated time a quantum while it boots, 1.5 quanta once audio plays
 let budget = Math.ceil(MHZ * 1e6 * 0.02);
 const play = Math.ceil(MHZ * 1e6 * 1.5 * 128 / 44100), pcm = [];
-while (x.fm1_ms() < SECS * 1000) {
-  const have = x.fm1_render(128, budget);
+while (x.fm1_ms() < PLAY_MS + secs * 1000) {
+  const before = x.fm1_ms(), have = x.fm1_render(128, budget);
   if (have) budget = play;
   const l = new Float32Array(x.memory.buffer, x.fm1_out_l(), have), r = new Float32Array(x.memory.buffer, x.fm1_out_r(), have);
-  for (let i = 0; i < have; i++) pcm.push(Math.max(-32768, Math.min(32767, Math.round(l[i] * 32768))),
+  if (before >= PLAY_MS)                         /* (from PLAY: the emulated time the quantum began at) */
+    for (let i = 0; i < have; i++) pcm.push(Math.max(-32768, Math.min(32767, Math.round(l[i] * 32768))),
                                           Math.max(-32768, Math.min(32767, Math.round(r[i] * 32768))));
   if (x.fm1_halted()) throw new Error(`render_demo: halted at ${x.fm1_ms()} ms`);
 }
-const dir = mkdtempSync(join(tmpdir(), "bigorna-demo-")), raw = join(dir, "p.raw");
-writeFileSync(raw, Buffer.from(Int16Array.from(pcm).buffer));
-// (-ss before -i: the input cut there, so the fade's time counts from PLAY)
-execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-f", "s16le", "-ar", "44100", "-ac", "2",
-                        "-ss", String(PLAY_MS / 1000), "-i", raw, "-t", "20", "-af", "afade=t=out:st=18.5:d=1.5",
-                        "-codec:a", "libmp3lame", "-q:a", "2", out]);
-rmSync(dir, { recursive: true });
-console.log(`render_demo: pattern ${pat} -> ${out}`);
+writeFileSync(out, Buffer.from(Int16Array.from(pcm).buffer));
+console.log(`render_demo: pattern ${pat}, ${(pcm.length / 2 / 44100).toFixed(2)} s -> ${out}`);

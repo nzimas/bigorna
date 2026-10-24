@@ -7,5 +7,6 @@ page, scripts and WebAssembly module, from commit `51ca41af6734ea23871685450fe1f
 Not from fm1-emu: `firmwares.json`, the catalog (Bigorna alone, written by `tools/make_site.py`), and
 `smk37/firmwares.json` (empty: the page looks for it), `bigorna-demo.bin`, the demo's sessions
 (`tools/make_demo.mjs`), and one change in `main.js` (marked BIGORNA): with nothing saved in the browser, the
-catalog entry's `flash` sectors are booted with the package. The page's recordings, `docs/assets/try/`, are made with
-`tools/render_demo.mjs`. `tools/update_emu.sh COMMIT` copies a newer fm1-emu here.
+catalog entry's `flash` sectors are booted with the package, and a save made before them gives way to them (a save
+marks its demo). The home page's demo pattern, `docs/assets/demo/`, is recorded in this emulator offline
+(`tools/render_demo.mjs`, then `tools/make_loop.py`). `tools/update_emu.sh COMMIT` copies a newer fm1-emu here.

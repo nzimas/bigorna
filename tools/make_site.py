@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # BIGORNA (as TONITOR's): the website's generated parts, in docs/ (GitHub Pages):
-#   docs/index.html, docs/install.html, docs/projects.html   site/*.html in the common frame
+#   docs/index.html, docs/install.html, docs/projects.html   site/*.html in the common frame (the home page's demo
+#                        pattern: docs/assets/demo/, tools/render_demo.mjs then tools/make_loop.py; its player js/demo.js)
 #   docs/manual.html     the README's manual (from "# Manual" to "# Building from source")
 #   docs/changelog.html  CHANGELOG.md
 #   docs/firmware/       the package the browser installer writes, and latest.json (its file, version, SHA-256)
 #   docs/try.html        site/try.html: the emulator (docs/try/, fm1-emu copied unchanged) running that package;
 #                        docs/try/firmwares.json, its catalog: Bigorna alone, its id after the build (the emulator keeps
 #                        a package and its saves under the id, so a new build is fetched anew); with nothing saved,
-#                        the emulator starts with docs/try/bigorna-demo.bin's sessions (tools/make_demo.mjs)
+#                        the emulator starts with docs/try/bigorna-demo.bin's sessions (tools/make_demo.mjs); its address
+#                        carries its hash: a save made with another demo, or before one, gives way to it
 #   tools/make_site.py [PACKAGE.fwsc]        (default build/bigorna.fwsc; run tools/build.py first)
 # The logo: tools/make_logo.py (docs/assets/); the stylesheet and scripts: docs/css, docs/js, written by hand.
 # The markdown is the little the README uses: headings, paragraphs, lists, tables, quotes, code, emphasis, links.
@@ -209,7 +211,8 @@ def fragments():
     (DOCS / "index.html").write_text(page(
         "Bigorna — a firmware for the M-VAVE FM-1", "Home", (src / "home.html").read_text().replace("{LOGO_V}", LOGO_V),
         "Bigorna: a firmware for the M-VAVE FM-1 for rhythmic noise, power noise, industrial and IDM, after the "
-        "Elektron Digitone II."))
+        "Elektron Digitone II.",
+        f'\n<script src="js/demo.js?v={hashlib.sha256((DOCS / "js" / "demo.js").read_bytes()).hexdigest()[:10]}" defer></script>'))
     (DOCS / "screens.html").write_text(page(
         "Bigorna on the FM-1's screen", "Screens", (src / "screens.html").read_text(),
         "Bigorna on the M-VAVE FM-1's screen: the track view, the sound's pages, the step view, the effects, the "
@@ -276,7 +279,8 @@ def try_page():
                        "about": "A firmware for rhythmic noise, power noise, industrial and IDM, after the Elektron "
                                 "Digitone II: six tracks, four machines, a 16-step sequencer, a looper, send effects.",
                        "repo": REPO, "package": "../firmware/bigorna.fwsc",
-                       "flash": "bigorna-demo.bin"}]}, indent=1) + "\n")
+                       "flash": "bigorna-demo.bin?v=" + hashlib.sha256((DOCS / "try" / "bigorna-demo.bin").read_bytes()).hexdigest()[:10]}]},
+        indent=1) + "\n")
     body = (ROOT / "site" / "try.html").read_text().replace("{FW_ID}", fw_id).replace("{BUILD}", ver.lower())
     (DOCS / "try.html").write_text(page(
         "Try Bigorna in the browser", "Try it", body,

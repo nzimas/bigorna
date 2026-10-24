@@ -843,11 +843,13 @@ function boot(options = {}) {
         : memoryRecords.get(hash) || record;
       if (options.reset) record = { ...record, sectors: [] };
       let sectors = record?.sectors || [];
-      // BIGORNA: nothing saved here yet, a demo's sessions (the catalog's "flash": sectors as packSectors packs them)
-      if (!sectors.length && f.flash) sectors = await demoSectors(f.flash);
+      // BIGORNA: a demo's sessions (the catalog's "flash": sectors as packSectors packs them) when nothing is saved
+      // here, or when what is saved was made before this demo (an earlier visit, another demo): a save marks its demo
+      if (f.flash && !options.imported && (!sectors.length || record?.demo !== f.flash)) sectors = await demoSectors(f.flash);
       const session = { seq, forceSave: !!(options.reset || options.imported || record?.unsaved),
         persistedSectors: record?.sectors || [], entry: DEV.key + f.id, revision: record?.revision || 0,
         record: { version: 1, hash, name: f.name, byo: !!(f.byo || record?.byo), device: DEVICE, package: got.bytes, url: got.url,
+          ...(f.flash && { demo: f.flash }),
           sectors, revision: record?.revision || 0 } };
       sessions.set(seq, session);
       loadedUrl = got.url;
