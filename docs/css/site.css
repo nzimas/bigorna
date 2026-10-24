@@ -182,6 +182,11 @@ main .project h2 { margin: 0; padding: 0; border: 0; font-size: 32px; }
 /* Try it: the emulator's window (its height set to its page's by js/try.js) */
 .emu { margin: 24px 0 8px; border: 1px solid var(--line); background: #0a0b0c; }
 .emu iframe { display: block; width: 100%; height: 760px; border: 0; }
+.takes { list-style: none; padding: 0; margin: 14px 0; }
+.takes li { display: grid; grid-template-columns: 13em 1fr; align-items: center; gap: 4px 16px; padding: 6px 0;
+            border-bottom: 1px solid var(--line); }
+.takes audio { width: 100%; height: 36px; }
+@media (max-width: 600px) { .takes li { grid-template-columns: 1fr; } }
 kbd { font: 700 0.85em/1 ui-monospace, Menlo, monospace; padding: 0.15em 0.4em; border: 1px solid var(--mid);
       border-bottom-width: 2px; border-radius: 3px; background: var(--plate2); color: var(--fg); }
 

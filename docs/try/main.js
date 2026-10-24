@@ -166,6 +166,14 @@ async function keptEntry(id) {
   try { return await saveStore.entry(DEV.key + id); }
   catch (error) { saveFailure(error); return null; }
 }
+// BIGORNA: a demo's flash sectors, fetched: each its offset (u32) then its 4 KB (persistence.js's packSectors)
+async function demoSectors(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url}: ${r.status}`);
+  const b = new Uint8Array(await r.arrayBuffer()), v = new DataView(b.buffer), out = [];
+  for (let o = 0; o + 4 + 4096 <= b.length; o += 4 + 4096) out.push({ at: v.getUint32(o, true), data: b.slice(o + 4, o + 4 + 4096) });
+  return out;
+}
 async function packageOf(f) {
   if (f.id === "local") return { bytes: f.bytes, url: null };
   if (packages.has(f.id)) return packages.get(f.id);
@@ -834,7 +842,9 @@ function boot(options = {}) {
         ? { ...options.imported, revision: memoryRecords.get(hash)?.revision || options.imported.revision }
         : memoryRecords.get(hash) || record;
       if (options.reset) record = { ...record, sectors: [] };
-      const sectors = record?.sectors || [];
+      let sectors = record?.sectors || [];
+      // BIGORNA: nothing saved here yet, a demo's sessions (the catalog's "flash": sectors as packSectors packs them)
+      if (!sectors.length && f.flash) sectors = await demoSectors(f.flash);
       const session = { seq, forceSave: !!(options.reset || options.imported || record?.unsaved),
         persistedSectors: record?.sectors || [], entry: DEV.key + f.id, revision: record?.revision || 0,
         record: { version: 1, hash, name: f.name, byo: !!(f.byo || record?.byo), device: DEVICE, package: got.bytes, url: got.url,

@@ -16,3 +16,4 @@ done
 cp "$T/fm1-emu/LICENSE" docs/try/LICENSE
 rm -rf "$T"
 echo "docs/try: fm1-emu $1 (now: tools/make_site.py, and the commit in docs/try/README.md)"
+grep -q BIGORNA docs/try/main.js || echo "update_emu.sh: main.js is fm1-emu's again: put back its BIGORNA change (the demo's sessions)"

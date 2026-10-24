@@ -7,7 +7,8 @@
 #   docs/firmware/       the package the browser installer writes, and latest.json (its file, version, SHA-256)
 #   docs/try.html        site/try.html: the emulator (docs/try/, fm1-emu copied unchanged) running that package;
 #                        docs/try/firmwares.json, its catalog: Bigorna alone, its id after the build (the emulator keeps
-#                        a package and its saves under the id, so a new build is fetched anew)
+#                        a package and its saves under the id, so a new build is fetched anew); with nothing saved,
+#                        the emulator starts with docs/try/bigorna-demo.bin's sessions (tools/make_demo.mjs)
 #   tools/make_site.py [PACKAGE.fwsc]        (default build/bigorna.fwsc; run tools/build.py first)
 # The logo: tools/make_logo.py (docs/assets/); the stylesheet and scripts: docs/css, docs/js, written by hand.
 # The markdown is the little the README uses: headings, paragraphs, lists, tables, quotes, code, emphasis, links.
@@ -274,7 +275,8 @@ def try_page():
         "firmwares": [{"id": fw_id, "name": "Bigorna", "version": ver, "author": "Nuno Zimas", "license": "GPL-3.0",
                        "about": "A firmware for rhythmic noise, power noise, industrial and IDM, after the Elektron "
                                 "Digitone II: six tracks, four machines, a 16-step sequencer, a looper, send effects.",
-                       "repo": REPO, "package": "../firmware/bigorna.fwsc"}]}, indent=1) + "\n")
+                       "repo": REPO, "package": "../firmware/bigorna.fwsc",
+                       "flash": "bigorna-demo.bin"}]}, indent=1) + "\n")
     body = (ROOT / "site" / "try.html").read_text().replace("{FW_ID}", fw_id).replace("{BUILD}", ver.lower())
     (DOCS / "try.html").write_text(page(
         "Try Bigorna in the browser", "Try it", body,

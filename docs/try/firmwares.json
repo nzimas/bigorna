@@ -10,7 +10,8 @@
    "license": "GPL-3.0",
    "about": "A firmware for rhythmic noise, power noise, industrial and IDM, after the Elektron Digitone II: six tracks, four machines, a 16-step sequencer, a looper, send effects.",
    "repo": "https://github.com/nzimas/bigorna",
-   "package": "../firmware/bigorna.fwsc"
+   "package": "../firmware/bigorna.fwsc",
+   "flash": "bigorna-demo.bin"
   }
  ]
 }
