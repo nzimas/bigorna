@@ -265,7 +265,8 @@ ratchets, octave leaps, flams (as the MIDI FX FLAM), accents and gap. The other 
 leaves alone, are saved as written. The pattern also takes the tracks' state as it plays (mutes and the rest, as ARP
 held saves it) and is written to the flash if the session has a slot. The pattern playing goes on. Saving over the
 pattern playing replaces its steps at the end of the chosen track's time through. With the sequencer stopped there is
-no break, and NOT PLAYING shows. While the 3rd black key is held, a white key held does not copy or empty a pattern.
+no break, and NOT PLAYING shows. While the 3rd black key is held, a white key held saves the break instead of copying a
+pattern or saving the pattern playing.
 A track saves the break's plan from the step it went into the break on; if it has not gone in yet (the break starts
 on the next beat), from its first step.
 
@@ -409,7 +410,10 @@ and the loops belong to the session, not to a pattern. The state takes 54 bytes 
 can hold a note). ARP shows the PATTERNS grid; the
 white keys are the 16 patterns (dim; the one playing brighter). A key let go soon loads its pattern — while the
 sequencer plays, at the end of the chosen track's steps. Held 0.8 s, copies it; another held 0.8 s pastes it there;
-SHIFT and held 0.8 s empties it. ARP held saves the pattern playing. A pattern keeps its edits when another is
+SHIFT and held 0.8 s saves the pattern playing there (its changes and its state, as ARP held saves it), whether the
+slot is empty or not; SAVED, PATTERN n shows and the pattern playing plays on (SHIFT and its own key held saves it
+in its own slot). With SHIFT and the 1st black key held, pressing a white key empties its pattern (EMPTY, PATTERN n;
+emptying the pattern playing empties its steps too). ARP held saves the pattern playing. A pattern keeps its edits when another is
 loaded, until the session is saved or loaded.
 
 **A pattern that unmutes a track with loops.** While the sequencer plays, a pattern's mutes take effect at the moment

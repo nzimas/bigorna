@@ -1069,6 +1069,34 @@ static void pat_clear(uint32_t k)
     ui.force = 1;
 }
 
+/* (build 66) the PATTERNS grid, SHIFT and a white key held: the pattern playing (its changes too, its state) saved as
+ * pattern k, empty or not; the one playing plays on (k itself: as ARP held) */
+static void pat_save_as(uint32_t k)
+{
+    char n[12] = "PATTERN ";
+    int rc;
+    if (k >= PAT_SLOTS)
+        return;
+    if (k == pat_cur)
+        rc = pat_save(k);
+    else {
+        pat_take(&pat_store[k]);
+        pat_dirtyv[k] = 0;
+        if (seq_pend == 1u && seq_pend_k == k) {   /* (waiting to play: as saved now) */
+            seq_pend = 0;
+            RING_PUBLISH();
+            pat_decode(&pat_store[k], &sb_next);
+            seq_pend_mu = (uint8_t)px_mutes_of(&pat_store[k]);
+            RING_PUBLISH();
+            seq_pend = 1;
+        }
+        prj_dirty = 1;
+        rc = pat_flush(k);
+    }
+    fmt_int(n + 8, (int32_t)k + 1);
+    flash(rc ? "FAILED" : "SAVED", rc ? "" : n, rc ? C_BAD : C_OK);
+    ui.force = 1;
+}
 /* the PATTERNS grid, a white key held: pattern k copied (the one playing as it plays, its changes too); a pattern
  * copied, pasted into k, saved there and loaded; the one copied again: let go */
 static pat_t pat_clip;

@@ -166,7 +166,8 @@ static struct {
     } sclip;
     uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
     uint8_t step_hn[3];          /* .. the notes (its chord's) */
-    uint8_t qk, qk_long;         /* the PATTERNS grid: the white key held (KEY_NONE none); held 0.8 s, its pattern emptied */
+    uint8_t qk, qk_long;         /* the PATTERNS grid: the white key held (KEY_NONE none); held 0.8 s, copied (SHIFT:
+                                  * the pattern playing saved there); SHIFT and the 1st black key held, pressed, emptied */
     uint8_t rec;                 /* REC_* */
     uint8_t click;               /* the metronome while recording */
     uint8_t lrec;                /* the looper: 0 off, 1 armed, 2 recording */
@@ -270,6 +271,7 @@ static void pat_quick_save(void);
 static void pat_switch(uint32_t k);
 static void pat_copy_hold(uint32_t k);
 static void pat_brk_save(uint32_t k);
+static void pat_save_as(uint32_t k);
 static void pat_poll(void);
 static uint8_t seq_pend_k;                       /* (projects.c: the pattern waiting to play) */
 static void tempo_apply(void);
@@ -1977,8 +1979,10 @@ static void ui_input(void)
     ui.lv_k = KEY_NONE;
     if (ui.page == PG_PAT) {                         /* the PATTERNS grid: a white key let go soon, its pattern
                                                       * loaded; held 0.8 s, copied -- or, a pattern copied, pasted there
-                                                      * (projects.c); SHIFT and held, emptied. The 2nd black key: MUTE
-                                                      * mode on or off, as in the track's view (build 63) */
+                                                      * (projects.c); SHIFT and held, the pattern playing saved there;
+                                                      * SHIFT and the 1st black key held, pressed, emptied (build 66).
+                                                      * The 2nd black key: MUTE mode on or off, as in the track's view
+                                                      * (build 63) */
         if ((ch & keys) >> KEY_TRK & 1u) {
             ui.mute_mode = (uint8_t)!ui.mute_mode;
             ui.tb_down = ui.tb_long = 0;
@@ -1994,6 +1998,10 @@ static void ui_input(void)
                 ui.qk_long = 0;
                 ui.qk_t0 = fm1_ms;
                 ui.key_track[k] = KEY_NONE;
+                if (sh && (keys >> KEY_GEN & 1u)) {   /* (SHIFT and the 1st black key: emptied, nothing loaded) */
+                    ui.qk_long = 1;
+                    pat_clear((uint32_t)white_ix(k));
+                }
             }
         }
         if (ui.qk != KEY_NONE) {
@@ -2005,8 +2013,8 @@ static void ui_input(void)
                 ui.qk_long = 1;
                 if (ui.brk)                      /* (a break playing: saved there, build 64) */
                     pat_brk_save((uint32_t)white_ix(ui.qk));
-                else if (sh)
-                    pat_clear((uint32_t)white_ix(ui.qk));
+                else if (sh)                     /* (SHIFT: the pattern playing saved there, build 66) */
+                    pat_save_as((uint32_t)white_ix(ui.qk));
                 else
                     pat_copy_hold((uint32_t)white_ix(ui.qk));
             }

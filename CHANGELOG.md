@@ -1,5 +1,18 @@
 # Changelog
 
+## Build 66
+
+Added
+- PATTERNS grid: SHIFT and a white key held 0.8 s saves the pattern playing, with its changes and its tracks' state,
+  into that slot, empty or not. The pattern playing plays on. A slot waiting to play takes the saved pattern.
+
+Changed
+- PATTERNS grid: emptying a pattern is now SHIFT and the 1st black key held, then the white key pressed (before:
+  SHIFT and the white key held 0.8 s, which now saves).
+
+Compatibility
+- Nothing saved changes.
+
 ## Build 65
 
 Added

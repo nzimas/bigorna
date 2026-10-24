@@ -842,14 +842,39 @@ static int cmd_projects(const char *dir)
             tap(kw[12]);
             EXPECT(pat_cur == 12u, "(pattern 13 back)");
         }
-        fm1_in.notes |= 1u << KEY_SHIFT;         /* SHIFT and held: emptied */
-        fm1_in.notes |= 1u << kw[0];
+        {   /* SHIFT and a white key held: the pattern playing (13) saved there, the one playing kept (build 66) */
+            static pat_t keep;
+            uint32_t playing = pat_cur;
+            pat_take(&keep);
+            fm1_in.notes |= 1u << KEY_SHIFT;
+            fm1_in.notes |= 1u << kw[0];
+            ui_input();
+            fm1_ms += 900;
+            ui_input();
+            fm1_in.notes &= ~(1u << KEY_SHIFT);
+            fm1_in.notes &= ~(1u << kw[0]);
+            ui_input();
+            EXPECT(pat_store[0].used && !memcmp(&pat_store[0], &keep, sizeof keep) && pat_cur == playing &&
+                   str_eq(ui.flash_l1, "SAVED"), "SHIFT and a white key held: the pattern playing saved there, it plays on");
+            {
+                int rc = prj_read(2, 1u);
+                const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
+                EXPECT(!rc && !memcmp(&pp[0], &keep, sizeof keep), "saved in the flash too");
+            }
+        }
+        fm1_ms += 2000;
+        fm1_in.notes |= 1u << KEY_SHIFT;         /* SHIFT and the 1st black key held, a white key pressed: emptied
+                                                  * (build 66) */
+        fm1_in.notes |= 1u << KEY_GEN;
         ui_input();
-        fm1_ms += 900;
-        ui_input();
+        tap(kw[0]);
         fm1_in.notes &= ~(1u << KEY_SHIFT);
+        fm1_in.notes &= ~(1u << KEY_GEN);
+        ui_input();
+        for (k = 0; k < 8u; k++)
+            pat_poll();
         EXPECT(!pat_store[0].used && pat_cur == 12u && ui.flash_on && str_eq(ui.flash_l1, "EMPTY"),
-               "SHIFT and a white key held: its pattern emptied, the one playing kept");
+               "SHIFT and the 1st black key held, a white key pressed: its pattern emptied, the one playing kept");
         ui_draw();
         shot(dir, "pat_cleared");
         {
@@ -857,9 +882,10 @@ static int cmd_projects(const char *dir)
             const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
             EXPECT(!rc && !pp[0].used, "emptied in the flash too");
         }
-        fm1_in.notes &= ~(1u << kw[0]);
-        ui_input();
-        EXPECT(pat_cur == 12u, "let go after: nothing loaded");
+        EXPECT(ui.page == PG_PAT, "the grid stays");
+        fm1_ms += 2000;
+        tap(kw[12]);
+        EXPECT(pat_cur == 12u, "(pattern 13 back)");
         EXPECT(ui.page == PG_PAT, "the grid stays");
         fm1_ms += 2000;
         btn(B_GLO, 0);
