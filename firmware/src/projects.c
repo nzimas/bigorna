@@ -719,11 +719,14 @@ static uint32_t pl_nb(const seqbuf_t *b, uint32_t t, uint32_t i)
     return n;
 }
 /* (build 62) the tracks' state playing, as a pattern holds it (SEQ_PX) */
+static int16_t px_mu_over = -1;                  /* (build 65: the mutes px_take takes, if not those playing -- the
+                                                  * pattern left, its own, the switch having unmuted) */
 static void px_take(uint8_t *x)
 {
     uint32_t t;
     for (t = 0; t < NTRACK; t++, x += PX_T) {
-        x[0] = (uint8_t)((trk_mute[t] != 0) | (ui.chord_on[t] != 0) << 1 | (arp_on[t] != 0) << 2 |
+        uint32_t mu = px_mu_over >= 0 ? (uint32_t)px_mu_over >> t & 1u : trk_mute[t] != 0;
+        x[0] = (uint8_t)(mu | (ui.chord_on[t] != 0) << 1 | (arp_on[t] != 0) << 2 |
                          (ui.chord_form[t] % CHF_N) << 3);
         x[1] = (uint8_t)(ui.eng[t] % NENG | (uint32_t)(clampi(ui.oct[t], -3, 3) + 3) << 2 | (sc_src[t] % NCP_SCS) << 5);
         x[2] = (uint8_t)ui.level[t];
@@ -743,6 +746,8 @@ static void px_give(const uint8_t *x)
         int32_t o = (int32_t)(x[1] >> 2 & 7u) - 3, lv = clampi((int8_t)x[2], 0, LEVEL_MAX),
                 pn = clampi((int8_t)x[3], -PAN_MAX, PAN_MAX);
         if ((x[0] & 1u) != (trk_mute[t] != 0)) {
+            if (trk_mute[t])
+                loop_wait_set(t);                /* (unmuted: its loops from their first step, build 65) */
             trk_mute[t] = (uint8_t)(x[0] & 1u);
             solo = 1;
         }
@@ -797,6 +802,22 @@ static void px_unpack(uint8_t *x, const uint8_t *d)   /* .. and back */
             acc >>= PX_W[i];
             nb -= PX_W[i];
         }
+}
+/* (build 65) a pattern's mutes, a bit a track, bit 7 set; 0 if it has none (saved before build 62, or empty) */
+static uint32_t px_mutes_of(const pat_t *p)
+{
+    uint8_t x[NTRACK * PX_T];
+    const uint8_t *s = x;
+    uint32_t t, m = 0x80u;
+    if (!p->used || (p->st != PX_ON && p->st != PX_ON1))
+        return 0;
+    if (p->st == PX_ON)
+        px_unpack(x, p->seq + SEQ_PX);
+    else
+        s = p->seq + SEQ_PX1;
+    for (t = 0; t < NTRACK; t++)
+        m |= (uint32_t)(s[t * PX_T] & 1u) << t;
+    return m;
 }
 /* the pattern's state: given (its own, or -- one saved before build 62, or empty -- what plays, left so), noted */
 static void px_load(const pat_t *p)
@@ -1178,6 +1199,7 @@ static void pat_brk_save(uint32_t k)
         pat_decode(&pat_store[k], &sb_next);
         seq_pend_k = (uint8_t)k;
         seq_pend_t = ui.sel;
+        seq_pend_mu = 0;
         RING_PUBLISH();
         seq_pend = 1;
     }
@@ -1635,6 +1657,7 @@ static void pat_switch(uint32_t k)
     pat_decode(&pat_store[k], &sb_next);         /* playing: at the end of the chosen track's time through */
     seq_pend_k = (uint8_t)k;
     seq_pend_t = ui.sel;
+    seq_pend_mu = (uint8_t)px_mutes_of(&pat_store[k]);   /* (its mutes, as it comes in: build 65) */
     RING_PUBLISH();
     seq_pend = 1;
 }
@@ -1642,14 +1665,19 @@ static void pat_switch(uint32_t k)
  * store as it was, changes and all); stopped with one waiting, at once */
 static void pat_poll(void)
 {
+    uint32_t sp = seq_pend, was = sp == 2u ? seq_mu_was : 0u;
+    if (was & 0x80u)                             /* (taken in, its mutes the sequencer's already: the one left noted and
+                                                  * kept with its own, build 65) */
+        px_mu_over = (int16_t)(was & 0x3Fu);
     px_note();
-    if (seq_pend == 1u && !seq_run) {
+    if (sp == 1u && !seq_run) {
+        seq_pend_mu = 0;                         /* (stopped: given here, its mutes too) */
         pat_stash();
         pat_give(seq_pend_k);
         ui.force = 1;
         return;
     }
-    if (seq_pend != 2u)
+    if (sp != 2u)
         return;
     if (pat_dirty && seq_pend_k != pat_cur) {   /* (the same: a break saved over it, kept) */
         memcpy(sb_old.den, ui.gen_den, NTRACK);
@@ -1664,6 +1692,11 @@ static void pat_poll(void)
     pat_cur = seq_pend_k;
     pat_tempo = pat_store[pat_cur].used ? pat_store[pat_cur].tempo : 0;
     pat_dirty = pat_dirtyv[pat_cur];
+    px_mu_over = -1;
+    if (was & 0x80u)
+        ui.solo = 0xFF;                          /* (the mutes the pattern's: no solo to undo) */
+    seq_mu_was = 0;
+    seq_pend_mu = 0;
     seq_pend = 0;
     px_load(&pat_store[pat_cur]);
     tempo_apply();

@@ -534,11 +534,25 @@ static void arp_set(uint32_t t, uint32_t on, const uint8_t *p)
     ev_post(EV_ARP_CLR, t, 0, 0);
 }
 
+static void trk_hush(uint32_t t)                 /* (the ISR's: track t's notes let go, faded out at once) */
+{
+    uint32_t k;
+    midi_track_off(t);
+    for (k = 0; k < NVOICE; k++) {
+        voice_t *v = &vox[k];
+        if (vox_owner(v) == t) {
+            v->gate = 0;
+            if (v->pend && v->pend_track == t)
+                v->pend = 0;
+        }
+        if (v->track == t && v->sounding && !v->fade)
+            v->fade = FADE;
+    }
+}
 static void events_take(void)
 {
     while (ev_r != ev_w) {
         ev_t e = evq[ev_r % EVQ];
-        uint32_t k;
         RING_PUBLISH();
         ev_r++;
         switch (e.type) {
@@ -558,17 +572,7 @@ static void events_take(void)
             arp_clear(e.track);
             break;
         case EV_STOP:
-            midi_track_off(e.track);
-            for (k = 0; k < NVOICE; k++) {
-                voice_t *v = &vox[k];
-                if (vox_owner(v) == e.track) {
-                    v->gate = 0;
-                    if (v->pend && v->pend_track == e.track)
-                        v->pend = 0;
-                }
-                if (v->track == e.track && v->sounding && !v->fade)
-                    v->fade = FADE;
-            }
+            trk_hush(e.track);
             break;
         default:
             break;
@@ -1141,6 +1145,17 @@ typedef struct {
 } loop_t;
 static loop_t loops[NTRACK][NLOOP];
 static volatile uint32_t seq_gcount;      /* the steps played since PLAY (the first: 0) */
+/* (build 65) a track a pattern change unmuted: each of its loops silent until it comes round to its first step, then
+ * on in its place (a bit a loop; set at the switch -- the ISR's, playing; the main loop's, stopped -- cleared here) */
+static volatile uint8_t loop_wait[NTRACK];
+static void loop_wait_set(uint32_t t)
+{
+    uint32_t l, m = 0;
+    for (l = 0; l < NLOOP; l++)
+        if (loops[t][l].on && loops[t][l].len)
+            m |= 1u << l;
+    loop_wait[t] = (uint8_t)m;
+}
 static void loop_kick(void)                      /* (each block: a loop's first step, late) */
 {
     uint32_t t, l;
@@ -1149,6 +1164,7 @@ static void loop_kick(void)                      /* (each block: a loop's first 
             loop_t *p = &loops[t][l];
             if (!p->on || !p->kick)
                 continue;
+            loop_wait[t] &= (uint8_t)~(1u << l);  /* (its first step: no more waiting) */
             for (p->cur = 0; p->cur < p->n && p->ev[p->cur].step == 0u; p->cur++)
                 if (!p->mute)
                     seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
@@ -1165,12 +1181,14 @@ static void loop_step(void)
             if (!p->on || !p->len || (int32_t)(seq_gcount - p->anchor) < 0 || p->kick)
                 continue;
             ph = (seq_gcount - p->anchor) % p->len;
-            if (!ph)
+            if (!ph) {
                 p->cur = 0;
+                loop_wait[t] &= (uint8_t)~(1u << l);   /* (its first step: on, in its place) */
+            }
             while (p->cur < p->n && p->ev[p->cur].step < ph)
                 p->cur++;
             for (; p->cur < p->n && p->ev[p->cur].step == ph; p->cur++)
-                if (!p->mute)
+                if (!p->mute && !(loop_wait[t] >> l & 1u))
                     seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
         }
 }
@@ -1227,6 +1245,9 @@ static void seq_copy_in(const seqbuf_t *b)       /* b, as the steps playing */
  * finishes it: pat_poll) */
 static seqbuf_t sb_next, sb_old;
 static volatile uint8_t seq_pend, seq_pend_t;
+static volatile uint8_t seq_pend_mu;             /* (build 65: the pattern waiting's mutes, a bit a track, bit 7 set: it has
+                                                  * them -- applied as it is taken in) */
+static volatile uint8_t seq_mu_was;              /* (.. and the mutes it found, bit 7 set: for the main loop) */
 static int seq_wraps(uint32_t t)                 /* track t's next step begins its time through again */
 {
     uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, pos = seq_pos[t];
@@ -1475,6 +1496,30 @@ static void seq_block(void)
             seq_tacc[t] = SEQ_STEP8;
         }
         memset(seq_plays, 0, sizeof seq_plays);
+        if (seq_pend_mu & 0x80u) {               /* (build 65) its mutes, now: a track it unmutes, its notes from the
+                                                  * muted time let go, its loops waiting for their first step (one at
+                                                  * its first step now: played at once) */
+            uint32_t was = 0x80u, l;
+            for (t = 0; t < NTRACK; t++) {
+                uint32_t mu = seq_pend_mu >> t & 1u;
+                was |= (uint32_t)(trk_mute[t] != 0) << t;
+                if (trk_mute[t] && !mu) {
+                    trk_hush(t);
+                    loop_wait_set(t);
+                    for (l = 0; l < NLOOP; l++) {
+                        loop_t *p = &loops[t][l];
+                        if (p->on && p->len && (int32_t)(seq_gcount - p->anchor) >= 0 &&
+                            (seq_gcount - p->anchor) % p->len == 0u) {
+                            loop_wait[t] &= (uint8_t)~(1u << l);
+                            p->kick = 1;
+                        }
+                    }
+                }
+                trk_mute[t] = (uint8_t)mu;
+            }
+            seq_mu_was = (uint8_t)was;
+        }
+        RING_PUBLISH();
         seq_pend = 2;
     }
     {   /* BREAK let go: its ratchets and echoes still to come dropped at once, so the pattern is back as the key

@@ -3980,6 +3980,38 @@ static int cmd_bkserve(void)
         } else if (!strncmp(line, "SCAN", 4)) {
             prj_scan(1);
             printf("OK\n");
+        } else if (!strncmp(line, "CLEAN", 5)) {      /* (the store erased, as a new FM-1's: tools/make_demo.mjs) */
+            memset(host_flash + PRJ_LO, 0xFF, sizeof host_flash - PRJ_LO);
+            prj_scan(1);
+            printf("OK\n");
+        } else if (!strncmp(line, "PAT", 3)) {        /* PAT k j: session k (0 ..) loads at pattern j (0 ..) */
+            uint32_t k = 0, j = 0;
+            prj_body_t b;
+            sscanf(line + 4, "%u %u", &k, &j);
+            if (prj_read(k, 0) || j >= PAT_SLOTS) {
+                printf("FAIL\n");
+            } else {
+                memcpy(&b, prj_buf + sizeof(prj_head_t), sizeof b);
+                b.pat = (uint8_t)j;
+                memcpy(prj_buf + sizeof(prj_head_t), &b, sizeof b);
+                printf(prj_write(k, 0) ? "FAIL\n" : "OK\n");
+            }
+        } else if (!strncmp(line, "DUMP", 4)) {       /* DUMP FILE: the store's sectors not erased, as fm1-emu packs them */
+            FILE *f = fopen(strtok(line + 5, "\n"), "wb");
+            uint32_t at, ns = 0, e;
+            for (at = PRJ_LO; f && at < sizeof host_flash; at += PRJ_SECT) {
+                for (e = 0; e < PRJ_SECT && host_flash[at + e] == 0xFFu; e++)
+                    ;
+                if (e < PRJ_SECT) {
+                    uint8_t le[4] = {(uint8_t)at, (uint8_t)(at >> 8), (uint8_t)(at >> 16), (uint8_t)(at >> 24)};
+                    fwrite(le, 1, 4, f);
+                    fwrite(host_flash + at, 1, PRJ_SECT, f);
+                    ns++;
+                }
+            }
+            if (f)
+                fclose(f);
+            printf(f ? "OK %u\n" : "FAIL\n", ns);
         } else if (!strncmp(line, "LOAD", 4)) {
             int rc = prj_load((uint32_t)atoi(line + 5));
             uint32_t t, l, nl = 0;
@@ -4426,6 +4458,113 @@ static int cmd_brksave(const char *dir)
     return fails != 0;
 }
 
+/* (build 65) a pattern change that unmutes a track: its notes from the muted time let go, its loops silent until each
+ * comes round to its first step, then on in its place; the mutes as the pattern comes in */
+#define QEXPECT(c, what) do { if (!(c)) { printf("FAIL loopin: %s\n", what); fails++; } } while (0)
+static void li_until(uint32_t g)                 /* (played until the tempo's 16th g; the main loop's poll each block) */
+{
+    int32_t out[2 * CTL];
+    uint32_t i;
+    for (i = 0; i < 200000u && (int32_t)(seq_gcount - g) < 0; i++) {
+        mix_block(out);
+        pat_poll();
+    }
+}
+static int li_sounding(uint32_t t)               /* (a voice of track t sounding, not fading) */
+{
+    uint32_t k, n = 0;
+    for (k = 0; k < NVOICE; k++)
+        n += vox[k].track == t && vox[k].sounding && !vox[k].fade;
+    return n != 0;
+}
+static int cmd_loopin(const char *dir)
+{
+    loop_t *lp = &loops[3][0];
+    uint32_t n0, i;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    for (i = 0; i < NSTEP; i += 4u)
+        seq_note[0][i] = 36;
+    ui.sel = 0;
+    trk_mute[3] = 1;                             /* pattern 1: track 4 muted; pattern 2: playing */
+    QEXPECT(!pat_save(0), "(pattern 1 saved, track 4 muted)");
+    trk_mute[3] = 0;
+    QEXPECT(!pat_save(1), "(pattern 2 saved, track 4 playing)");
+    pat_switch(0);
+    QEXPECT(trk_mute[3] && !loop_wait[3], "(pattern 1: track 4 muted)");
+    btn(B_PLAY, 0);
+    li_until(1);                                 /* (started: the loops' anchors from it) */
+    /* a loop on track 4: two bars, a long note at its first step, another at its 25th; its first step at bar 2 */
+    memset(lp, 0, sizeof *lp);
+    lp->len = 32;
+    lp->n = 2;
+    lp->ev[0].step = 0;  lp->ev[0].note = 60; lp->ev[0].vel = 100; lp->ev[0].len8 = 8 * 12;
+    lp->ev[1].step = 24; lp->ev[1].note = 62; lp->ev[1].vel = 100; lp->ev[1].len8 = 8 * 12;
+    lp->anchor = 16;
+    lp->on = 1;
+    li_until(17);
+    QEXPECT(seq_sounded[3] == 1u && li_sounding(3), "muted, the loop plays on unheard (its first note, at bar 2)");
+    pat_switch(1);                               /* (in at bar 3: the loop at its 17th step) */
+    QEXPECT(seq_pend == 1u && trk_mute[3], "pattern 2 waiting, track 4 still muted");
+    li_until(32);
+    QEXPECT(pat_cur == 1u && !trk_mute[3] && (loop_wait[3] & 1u) && !li_sounding(3),
+            "pattern 2 in (bar 3): track 4 unmuted as it comes in, the note from the muted time let go, the loop waiting");
+    n0 = seq_sounded[3];
+    li_until(47);
+    QEXPECT(seq_sounded[3] == n0 && (loop_wait[3] & 1u), "the loop's 25th step (bar 3): not played, waiting");
+    li_until(48);
+    QEXPECT(seq_sounded[3] == n0 + 1u && !(loop_wait[3] & 1u) && li_sounding(3),
+            "bar 4, the loop's first step: on, in its place");
+    li_until(72);
+    QEXPECT(seq_sounded[3] == n0 + 2u, "and on from there (its 25th step)");
+    /* in at the loop's own first step: played at once, nothing lost */
+    pat_switch(0);
+    li_until(81);
+    QEXPECT(pat_cur == 0u && trk_mute[3], "(pattern 1 again at bar 6: track 4 muted)");
+    li_until(100);
+    pat_switch(1);
+    li_until(112);                               /* (bar 8: the loop's first step, as pattern 2 comes in) */
+    {
+        int32_t out[2 * CTL];
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+    }
+    pat_poll();
+    QEXPECT(pat_cur == 1u && !trk_mute[3] && !(loop_wait[3] & 1u) && li_sounding(3) && sq_note[3][0] + sq_note[3][1] +
+            sq_note[3][2] + sq_note[3][3] >= 60u, "in at the loop's first step: its first note played at once");
+    /* stopped: a pattern that unmutes a track -- its loops from their first step once started */
+    btn(B_PLAY, 0);
+    {
+        int32_t out[2 * CTL];
+        for (i = 0; i < 8u; i++)                 /* (the sequencer stopped at its next block) */
+            mix_block(out);
+    }
+    QEXPECT(!seq_run, "(stopped)");
+    pat_switch(0);
+    QEXPECT(pat_cur == 0u && trk_mute[3], "(stopped: pattern 1, track 4 muted)");
+    loop_wait[3] = 0;
+    pat_switch(1);
+    QEXPECT(pat_cur == 1u && !trk_mute[3] && (loop_wait[3] & 1u), "stopped: unmuted, the loop waiting for its first step");
+    /* a pattern without the mutes (empty): nothing changed as it comes in */
+    btn(B_PLAY, 0);
+    {
+        int32_t out[2 * CTL];
+        for (i = 0; i < 2u; i++)                 /* (started again: from the first 16th) */
+            mix_block(out);
+    }
+    li_until(20);
+    trk_mute[3] = 1;
+    pat_switch(5);
+    li_until(36);
+    QEXPECT(pat_cur == 5u && trk_mute[3], "an empty pattern: the mutes as they were");
+    (void)dir;
+    printf("loopin: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -4435,6 +4574,8 @@ int main(int argc, char **argv)
         return cmd_pstate(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "brksave"))
         return cmd_brksave(argv[2]);
+    if (argc >= 3 && !strcmp(argv[1], "loopin"))
+        return cmd_loopin(argv[2]);
     if (argc >= 2 && !strcmp(argv[1], "bkserve"))
         return cmd_bkserve();
     if (argc >= 3 && !strcmp(argv[1], "arp"))

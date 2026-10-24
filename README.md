@@ -412,6 +412,14 @@ sequencer plays, at the end of the chosen track's steps. Held 0.8 s, copies it; 
 SHIFT and held 0.8 s empties it. ARP held saves the pattern playing. A pattern keeps its edits when another is
 loaded, until the session is saved or loaded.
 
+**A pattern that unmutes a track with loops.** While the sequencer plays, a pattern's mutes take effect at the moment
+it comes in. A track muted before and unmuted by the new pattern has its notes from the muted time cut, so nothing
+left over is heard as it opens. Its sequencer steps play at once, but each of its loops stays silent until it comes
+round to its first step, and from there plays on in its place: the loop starts at its beginning, in time with the
+sequencer, however many bars away that is. A loop at its first step just as the pattern comes in plays it at once.
+Loading such a pattern while stopped does the same from the moment the sequencer starts. Only pattern changes do
+this: a track unmuted by hand (MUTE mode) or by MIDI plays its loops from where they are.
+
 ## Sessions (SAVE)
 
 16 sessions are kept in the FM-1's flash. SAVE shows the list; PRESETS moves through it, SAVE opens a session's page:

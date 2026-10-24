@@ -23,6 +23,7 @@ build/host arp build/screens
 build/host newses build/screens
 build/host pstate build/screens
 build/host brksave build/screens
+build/host loopin build/screens
 if command -v node >/dev/null; then                  # the backup page's protocol against the firmware's (build 55)
     node tests/web/test_backup.mjs build/host
 fi

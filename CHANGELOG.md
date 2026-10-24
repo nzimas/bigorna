@@ -1,5 +1,20 @@
 # Changelog
 
+## Build 65
+
+Added
+- A pattern change that unmutes a track with loops: each of the track's loops stays silent until it comes round to
+  its first step, then plays on in its place, in time with the sequencer. The track's sequencer steps play at once.
+  A loop at its first step as the pattern comes in plays it at once. Track unmutes by hand or by MIDI are unchanged.
+
+Changed
+- While the sequencer plays, a pattern's saved mutes are applied by the sequencer at the moment the pattern comes in
+  (before: by the main loop, a moment later). A track the pattern unmutes has the notes it played while muted cut,
+  so no tail of them is heard as it opens.
+
+Compatibility
+- Nothing saved changes.
+
 ## Build 64
 
 Added
