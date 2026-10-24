@@ -133,7 +133,10 @@
 <ul>
 <li>SYN 1: TUNE, SWP TIME, SWP DEPTH (the pitch sweep), ALGO (seven), OP C WAVE, OP AB WAVE, FEEDBACK, FOLD</li>
 <li>SYN 2: RATIO, DEC, END and MOD for A and for B</li>
-<li>SYN 3: HOLD, DECAY (the body), PHASE C, LEVEL, NOISE RST, NOISE RM</li>
+<li>SYN 3: HOLD, DECAY (the body), PHASE C, LEVEL, AB NOISE, NOISE RST, NOISE RM
+<ul>
+<li>AB NOISE: operators A and B's waveforms mixed towards a sample-and-hold noise, a new random value at the start of each cycle of the operator (0: the waveform only; 127: the noise only). The noise steps at the operator's own frequency (the note, the sweep and RATIO A or B), so it follows the pitch; modulating C, it gives metallic, grainy hits; in algorithms 5 to 7 B's noise is also heard. With NOISE RST on, every note gets the same values. After the LXR firmware's noise oscillator as its hihat uses it.</li>
+</ul></li>
 <li>SYN 4: NS HOLD, NS DECAY, TRANS (the transient's kind), TRANS LEV, NS BASE, NS WIDTH, NS GRAIN, NS LEVEL</li>
 </ul>
 <h3 id="wavy">WAVY</h3>
@@ -156,7 +159,14 @@
 <h3 id="amp-and-fx">AMP and FX</h3>
 <ul>
 <li>AMP: ATTACK, HOLD, DECAY, SUSTAIN, RELEASE, RESET, MODE (AHD or ADSR), VOLUME</li>
-<li>FX: BIT REDUCE, OVERDRIVE, SRR (sample-rate reduction), the DELAY, REVERB and CHORUS sends, OD ROUTE</li>
+<li>FX: BIT REDUCE, OVERDRIVE, SRR (sample-rate reduction), OD TYPE, the DELAY, REVERB and CHORUS sends, OD ROUTE
+<ul>
+<li>OD TYPE, the kind of OVERDRIVE (OVERDRIVE sets the amount for each):</li>
+<li>VALVE: two valve-style gain stages, the second clipping sooner on one side (as in earlier builds)</li>
+<li>RAT: a RAT-style clipper: an op-amp's gain of x 1 to x 2305, its bandwidth narrowing as the gain rises (16 kHz down to about 480 Hz), into a 1N914 diode pair. Hard, fuzzy, darker as the amount goes up</li>
+<li>FOLD: a wavefolder: the signal raised up to x 8 with a bias of up to 0.3, folded back each time it passes full scale; the bias makes the folds uneven. Folds only once the signal passes full scale, so it bites late on quiet sounds</li>
+<li>RAT and FOLD come from the LXR firmware's master distortion</li>
+</ul></li>
 </ul>
 <h3 id="mangle">MANGLE</h3>
 <p>Per track, on the track's sound before its level:</p>

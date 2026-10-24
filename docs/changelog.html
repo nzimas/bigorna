@@ -43,6 +43,35 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-61">Build 61</h2>
+<p>Added</p>
+<ul>
+<li>FX: OD TYPE (knob D, the slot that was empty): the kind of OVERDRIVE, VALVE (as before), RAT or FOLD. Lockable per step. After the LXR firmware's master distortion (Erica Synths, GPL-3.0-only), in fixed point on the one knob:
+<ul>
+<li>RAT: a 60 Hz high-pass, an op-amp gain of x 1 .. x 2305 (OVERDRIVE, on an exponential curve) whose bandwidth falls with the gain (a 1.1 MHz gain-bandwidth: 16 kHz down to ~480 Hz), its slew rate and +-4.2 V rails, then LXR's 1N914 diode curve; OVERDRIVE's low-pass after.</li>
+<li>FOLD: gain x 1 .. x 8 and a bias of 0 .. 0.3 (OVERDRIVE), OVERDRIVE's low-pass before the fold, folded back at full scale (a triangle fold, any number of times), a DC blocker after.</li>
+<li>The level is brought back by a curve of the amount, measured as VALVE's (out/in RMS about 1 on a sine, FM and noise).</li>
+</ul></li>
+<li>HOME: the grit pass after a rhythmic family's recipe, when the sound has OVERDRIVE, sometimes sets OD TYPE to RAT or FOLD.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions from earlier builds load unchanged: OD TYPE was an unused slot, 0 (VALVE) in every saved sound.</li>
+</ul>
+<h2 id="build-60">Build 60</h2>
+<p>Added</p>
+<ul>
+<li>DRUM: AB NOISE (SYN 3, knob E), 0 .. 127. Mixes operators A and B's waveforms towards a sample-and-hold noise that takes a new random value at the start of each cycle of the operator, so the noise steps at the operator's frequency and follows the note, the pitch sweep and RATIO A or B. It can be locked per step and is an LFO destination. NOISE RST on gives every note the same values. After the noise oscillator of the LXR firmware (Erica Synths, GPL-3.0-only), which its hihat uses as a modulator.</li>
+<li>HOME: METAL HAT, OPEN HAT, RIDE, CYMBAL, CLANG, RATTLE, STATIC BURST and SCREECH sometimes draw AB NOISE; the grit pass after a rhythmic DRUM family sometimes raises it.</li>
+</ul>
+<p>Fixed</p>
+<ul>
+<li>GRAIN FIELD (WAVY) could draw its noise band (NS BASE) far above its band-pass filter (FREQ); with the band's LFO moving it further up, some notes were nearly or fully silent (about 1 in 70). NS BASE is now kept 30 below FREQ.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions from earlier builds load unchanged: AB NOISE was an unused slot, 0 (off) in every saved sound. Sounds drawn by HOME from a rhythmic DRUM family differ from earlier builds' draws for the same seed.</li>
+</ul>
 <h2 id="build-59">Build 59</h2>
 <p>Fixed</p>
 <ul>
