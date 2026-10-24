@@ -44,6 +44,49 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-64">Build 64</h2>
+<p>Added</p>
+<ul>
+<li>BREAK on the PATTERNS grid: the 3rd black key (SHIFT and it: every track) breaks up the tracks as in the track's view, with the step view on or off; the grid's title shows the way playing.</li>
+<li>A break saved as a pattern: on the grid, with the 3rd black key held and the sequencer playing, a white key held 0.8 s saves the break into that slot. Each broken track's steps become the steps the break plays at each position, with one draw of its ratchets, octave leaps, flams (MIDI FX FLAM), accents and gap; other tracks and drones are saved as written; the tracks' state is saved as by ARP held. Saving over the pattern playing replaces its steps at the end of the chosen track's time through.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>A pattern's track state (build 62) is packed into 54 bytes instead of 78, leaving 590 bytes for steps instead of 566. With 566, a pattern with all 96 steps holding a note lost its last notes when saved.</li>
+<li>On the grid, while the 3rd black key is held, a white key held 0.8 s saves the break instead of copying or emptying the pattern.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Patterns saved by builds 62 and 63 load with their state (their layout is still read). Patterns saved by build 64 load in earlier builds with their steps; builds 62 and 63 ignore the new state layout, as build 61 does.</li>
+</ul>
+<h2 id="build-63">Build 63</h2>
+<p>Added</p>
+<ul>
+<li>MUTE mode on the PATTERNS grid. It stays on when the grid opens from the track's view, and the 2nd black key turns it on or off on the grid (with the step view on or off). While it is on, the track buttons mute and solo tracks and the grid stays up; the grid's title shows the six tracks, in their colour playing and dark grey muted, and the 2nd black key is lit.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>On the grid with MUTE mode on, a track button no longer goes back to the track's view; turn MUTE mode off first, or press ARP to load the pattern chosen.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Nothing saved changes.</li>
+</ul>
+<h2 id="build-62">Build 62</h2>
+<p>Added</p>
+<ul>
+<li>A pattern holds each track's state when it is saved: muted or not, machine, octave, level, pan, sidechain (SC SOURCE and amount), CHORD mode and form, and the arpeggiator (on or off and its eight settings). Loading or switching to the pattern gives the state back; while the sequencer plays, when the pattern starts. ARP held, SAVE of the session, and copying a pattern take the state with the steps.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>Changing any of those settings marks the pattern playing as changed (its number orange), as editing a step does; the change is kept in RAM with the pattern while another plays, until the session is saved or loaded.</li>
+<li>The steps of a pattern have 566 bytes instead of 644: the state takes the last 78 bytes of the pattern's step area. The phrase generator trims to the smaller room. The flash layout, the session format and RAM use are unchanged.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Patterns saved by earlier builds load unchanged. They have no state: loading one leaves the state as it is, and a session's own saved mutes and settings apply when it loads, as before.</li>
+<li>Patterns saved by build 62 load in earlier builds with their steps; those builds ignore the state. A pattern from an earlier build whose steps take more than 566 bytes loses its last steps' locks when it is saved again.</li>
+</ul>
 <h2 id="build-61">Build 61</h2>
 <p>Added</p>
 <ul>
