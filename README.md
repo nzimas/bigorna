@@ -102,7 +102,12 @@ Three-operator FM percussion after FM DRUM.
 
 - SYN 1: TUNE, SWP TIME, SWP DEPTH (the pitch sweep), ALGO (seven), OP C WAVE, OP AB WAVE, FEEDBACK, FOLD
 - SYN 2: RATIO, DEC, END and MOD for A and for B
-- SYN 3: HOLD, DECAY (the body), PHASE C, LEVEL, NOISE RST, NOISE RM
+- SYN 3: HOLD, DECAY (the body), PHASE C, LEVEL, AB NOISE, NOISE RST, NOISE RM
+  - AB NOISE: operators A and B's waveforms mixed towards a sample-and-hold noise, a new random value at the start
+    of each cycle of the operator (0: the waveform only; 127: the noise only). The noise steps at the operator's own
+    frequency (the note, the sweep and RATIO A or B), so it follows the pitch; modulating C, it gives metallic, grainy
+    hits; in algorithms 5 to 7 B's noise is also heard. With NOISE RST on, every note gets the same values. After the
+    LXR firmware's noise oscillator as its hihat uses it.
 - SYN 4: NS HOLD, NS DECAY, TRANS (the transient's kind), TRANS LEV, NS BASE, NS WIDTH, NS GRAIN, NS LEVEL
 
 ### WAVY

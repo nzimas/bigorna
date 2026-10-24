@@ -1,5 +1,24 @@
 # Changelog
 
+## Build 60
+
+Added
+- DRUM: AB NOISE (SYN 3, knob E), 0 .. 127. Mixes operators A and B's waveforms towards a sample-and-hold noise
+  that takes a new random value at the start of each cycle of the operator, so the noise steps at the operator's
+  frequency and follows the note, the pitch sweep and RATIO A or B. It can be locked per step and is an LFO
+  destination. NOISE RST on gives every note the same values. After the noise oscillator of the LXR firmware
+  (Erica Synths, GPL-3.0-only), which its hihat uses as a modulator.
+- HOME: METAL HAT, OPEN HAT, RIDE, CYMBAL, CLANG, RATTLE, STATIC BURST and SCREECH sometimes draw AB NOISE; the grit
+  pass after a rhythmic DRUM family sometimes raises it.
+
+Fixed
+- GRAIN FIELD (WAVY) could draw its noise band (NS BASE) far above its band-pass filter (FREQ); with the band's LFO
+  moving it further up, some notes were nearly or fully silent (about 1 in 70). NS BASE is now kept 30 below FREQ.
+
+Compatibility
+- Sessions from earlier builds load unchanged: AB NOISE was an unused slot, 0 (off) in every saved sound. Sounds
+  drawn by HOME from a rhythmic DRUM family differ from earlier builds' draws for the same seed.
+
 ## Build 59
 
 Fixed

@@ -5,7 +5,10 @@
  *   body       three operators (C, A, B) in one of seven algorithms, the pitch swept down from SDEP above TUNE
  *              over STIM; OP.C and OP.AB their waveforms, FDBK the feedback operator's, A's and B's modulation by
  *              decay envelopes (DEC to END, MOD the amount), FOLD a wavefolder; its own envelope (HOLD, DEC; the
- *              last value: no decay), LEV; PH.C where C starts (0 .. 90 degrees; 91: not reset)
+ *              last value: no decay), LEV; PH.C where C starts (0 .. 90 degrees; 91: not reset); ABN A's and B's
+ *              waveforms mixed towards a sample-and-hold noise, a new value each cycle of the operator (its own
+ *              phase, unmodulated): noise at the operator's pitch, after the LXR firmware's noise oscillator
+ *              (Erica Synths, GPL-3.0-only) as its hihat uses it to modulate (build 60)
  *   noise      white to grainy (GRAN), through a base-width band (BASE, WDTH), its envelope (NHLD, NDEC; NRST the
  *              same noise every note; NRM: ring-modulated by operator C), NLEV
  *   transient  one of a set of short attacks (TRAN), TLEV
@@ -35,6 +38,7 @@ typedef struct {
     int32_t sfall;               /* the sweep's fall a block, Q16 */
     int32_t opc, opab;           /* the waveforms, Q15 along the drum waves */
     int32_t fb;
+    int32_t abn;                 /* ABN: A's and B's share of the sample-and-hold noise, Q15; 0 off */
     int32_t fold, fwet;          /* the folder: its gain p^2 + 0.07 (Q15), its share min(16 p, 1) (Q15); 0 off */
     uint32_t ra16, rb16;         /* the ratios, Q16 */
     int32_t moda, modb, enda, endb, deca, decb;   /* Q15 amounts and ends; the decays a block, Q16 */
@@ -61,6 +65,8 @@ typedef struct {
     uint32_t tn;                 /* samples since the note began (the transient's clock) */
     uint32_t tph;
     int32_t tlp;
+    int32_t sh[3];               /* ABN: A's and B's held values */
+    rnd_t sr;                    /* .. and their source */
 } fdv_t;
 
 /* RATIO A, B: the Digitone II's, linear: 0.001 .. 31.75 (value x 256 x 31999 / 32768 + 1, thousandths), Q16 */
@@ -94,6 +100,8 @@ static void fd_cook(fdck_t *c, const sound_t *s)
     c->opab = clampi(p[FD_OPAB], 0, 127) * Q15 / 127;
     v = clampi(p[FD_FDBK], 0, 127);
     c->fb = v * v * 20860 / 16129;                          /* p^2, 2 / pi of a cycle at full */
+    v = clampi(p[FD_ABN], 0, 127);
+    c->abn = v * Q15 / 127;
     v = clampi(p[FD_FOLD], 0, 127);
     c->fold = v ? v * v * Q15 / 16129 + 2294 : 0;           /* p^2 + 0.07 */
     c->fwet = clampi(v * 16 * Q15 / 127, 0, Q15);           /* min(16 p, 1) */
@@ -144,6 +152,8 @@ static void fd_on(fdv_t *v, const fdck_t *c, int fresh, uint32_t seed)
     v->nh = c->nhold;
     if (c->nrst || fresh)
         rnd_seed(&v->rn, c->nrst ? 0xD1u : seed);
+    if (c->abn && (c->nrst || fresh))            /* (NOISE RST: the same held values every note, as the noise) */
+        rnd_seed(&v->sr, c->nrst ? 0x5Bu : seed ^ 0xA5A5u);
     v->tn = 0;
     v->tph = 0;
     v->tlp = 0;
@@ -204,9 +214,13 @@ AINL int32_t fd_folder(int32_t x, int32_t g, int32_t wet)
         if ((FD_ALG[A].fb >> op) & 1u && c->fb)                                                               \
             ph += (uint32_t)mulq15((ff1[op] + ff2[op]) >> 1, c->fb) << 17;                             \
         o[op] = fd_wave(&wv[op], ph);                                                                         \
+        if (op != FD_C && abn)                                                                                \
+            o[op] += mulq15(fsh[op] - o[op], abn);                                                            \
         ff2[op] = ff1[op];                                                                              \
         ff1[op] = o[op];                                                                                   \
         fph[op] += ic[op];                                                                                  \
+        if (op != FD_C && abn && fph[op] < ic[op])   /* (its phase wrapped: a new value) */                    \
+            fsh[op] = rnd_bi(&sr);                                                                            \
     }
 #define FD_OPS(A) FD_OPK(A, 0) FD_OPK(A, 1) FD_OPK(A, 2)
 FAST static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *out)
@@ -247,11 +261,14 @@ FAST static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *o
     deb = (v->eb - eb0) / (int32_t)CTL;
     {
     uint32_t fph[3];                             /* (the operators' phases and feedback in registers: out may alias v) */
-    int32_t ff1[3], ff2[3];
+    int32_t ff1[3], ff2[3], fsh[3];
+    const int32_t abn = c->abn;
+    rnd_t sr = v->sr;
     for (k = 0; k < 3u; k++) {
         fph[k] = v->ph[k];
         ff1[k] = v->fb1[k];
         ff2[k] = v->fb2[k];
+        fsh[k] = v->sh[k];
     }
     int noise = c->nlev && (n || dne);           /* (the noise's envelope at 0 the whole block: none) */
     for (i = 0; i < CTL; i++) {
@@ -302,7 +319,9 @@ FAST static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *o
         v->ph[k] = fph[k];
         v->fb1[k] = ff1[k];
         v->fb2[k] = ff2[k];
+        v->sh[k] = fsh[k];
     }
+    v->sr = sr;
     }
 }
 #undef FD_OPS

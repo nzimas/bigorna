@@ -14,6 +14,7 @@ tests/check_target_ir.sh
 clang -O2 -std=gnu99 -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function -Werror \
     -Ifirmware/src -Ibuild/gen tests/host/host.c -o build/host
 build/host check
+build/host dsp
 build/host screens build/screens
 build/host projects build/screens
 build/host lfo build/screens

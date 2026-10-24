@@ -278,6 +278,7 @@ static void metal_hat(sound_t *s, gctx_t *g, int32_t b0, int32_t b1, int32_t n0,
     SY(s, FD_TRAN, RI(g, 0, 40)); SY(s, FD_TLEV, RI(g, 0, 60));
     SY(s, FD_NBAS, RI(g, 76, 106)); SY(s, FD_NWID, RI(g, 40, 95)); SY(s, FD_GRAN, RI(g, 0, 50));
     SY(s, FD_NLEV, RI(g, 60, 95));
+    SY(s, FD_ABN, CH(g, 35 + g->ind / 4) ? RI(g, 20, 90) : 0);   /* (A and B as held noise: grit in the metal) */
 }
 static void r_metal_hat(sound_t *s, gctx_t *g)
 {
@@ -312,6 +313,7 @@ static void r_cymbal(sound_t *s, gctx_t *g)
     SY(s, FD_NWID, RI(g, 20, 40)); SY(s, FD_GRAN, RI(g, 60, 100)); SY(s, FD_NLEV, RI(g, 60, 85));
     drum_filter(s, g, SH_HP, 84, 104, 0, 15, 0, RI(g, 50, 70));
     pan(s, RI(g, -14, 14));
+    SY(s, FD_ABN, CH(g, 40) ? RI(g, 30, 100) : 0);
     level(s, 106);
 }
 static void r_tom(sound_t *s, gctx_t *g)
@@ -366,6 +368,7 @@ static void r_clang(sound_t *s, gctx_t *g)
     sends(s, 0, g->abs_ * RI(g, 0, 30) / 100, 0);
     dirt(s, RI(g, 30, 60), 0, 0, 1, 0);
     pan(s, RI(g, -14, 14));
+    SY(s, FD_ABN, CH(g, 30) ? RI(g, 20, 70) : 0);
     level(s, 116);
 }
 static void r_slam(sound_t *s, gctx_t *g)
@@ -599,6 +602,9 @@ static void r_grain_field(sound_t *s, gctx_t *g)
     dirt(s, 0, g->ind > 40 && CH(g, 40) ? RI(g, 20, 60) : 0, CH(g, 30 + g->idm * 30 / 100) ? RI(g, 10, 50) : 0, 0, 0);
     LFO(s, g, 0, LD_SYN(WT_NBAS), LW_RND, LR_SLOW, 10, 30); SPH(s, g, 0, 60, 120);
     LFO(s, g, 1, LD_SYN(WT_CHAR), LW_TRI, LR_MED, 10, 35);
+    if (s->syn[WT_NBAS] > s->flt[F_FREQ] - 30)     /* (the noise's band kept under the band-pass, its LFO's reach
+                                                    * included: one far over the other left nearly silence; build 60) */
+        SY(s, WT_NBAS, maxi(10, s->flt[F_FREQ] - 30));
     level(s, 110);
 }
 static void r_breath(sound_t *s, gctx_t *g)
@@ -753,6 +759,7 @@ static void r_screech(sound_t *s, gctx_t *g)
     drum_filter(s, g, SH_BP, 90, 115, 30, 80, 0, RI(g, 40, 70));
     dirt(s, RI(g, 40, 100), CH(g, 40) ? RI(g, 30, 70) : 0, 0, 1, 0);
     pan(s, RI(g, -20, 20));
+    SY(s, FD_ABN, CH(g, 45) ? RI(g, 30, 110) : 0);
     level(s, 112);
 }
 static void r_rattle(sound_t *s, gctx_t *g)
@@ -765,6 +772,7 @@ static void r_rattle(sound_t *s, gctx_t *g)
     drum_filter(s, g, SH_LP, 100, 127, 0, 30, 0, RI(g, 20, 50));
     dirt(s, RI(g, 30, 90), CH(g, 50) ? RI(g, 30, 80) : 0, CH(g, 40) ? RI(g, 10, 50) : 0, 1, 1);
     pan(s, RI(g, -24, 24));
+    SY(s, FD_ABN, CH(g, 50) ? RI(g, 40, 127) : 0);
     level(s, 112);
 }
 static void r_static_burst(sound_t *s, gctx_t *g)
@@ -776,6 +784,7 @@ static void r_static_burst(sound_t *s, gctx_t *g)
     drum_filter(s, g, SH_BP, 80, 115, 20, 70, 0, RI(g, 30, 60));
     dirt(s, RI(g, 30, 80), RI(g, 50, 105), RI(g, 20, 80), 1, CH(g, 50));
     pan(s, RI(g, -24, 24));
+    SY(s, FD_ABN, CH(g, 60) ? RI(g, 50, 127) : 0);
     level(s, 110);
 }
 static void r_impact(sound_t *s, gctx_t *g)
@@ -915,7 +924,8 @@ static void r_hornet(sound_t *s, gctx_t *g)
 }
 
 /* the grit pass: after a rhythmic family's recipe (never a dark-ambient one), more dirt drawn at random -- drive after
- * the filter, bits, a lower rate, more fold or feedback, sometimes a comb in place of the filter */
+ * the filter, bits, a lower rate, more fold or feedback, DRUM's A and B as held noise, sometimes a comb in place of
+ * the filter */
 static void grit(sound_t *s, gctx_t *g)
 {
     if (CH(g, 55))
@@ -928,6 +938,8 @@ static void grit(sound_t *s, gctx_t *g)
     }
     if (s->mach == ENG_FMD && CH(g, 40))
         SY(s, FD_FOLD, maxi(s->syn[FD_FOLD], RI(g, 25, 80)));
+    if (s->mach == ENG_FMD && CH(g, 25))
+        SY(s, FD_ABN, maxi(s->syn[FD_ABN], RI(g, 40, 110)));
     if (s->mach == ENG_FMT && CH(g, 45)) {
         SY(s, FT_FDBK, maxi(s->syn[FT_FDBK], RI(g, 50, 127)));
         SY(s, FT_DTUN, maxi(s->syn[FT_DTUN], RI(g, 60, 127)));

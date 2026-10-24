@@ -45,7 +45,7 @@ static const par_t PAR_FD[4][8] = {
     {P_("TUNE", 4, 124, 64, PK_BIP), PN("SWP TIME"), PN("SWP DEPTH"), P_("ALGO", 0, 6, 0, PK_ALGO), PN("OP C WAVE"),
      PN("OP AB WAVE"), PN("FEEDBACK"), PN("FOLD")},
     {PN("RATIO A"), PN("DEC A"), PN("END A"), PN("MOD A"), PN("RATIO B"), PN("DEC B"), PN("END B"), PN("MOD B")},
-    {PN("HOLD"), PN("DECAY"), P_("PHASE C", 0, 91, 0, PK_PHC), PN("LEVEL"), PX, PX, PO("NOISE RST"), PO("NOISE RM")},
+    {PN("HOLD"), PN("DECAY"), P_("PHASE C", 0, 91, 0, PK_PHC), PN("LEVEL"), PN("AB NOISE"), PX, PO("NOISE RST"), PO("NOISE RM")},
     {PN("NS HOLD"), PN("NS DECAY"), P_("TRANS", 0, 124, 0, PK_NUM), PN("TRANS LEV"), PN("NS BASE"), PN("NS WIDTH"),
      PN("NS GRAIN"), PN("NS LEVEL")},
 };

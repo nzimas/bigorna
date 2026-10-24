@@ -259,6 +259,7 @@ static stats_t render_one(const sound_t *s0, int fx, uint32_t note, const char *
     if (!fx)
         s.fx[X_DEL] = s.fx[X_REV] = s.fx[X_CHR] = 0;
     tracks_init();
+    vox_age = 0;                                  /* (the note's seed as in a render alone: not left by the sounds before) */
     memset(ck_buf, 0, sizeof ck_buf);
     ck_cook(&ck_buf[0][0], &s);
     ck_buf[0][1] = ck_buf[0][0];
@@ -3060,6 +3061,40 @@ static int cmd_od(void)
     return 0;
 }
 
+/* host dsp: DRUM's AB NOISE (build 60) -- off, the sound as before it; on, A and B held noise: the hit changed, not
+ * silent, not clipping */
+static int cmd_dsp(void)
+{
+    static const int R[3] = {8, 15, 22};          /* METAL HAT, CLANG, SCREECH */
+    int fails = 0;
+    uint32_t r;
+    for (r = 0; r < 3u; r++) {
+        sound_t s;
+        stats_t a, b;
+        uint32_t i, n = 44100u * 3u;
+        double d = 0, e = 0;
+        static int16_t keep[44100 * 3 * 2];
+        gen_sound(&s, ENG_FMD, R[r], -1, 77u);
+        s.syn[FD_ABN] = 0;
+        a = render_one(&s, 0, 60, 0);
+        memcpy(keep, abuf, sizeof keep);
+        s.syn[FD_ABN] = 127;
+        b = render_one(&s, 0, 60, 0);
+        for (i = 0; i < 2u * n; i++) {
+            d += ((double)abuf[i] - keep[i]) * ((double)abuf[i] - keep[i]);
+            e += (double)keep[i] * keep[i];
+        }
+        printf("dsp: %-10s AB NOISE 0: peak %6.1f rms %6.1f; 127: peak %6.1f rms %6.1f, the difference %6.1f dB\n",
+               RECIPES[R[r]].name, db(a.peak), db(a.rms1), db(b.peak), db(b.rms1), 10.0 * log10(d / (e + 1)));
+        if (db(b.peak) < -45 || b.peak > 0.999 || 10.0 * log10(d / (e + 1)) < -20) {
+            printf("FAIL dsp: %s with AB NOISE\n", RECIPES[R[r]].name);
+            fails++;
+        }
+    }
+    printf("dsp: %d failures\n", fails);
+    return fails ? 1 : 0;
+}
+
 /* host duck [LEVEL] [WAV]: a kick (DRIVEN KICK) on track 1 each beat, a reverb locked on its first step; a HIVE pad
  * (SWARM DRONE) held on track 2, two notes, its SC SOURCE T1 at SC LEVEL (0 .. 100, default 70): the pad's duck over a
  * beat (dB, each 25 ms), rendered to WAV */
@@ -4008,6 +4043,8 @@ int main(int argc, char **argv)
         return cmd_prof();
     if (argc >= 2 && !strcmp(argv[1], "duck"))
         return cmd_duck(argc >= 3 ? atoi(argv[2]) : 70, argc >= 4 ? argv[3] : 0);
+    if (argc >= 2 && !strcmp(argv[1], "dsp"))
+        return cmd_dsp();
     if (argc >= 2 && !strcmp(argv[1], "od"))
         return cmd_od();
     if (argc >= 2 && !strcmp(argv[1], "cost"))
