@@ -368,6 +368,28 @@ static int32_t scale_move(int32_t n, int32_t d)
  * scale's next; TRN counts how far, kept with the pattern. Its loops too (build 54), each note the same way -- not
  * the one being recorded -- kept with the session */
 #define TRN_MAX 24
+static int lp_trn(uint32_t t, int32_t d)         /* (track t's loops moved d steps; any moved) */
+{
+    uint32_t l, e;
+    int any = 0;
+    for (l = 0; d && l < NLOOP; l++) {
+        loop_t *p = &loops[t][l];
+        if (!p->on || (ui.lrec && ui.lt == t && ui.ll == l))
+            continue;
+        for (e = 0; e < p->n; e++)
+            p->ev[e].note = (uint8_t)scale_move((int32_t)p->ev[e].note, d);
+        any = 1;
+    }
+    return any;
+}
+/* (build 67) a pattern coming in, its transpositions to[]: each track's loops moved by its own less the one playing,
+ * so that the loops follow the pattern's transposition as its steps do */
+static void lp_follow(const int8_t *to)
+{
+    uint32_t t;
+    for (t = 0; t < NTRACK; t++)
+        lp_trn(t, (int32_t)to[t] - ui.trn[t]);
+}
 static int32_t trn_track(uint32_t t, int32_t d)
 {
     int32_t v = clampi(ui.trn[t] + d, -TRN_MAX, TRN_MAX);
@@ -378,17 +400,8 @@ static int32_t trn_track(uint32_t t, int32_t d)
     for (i = 0; i < NSTEP; i++)
         if (seq_note[t][i])
             seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], d);
-    {
-        uint32_t l, e;
-        for (l = 0; l < NLOOP; l++) {
-            loop_t *p = &loops[t][l];
-            if (!p->on || (ui.lrec && ui.lt == t && ui.ll == l))
-                continue;
-            for (e = 0; e < p->n; e++)
-                p->ev[e].note = (uint8_t)scale_move((int32_t)p->ev[e].note, d);
-            prj_dirty = 1;
-        }
-    }
+    if (lp_trn(t, d))
+        prj_dirty = 1;
     ui.trn[t] = (int8_t)v;
     pat_dirty = 1;
     return d;

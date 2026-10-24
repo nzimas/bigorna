@@ -1,5 +1,18 @@
 # Changelog
 
+## Build 67
+
+Fixed
+- Loops did not follow a pattern's transposition. Transposing moves a track's loop notes as well as its steps, but
+  the loops belong to the session, so switching to a pattern with another transposition (or none) left the loops
+  transposed. Now, when a pattern comes in (switched to, playing or stopped, or emptied while playing), each track's
+  loops move by the difference between the new pattern's transposition and the previous one. Loading a session
+  leaves its loops as saved.
+
+Compatibility
+- Nothing saved changes. Loops saved in a session are taken to be at the transposition of the pattern the session
+  was saved playing, as before.
+
 ## Build 66
 
 Added

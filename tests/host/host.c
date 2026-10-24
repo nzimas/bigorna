@@ -1021,7 +1021,7 @@ static int cmd_projects(const char *dir)
             memcpy(c0, (const void *)seq_cond, sizeof c0);
             pat_take(&pp);
             pat_store[15] = pp;
-            pat_give(15);
+            pat_give(15, 1);
             for (t = 0; t < NTRACK; t++)         /* (each lock back, wherever its place) */
                 for (i = 0; i < NSTEP; i++)
                     for (j = 0; j < NPL; j++)
@@ -1103,7 +1103,7 @@ static int cmd_projects(const char *dir)
         seq_len[2] = 0;
         seq_div[2] = SEQ_DIV1;
         pat_store[14] = pp;
-        pat_give(14);
+        pat_give(14, 1);
         EXPECT(seq_len[2] == 12u && seq_div[2] == SEQ_DIV1 - 1u && seq_div[0] == SEQ_DIV1, "a pattern keeps them");
         tap(KEY_TRK);
         EXPECT(ui.page == PG_MAIN, "again: down");
@@ -1124,7 +1124,7 @@ static int cmd_projects(const char *dir)
         pat_switch(7);                           /* (pattern 8, empty, never saved) */
         memset(&pat_store[7], 0, sizeof pat_store[7]);
         memset(&pat_store[8], 0, sizeof pat_store[8]);
-        pat_give(7);
+        pat_give(7, 1);
         ui.sel = 1;
         memset((void *)seq_note, 0, sizeof seq_note);
         seq_note[1][0] = seq_note[1][4] = 50;
@@ -1349,7 +1349,7 @@ static int cmd_projects(const char *dir)
             pat_take(&pp);
             pat_store[13] = pp;
             seq_dir[3] = DIR_RND;
-            pat_give(13);
+            pat_give(13, 1);
             EXPECT(seq_dir[3] == DIR_FWD && ui.gen_den[3] == 100u && ui.gen_cx[3] == 100u, "a pattern keeps direction, settings");
         }
         tap(KEY_GEN);                            /* (a short press on the page: a new phrase, the page kept) */
@@ -1426,7 +1426,7 @@ static int cmd_projects(const char *dir)
         seq_mut[3][0] = 0;
         seq_mfx[3][0] = 0;
         pat_store[12] = pp;
-        pat_give(12);
+        pat_give(12, 1);
         EXPECT(seq_mut[3][0] == 2 && seq_mcy[3][0] == 1u && seq_mfx[3][0] == MFX_FIFTH, "a pattern keeps MOD");
         tap(KEY_MOD);
         tap(KEY_STEP);
@@ -2057,7 +2057,7 @@ static int cmd_projects(const char *dir)
             pat_take(&pp);
             seq_chf[t][si] = 0;
             pat_store[15] = pp;
-            pat_give(15);
+            pat_give(15, 1);
             EXPECT(seq_chf[t][si] == 2u, "a chord step kept with the pattern");
             prj_take(&bb);
             ui.chord_on[t] = 0;
@@ -3686,15 +3686,47 @@ static int cmd_trn(const char *dir)
     /* the pattern keeps it: pattern 1 copied to 2, 2 transposed, each as it was left */
     pat_take(&pat_store[0]);
     pat_store[1] = pat_store[0];
-    pat_give(1);
+    pat_give(1, 1);
     TEXPECT(ui.trn[1] == 1 && seq_note[1][0] == 50, "a copy of the pattern: its transposition with it");
     btn(B_OCTUP, 1);
     TEXPECT(ui.trn[0] == 1 && ui.trn[1] == 2 && seq_note[0][0] == 62 && seq_note[1][0] == 52, "pattern 2 transposed");
     pat_take(&pat_store[1]);
-    pat_give(0);
+    pat_give(0, 1);
     TEXPECT(!ui.trn[0] && ui.trn[1] == 1 && seq_note[0][0] == 60 && seq_note[1][0] == 50, "pattern 1 as it was");
-    pat_give(1);
+    pat_give(1, 1);
     TEXPECT(ui.trn[0] == 1 && ui.trn[1] == 2 && seq_note[0][0] == 62 && seq_note[1][0] == 52, "pattern 2 as transposed");
+    {   /* (build 67) the loops follow the pattern's transposition: moved as it comes in, back as the other does */
+        loop_t *lq = &loops[1][0];
+        memset(lq, 0, sizeof *lq);
+        lq->len = 16;
+        lq->n = 2;
+        lq->ev[0].note = 52;                     /* (as pattern 2 has it: TRN +2 on track 2) */
+        lq->ev[1].note = 55;
+        lq->ev[1].step = 8;
+        lq->on = 1;
+        pat_give(0, 1);
+        TEXPECT(ui.trn[1] == 1 && lq->ev[0].note == 50 && lq->ev[1].note == 53,
+                "pattern 1 in: track 2's loop moved as its transposition, one step down");
+        pat_give(1, 1);
+        TEXPECT(ui.trn[1] == 2 && lq->ev[0].note == 52 && lq->ev[1].note == 55, "pattern 2 again: the loop as it was");
+        pat_give(1, 0);
+        TEXPECT(lq->ev[0].note == 52, "(a session loaded: the loops as saved, not moved)");
+        {   /* playing: as the pattern is taken in */
+            int32_t out[2 * CTL];
+            uint32_t j;
+            seq_run = 1;
+            pat_switch(0);
+            for (j = 0; j < 4000u && seq_pend; j++) {
+                mix_block(out);
+                pat_poll();
+            }
+            TEXPECT(!seq_pend && pat_cur == 0u && ui.trn[1] == 1 && lq->ev[0].note == 50,
+                    "playing: pattern 1 taken in, the loop moved with it");
+            seq_run = 0;
+            pat_give(1, 1);
+        }
+        memset(lq, 0, sizeof *lq);
+    }
     {   /* a pattern saved before build 51: no transposition */
         pat_t p = pat_store[1];
         memset(p.seq + SEQ_TRN, 0, NTRACK);
@@ -4264,7 +4296,7 @@ static int cmd_pstate(const char *dir)
         PEXPECT(o <= SEQ_PX && pp.seq[SEQ_NREC] > 0u, "a full pattern: its steps end before the state");
         ps_set_b();
         pat_store[7] = pp;
-        pat_give(7);
+        pat_give(7, 1);
         PEXPECT(ps_is_a(), "a full pattern: its state whole");
         pat_decode(&pp, &sb);
         memcpy(sb2.note, sb.note, sizeof sb.note);
@@ -4299,7 +4331,7 @@ static int cmd_pstate(const char *dir)
             memcpy(pq.seq + SEQ_PX1, x, sizeof x);
             ps_set_b();
             pat_store[8] = pq;
-            pat_give(8);
+            pat_give(8, 1);
             PEXPECT(ps_is_a(), "a pattern of build 62 or 63: its state, as they saved it");
         }
     }

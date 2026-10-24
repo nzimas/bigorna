@@ -1006,12 +1006,15 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
                 b->note[t][i] = p->seq[SEQ_OLD_NOTE + o];
             }
 }
-/* slot k of the store, as the pattern playing, at once */
-static void pat_give(uint32_t k)
+/* slot k of the store, as the pattern playing, at once (follow: switched to -- not a session loaded -- the loops
+ * follow its transposition, build 67) */
+static void pat_give(uint32_t k, int follow)
 {
     const pat_t *p = &pat_store[k];
     seq_pend = 0;                                /* (a pattern waiting: not now) */
     pat_decode(p, &sb_tmp);
+    if (follow)
+        lp_follow(sb_tmp.trn);
     seq_copy_in(&sb_tmp);
     memcpy(ui.gen_den, sb_tmp.den, NTRACK);
     memcpy(ui.gen_cx, sb_tmp.cx, NTRACK);
@@ -1062,7 +1065,7 @@ static void pat_clear(uint32_t k)
     if (seq_pend == 1u && seq_pend_k == k)
         seq_pend = 0;                            /* (it was waiting to play: not now) */
     if (k == pat_cur)
-        pat_give(k);
+        pat_give(k, 1);
     rc = pat_flush(k);
     fmt_int(n + 8, (int32_t)k + 1);
     flash(rc ? "FAILED" : "EMPTY", n, rc ? C_BAD : RGB(255, 210, 120));
@@ -1361,7 +1364,7 @@ static void prj_fresh(void)
     prj_give(&b);
     memset(pat_store, 0, sizeof pat_store);
     memset(pat_dirtyv, 0, sizeof pat_dirtyv);
-    pat_give(0);
+    pat_give(0, 0);
     prj_cur = -1;
     prj_dirty = 0;
     pat_dirty = 0;
@@ -1383,7 +1386,7 @@ static int prj_load(uint32_t k)
     prj_give(&b);
     prj_cur = (int8_t)k;
     memset(pat_dirtyv, 0, sizeof pat_dirtyv);
-    pat_give(b.pat < PAT_SLOTS ? b.pat : 0u);    /* (the pattern it was saved playing) */
+    pat_give(b.pat < PAT_SLOTS ? b.pat : 0u, 0);    /* (the pattern it was saved playing) */
     prj_dirty = 0;
     rc = lop_load(k, b.loop_gen, b.loop_nsec);
     lst_note(k);
@@ -1675,7 +1678,7 @@ static void pat_switch(uint32_t k)
     pj.slot[1] = (uint8_t)k;
     if (!seq_run) {                              /* stopped: at once (the one left kept as it was) */
         pat_stash();
-        pat_give(k);
+        pat_give(k, 1);
         return;
     }
     seq_pend = 0;
@@ -1701,7 +1704,7 @@ static void pat_poll(void)
     if (sp == 1u && !seq_run) {
         seq_pend_mu = 0;                         /* (stopped: given here, its mutes too) */
         pat_stash();
-        pat_give(seq_pend_k);
+        pat_give(seq_pend_k, 1);
         ui.force = 1;
         return;
     }
@@ -1716,6 +1719,7 @@ static void pat_poll(void)
     }
     memcpy(ui.gen_den, sb_next.den, NTRACK);
     memcpy(ui.gen_cx, sb_next.cx, NTRACK);
+    lp_follow(sb_next.trn);                      /* (the loops as its transposition: build 67) */
     memcpy(ui.trn, sb_next.trn, NTRACK);
     pat_cur = seq_pend_k;
     pat_tempo = pat_store[pat_cur].used ? pat_store[pat_cur].tempo : 0;
