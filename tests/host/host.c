@@ -3019,7 +3019,8 @@ static int cmd_phrases(const char *dir, int n)
     return fails_ ? 1 : 0;
 }
 
-/* host od: OVERDRIVE's level, out over in (RMS), at 0, 10 .. 100, on a few signals (OD_MK, voice.c, from it) */
+/* host od: OVERDRIVE's level, out over in (RMS), at 0, 10 .. 100, on a few signals (OD_MK, voice.c, from it; ODT=1, 2:
+ * RAT's, FOLD's -- OD_MK_RAT, OD_MK_FOLD) */
 static int cmd_od(void)
 {
     static int32_t sig[3][44100];
@@ -3040,7 +3041,7 @@ static int cmd_od(void)
             double si = 0, so = 0;
             memset(&c, 0, sizeof c);
             memset(&v, 0, sizeof v);
-            od_cook(&c, (int32_t)a);
+            od_cook(&c, (int32_t)a, getenv("ODT") ? atoi(getenv("ODT")) : 0);
             if (getenv("RAW"))
                 c.od_mk = 4096;
             for (i = 0; i + CTL <= 44100u; i += CTL) {
@@ -3062,7 +3063,7 @@ static int cmd_od(void)
 }
 
 /* host dsp: DRUM's AB NOISE (build 60) -- off, the sound as before it; on, A and B held noise: the hit changed, not
- * silent, not clipping */
+ * silent, not clipping; OVERDRIVE's RAT and FOLD (build 61) */
 static int cmd_dsp(void)
 {
     static const int R[3] = {8, 15, 22};          /* METAL HAT, CLANG, SCREECH */
@@ -3090,6 +3091,53 @@ static int cmd_dsp(void)
             printf("FAIL dsp: %s with AB NOISE\n", RECIPES[R[r]].name);
             fails++;
         }
+    }
+    {   /* OD TYPE (build 61): RAT and FOLD at each amount, on a sine and on noise -- in range, the level brought back
+         * (0.4 .. 2.5 of the input's), each unlike VALVE from 40 on (FOLD folds once
+         * past full scale: below, little) */
+        static int32_t sig[2][44100], ref[44100];
+        uint32_t i, k, t, am;
+        uint32_t rr = 1;
+        for (i = 0; i < 44100u; i++) {
+            rr = rr * 1664525u + 1013904223u;
+            sig[0][i] = mulq15(sin_ph(i * 110u * 97391u), 16384);
+            sig[1][i] = ((int32_t)(rr >> 16) - 32768) >> 2;
+        }
+        for (t = 1; t <= 2u; t++)
+            for (am = 10; am <= 100u; am += 30u)
+                for (k = 0; k < 2u; k++) {
+                    vck_t c, c0;
+                    vchain_t v, v0;
+                    int32_t b[CTL], b0[CTL], pk = 0;
+                    double si = 0, so = 0, sd = 0;
+                    memset(&c, 0, sizeof c); memset(&v, 0, sizeof v);
+                    memset(&c0, 0, sizeof c0); memset(&v0, 0, sizeof v0);
+                    od_cook(&c, (int32_t)am, (int32_t)t);
+                    od_cook(&c0, (int32_t)am, 0);
+                    for (i = 0; i + CTL <= 44100u; i += CTL) {
+                        uint32_t j;
+                        for (j = 0; j < CTL; j++)
+                            b[j] = b0[j] = sig[k][i + j];
+                        vc_od(&v, &c, b);
+                        vc_od(&v0, &c0, b0);
+                        for (j = 0; j < CTL; j++) {
+                            si += (double)sig[k][i + j] * sig[k][i + j];
+                            so += (double)b[j] * b[j];
+                            sd += ((double)b[j] - b0[j]) * ((double)b[j] - b0[j]);
+                            pk = absi(b[j]) > pk ? absi(b[j]) : pk;
+                            ref[i + j] = b[j];
+                        }
+                    }
+                    if (am == 100u)
+                        printf("dsp: OD TYPE %s at %3u on %s: level %.2f, peak %5d, off VALVE by %5.1f dB\n",
+                               t == 1 ? "RAT " : "FOLD", am, k ? "noise" : "a sine", sqrt(so / si), pk,
+                               10.0 * log10(sd / (so + 1)));
+                    if (pk > 40000 || sqrt(so / si) < 0.4 || sqrt(so / si) > 2.5 ||
+                        (am >= 40u && 10.0 * log10(sd / (so + 1)) < -20)) {
+                        printf("FAIL dsp: OD TYPE %u at %u on signal %u (level %.2f, peak %d)\n", t, am, k, sqrt(so / si), pk);
+                        fails++;
+                    }
+                }
     }
     printf("dsp: %d failures\n", fails);
     return fails ? 1 : 0;

@@ -134,7 +134,15 @@ A swarm of six detuned oscillators and a main oscillator.
 ### AMP and FX
 
 - AMP: ATTACK, HOLD, DECAY, SUSTAIN, RELEASE, RESET, MODE (AHD or ADSR), VOLUME
-- FX: BIT REDUCE, OVERDRIVE, SRR (sample-rate reduction), the DELAY, REVERB and CHORUS sends, OD ROUTE
+- FX: BIT REDUCE, OVERDRIVE, SRR (sample-rate reduction), OD TYPE, the DELAY, REVERB and CHORUS sends, OD ROUTE
+  - OD TYPE, the kind of OVERDRIVE (OVERDRIVE sets the amount for each):
+    - VALVE: two valve-style gain stages, the second clipping sooner on one side (as in earlier builds)
+    - RAT: a RAT-style clipper: an op-amp's gain of x 1 to x 2305, its bandwidth narrowing as the gain rises
+      (16 kHz down to about 480 Hz), into a 1N914 diode pair. Hard, fuzzy, darker as the amount goes up
+    - FOLD: a wavefolder: the signal raised up to x 8 with a bias of up to 0.3, folded back each time it passes full
+      scale; the bias makes the folds uneven. Folds only once the signal passes full scale, so it bites late on quiet
+      sounds
+  - RAT and FOLD come from the LXR firmware's master distortion
 
 ### MANGLE
 

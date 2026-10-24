@@ -18,6 +18,7 @@ static const char *const L_RSET[] = {"OFF", "ON", "RAND"};
 static const char *const L_NTYP[] = {"GRAIN", "TUNED", "S+H"};
 static const char *const L_MOCT[] = {"-2", "-1", "0"};
 static const char *const L_RT[] = {"PRE", "POST"};
+static const char *const L_ODT[] = {"VALVE", "RAT", "FOLD"};
 static const char *const L_LEGT[] = {"LP", "HP"};
 static const char *const L_MODE[] = {"AHD", "ADSR"};
 static const char *const L_FLT[] = {"MULTI", "LP4", "LEGACY", "COMB-", "COMB+", "EQ"};
@@ -72,10 +73,10 @@ static const par_t PAR_AMP[8] = {PN("ATTACK"), P_("HOLD", 0, 127, 0, PK_HOLD), P
 static const par_t PAR_MNG[8] = {PN("DESTROY"), PL("DST MODE", 3, L_DMODE), PL("SLICE", 16, L_SLICE),
                                  PL("SLICE RATE", 3, L_SRATE), PN("SLC DEPTH"), PN("SLC EDGE"),
                                  P_("SLC SHIFT", 0, 15, 0, PK_NUM), PX};
-static const par_t PAR_FX[8] = {PN("BIT REDUCE"), P_("OVERDRIVE", 0, 100, 0, PK_NUM), PN("SRR"), PX,
+static const par_t PAR_FX[8] = {PN("BIT REDUCE"), P_("OVERDRIVE", 0, 100, 0, PK_NUM), PN("SRR"), PL("OD TYPE", 2, L_ODT),
                                 PN("DELAY SEND"), PN("REVERB SEND"), PN("CHORUS SEND"), PL("OD ROUTE", 1, L_RT)};
 /* (the FX page's order is the Digitone II's: BR OVER SRR SR.RT DEL REV CHR OD.RT) */
-static const uint8_t FX_SLOT[8] = {X_BR, X_OD, X_SRR, X_SPARE, X_DEL, X_REV, X_CHR, X_ODRT};
+static const uint8_t FX_SLOT[8] = {X_BR, X_OD, X_SRR, X_ODT, X_DEL, X_REV, X_CHR, X_ODRT};
 static const uint8_t AMP_SLOT[8] = {A_ATK, A_HOLD, A_DEC, A_SUS, A_REL, A_RSET, A_MODE, A_VOL};
 static const uint8_t FLT2_SLOT[8] = {F_DEL, F_KEYT, F_BASE, F_WDTH, F_BWRT, F_RSET, 0xFF, 0xFE};
 

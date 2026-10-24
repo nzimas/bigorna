@@ -275,7 +275,7 @@ static void prj_from17(void)
         memcpy(d->flt, a.flt, NF);
         memcpy(d->amp, a.amp, NA);
         memcpy(d->fx, a.fx, NX);
-        d->fx[X_SPARE] = 0;
+        d->fx[X_ODT] = 0;
         d->family = a.family;
         d->seed = a.seed;
     }

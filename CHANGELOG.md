@@ -1,5 +1,23 @@
 # Changelog
 
+## Build 61
+
+Added
+- FX: OD TYPE (knob D, the slot that was empty): the kind of OVERDRIVE, VALVE (as before), RAT or FOLD. Lockable per
+  step. After the LXR firmware's master distortion (Erica Synths, GPL-3.0-only), in fixed point on the one knob:
+  - RAT: a 60 Hz high-pass, an op-amp gain of x 1 .. x 2305 (OVERDRIVE, on an exponential curve) whose bandwidth
+    falls with the gain (a 1.1 MHz gain-bandwidth: 16 kHz down to ~480 Hz), its slew rate and +-4.2 V rails, then
+    LXR's 1N914 diode curve; OVERDRIVE's low-pass after.
+  - FOLD: gain x 1 .. x 8 and a bias of 0 .. 0.3 (OVERDRIVE), OVERDRIVE's low-pass before the fold, folded back at
+    full scale (a triangle fold, any number of times), a DC blocker after.
+  - The level is brought back by a curve of the amount, measured as VALVE's (out/in RMS about 1 on a sine, FM and
+    noise).
+- HOME: the grit pass after a rhythmic family's recipe, when the sound has OVERDRIVE, sometimes sets OD TYPE to RAT
+  or FOLD.
+
+Compatibility
+- Sessions from earlier builds load unchanged: OD TYPE was an unused slot, 0 (VALVE) in every saved sound.
+
 ## Build 60
 
 Added

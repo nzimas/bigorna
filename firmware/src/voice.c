@@ -155,7 +155,7 @@ AINL int32_t od_asym(int32_t u)  /* OVERDRIVE's second stage: tanh, clipping at 
 }
 #define COMB_N 1024u             /* a voice's comb line: down to ~43 Hz */
 typedef struct {
-    uint8_t fmach, bw_on, bw_pre, od_post, frst, arst, leg_hp;
+    uint8_t fmach, bw_on, bw_pre, od_post, frst, arst, leg_hp, od_kind;
     int32_t f_oct;               /* the cutoff (or the bell's frequency), log2 Hz Q16 */
     int32_t f_v;                 /* FREQ as set (the combs': a note number) */
     int32_t f_q;                 /* the resonance, Q12 */
@@ -168,7 +168,8 @@ typedef struct {
     bwc_t bw;                    /* the base-width filter */
     envck_t fe, ae;              /* the FLTR and AMP envelopes */
     int32_t br_bits;             /* BIT REDUCTION: the bits x 256, 0 off */
-    int32_t od_g;                /* OVERDRIVE: the amount, 0 .. 100 (x 256), 0 off; then its stages' (vc_od) */
+    int32_t od_g;                /* OVERDRIVE: the amount, 0 .. 100 (x 256), 0 off; then its stages' (vc_od; RAT and
+                                  * FOLD use them their own way: od_cook) */
     int32_t od_g1, od_b, od_fb, od_g2, od_beta, od_tone, od_w, od_mk;
     uint32_t srr_inc;            /* SRR: the hold's phase step a sample, 0 off */
     int32_t vol;                 /* VOL, Q15 */
@@ -184,7 +185,40 @@ typedef struct {
  * following it (~0.2 s): on a voice that would pump a drum's hit, so here the level comes back by a curve of the
  * amount, measured (host od) */
 static const uint16_t OD_MK[11] = {4096, 5362, 3674, 2831, 2425, 2237, 2155, 2122, 2117, 2127, 2147};   /* Q12, a 10 */
-static void od_cook(vck_t *c, int32_t a)
+/* OD TYPE (build 61), after the LXR firmware's master distortion (Erica Synths, GPL-3.0-only; its FX/Distortion.c),
+ * in fixed point and on one knob:
+ *   RAT   a RAT-style clipper: a 60 Hz high-pass, then an op-amp's gain (OVERDRIVE: x 1 .. x 2305), its bandwidth
+ *         falling as the gain rises (a 1.1 MHz gain-bandwidth: 16 kHz down to ~480 Hz), its slew rate and rails
+ *         (+-4.2 V), then a 1N914 diode pair, LXR's curve (OD_DIODE); OVERDRIVE's low-pass after
+ *   FOLD  a wavefolder: the input up to x 8 and a bias up to 0.3 (OVERDRIVE), smoothed by OVERDRIVE's low-pass, folded
+ *         back at full scale as often as it passes it; the bias makes the folds lopsided (even harmonics); a DC
+ *         blocker after
+ * The level brought back by a curve of the amount, measured (host od), as VALVE's */
+static const int16_t OD_DIODE[257] = {   /* the 1N914 pair's output over -1 .. 1 V in, Q15 (LXR's table_1n914) */
+    -21217, -21205, -21192, -21180, -21168, -21156, -21144, -21132, -21120, -21108, -21096, -21084, -21070, -21054, -21038, -21022,
+     -21006, -20990, -20973, -20957, -20941, -20925, -20909, -20893, -20873, -20853, -20833, -20813, -20793, -20773, -20753, -20733,
+     -20713, -20693, -20673, -20650, -20626, -20602, -20578, -20554, -20530, -20506, -20482, -20458, -20434, -20410, -20386, -20358,
+     -20330, -20302, -20274, -20246, -20218, -20190, -20162, -20134, -20106, -20078, -20047, -20015, -19983, -19951, -19919, -19887,
+     -19855, -19823, -19791, -19759, -19727, -19695, -19659, -19623, -19587, -19551, -19515, -19479, -19443, -19407, -19371, -19335,
+     -19299, -19259, -19217, -19175, -19128, -19074, -19021, -18966, -18900, -18835, -18770, -18695, -18618, -18541, -18457, -18369,
+     -18281, -18189, -18088, -17988, -17888, -17776, -17665, -17553, -17425, -17274, -17103, -16909, -16694, -16457, -16199, -15901,
+     -15536, -15105, -14593, -13968, -13215, -12335, -11347, -10283, -9176, -8045, -6903, -5756, -4606, -3455, -2304, -1152,
+     0, 1152, 2304, 3455, 4606, 5756, 6903, 8045, 9176, 10283, 11347, 12335, 13215, 13968, 14590, 15105,
+     15534, 15889, 16197, 16471, 16713, 16916, 17086, 17241, 17391, 17532, 17668, 17794, 17917, 18027, 18137, 18232,
+     18327, 18408, 18489, 18556, 18621, 18679, 18733, 18787, 18841, 18896, 18950, 19004, 19057, 19106, 19154, 19202,
+     19250, 19299, 19347, 19395, 19440, 19482, 19524, 19566, 19609, 19651, 19693, 19735, 19771, 19807, 19843, 19880,
+     19916, 19952, 19988, 20021, 20051, 20082, 20112, 20142, 20172, 20202, 20232, 20257, 20281, 20305, 20329, 20353,
+     20378, 20402, 20423, 20441, 20459, 20478, 20496, 20514, 20532, 20550, 20568, 20585, 20603, 20620, 20638, 20655,
+     20673, 20690, 20708, 20725, 20743, 20760, 20778, 20795, 20813, 20830, 20848, 20865, 20883, 20900, 20918, 20936,
+     20953, 20971, 20988, 21006, 21023, 21041, 21058, 21076, 21093, 21111, 21128, 21145, 21159, 21174, 21188, 21202,
+     21202};
+static const uint16_t OD_MK_RAT[11] = {4096, 1965, 1841, 1804, 1805, 1823, 1843, 1798, 1745, 1702, 1674};   /* Q12, a 10 */
+static const uint16_t OD_MK_FOLD[11] = {4096, 2536, 2195, 2220, 2188, 2018, 1836, 1752, 1747, 1782, 1793};
+static int32_t od_mk_of(const uint16_t *t, int32_t a)
+{
+    return t[a / 10] + (a < 100 ? (t[a / 10 + 1] - t[a / 10]) * (a % 10) / 10 : 0);
+}
+static void od_cook(vck_t *c, int32_t a, int32_t kind)
 {
     int32_t amt = a * 256;
     if (a < 2)
@@ -200,7 +234,17 @@ static void od_cook(vck_t *c, int32_t a)
     c->od_beta = 4915 + amt * 6554 / 25600;       /* the first stage's bias: 0.15 .. 0.35 of the input's peak */
     c->od_tone = 29430 - amt * (29430 - 19800) / 25600;   /* 16 kHz .. 6.5 kHz */
     c->od_w = a >= 6 ? Q15 : amt * Q15 / (6 * 256);
-    c->od_mk = OD_MK[a / 10] + (a < 100 ? (OD_MK[a / 10 + 1] - OD_MK[a / 10]) * (a % 10) / 10 : 0);
+    c->od_mk = od_mk_of(OD_MK, a);
+    c->od_kind = (uint8_t)kind;
+    if (kind == 1) {                              /* RAT: the gain Q8, the op-amp's pole */
+        c->od_g1 = (int32_t)((256u * (uint64_t)exp2_q16(a * 7320)) >> 16);   /* 2^(11.17 a / 100) */
+        c->od_b = lp1_coef(clampi((int32_t)(1100000u * 256u / (uint32_t)c->od_g1), 20, 16000));
+        c->od_mk = od_mk_of(OD_MK_RAT, a);
+    } else if (kind == 2) {                       /* FOLD: the gain Q12, the bias Q15 */
+        c->od_g1 = 4096 + a * 7 * 4096 / 100;
+        c->od_b = a * 9830 / 100;
+        c->od_mk = od_mk_of(OD_MK_FOLD, a);
+    }
 }
 static void vck_cook(vck_t *c, const sound_t *s)
 {
@@ -242,7 +286,7 @@ static void vck_cook(vck_t *c, const sound_t *s)
     c->vol = clampi(a[A_VOL], 0, 127) * Q15 / 127;
     v = clampi(x[X_BR], 0, 127);
     c->br_bits = v ? T_BITS[v] : 0;
-    od_cook(c, clampi(x[X_OD], 0, 100));
+    od_cook(c, clampi(x[X_OD], 0, 100), clampi(x[X_ODT], 0, 2));
     v = clampi(x[X_SRR], 0, 127);                     /* each sample held 1 + 100 (v / 127)^2 samples */
     c->srr_inc = v ? (0xFFFFFFFFu / (uint32_t)(256 + v * v * 25600 / 16129)) << 8 : 0;
     c->od_post = (uint8_t)(x[X_ODRT] != 0);
@@ -305,7 +349,7 @@ AINL int32_t od_stage(const vck_t *c, int32_t e)   /* the two stages (e biased) 
     int32_t u = tanh_q15((int32_t)(((int64_t)e * c->od_g1) >> 12));
     return od_asym(mulq12(u, c->od_g2) + c->od_b) - c->od_fb;
 }
-FAST static void vc_od(vchain_t *v, const vck_t *c, int32_t *x)
+FAST static void vc_od_valve(vchain_t *v, const vck_t *c, int32_t *x)
 {
     uint32_t i;
     int32_t pre = v->od_pre, env = v->od_env, post = v->od_post, dc = v->od_dc, lp = v->od_lp;   /* (in registers:
@@ -333,6 +377,63 @@ FAST static void vc_od(vchain_t *v, const vck_t *c, int32_t *x)
     v->od_post = post;
     v->od_dc = dc;
     v->od_lp = lp;
+}
+#define OD_HP60 279              /* 1 - e^(-2 pi 60 / FS), Q15 */
+#define OD_SLEW 222822           /* the op-amp's slew, 0.3 V/us: 6.8 V a sample (Q15 volts) */
+#define OD_RAIL 137626           /* its rails, +-4.2 V */
+FAST static void vc_od_rat(vchain_t *v, const vck_t *c, int32_t *x)
+{
+    uint32_t i;
+    int32_t pre = v->od_pre, post = v->od_post, dc = v->od_dc, lp = v->od_lp;
+    const int32_t g = c->od_g1, pole = c->od_b, tone = c->od_tone, mk = c->od_mk, w = c->od_w;
+    for (i = 0; i < CTL;) {
+        REP4({
+            int32_t dry = x[i], e, d, u, k, o;
+            dc += (((dry << 8) - dc) * OD_HP60) >> 15;
+            e = lp8(&pre, dry - (dc >> 8), pole);
+            e = (int32_t)(((int64_t)e * g) >> 8);
+            d = clampi(e - post, -OD_SLEW, OD_SLEW);
+            post = clampi(post + d, -OD_RAIL, OD_RAIL);
+            u = clampi(post, -32768, 32767) + 32768;  /* (the diodes' table over -1 .. 1 V) */
+            k = u >> 8;
+            o = OD_DIODE[k] + (((OD_DIODE[k + 1] - OD_DIODE[k]) * (u & 255)) >> 8);
+            lp += mulq15(o - lp, tone);
+            o = mulq12(lp, mk);
+            x[i] = dry + mulq15(o - dry, w);
+        })
+    }
+    v->od_pre = pre;
+    v->od_post = post;
+    v->od_dc = dc;
+    v->od_lp = lp;
+}
+FAST static void vc_od_fold(vchain_t *v, const vck_t *c, int32_t *x)
+{
+    uint32_t i;
+    int32_t dc = v->od_dc, lp = v->od_lp;
+    const int32_t g = c->od_g1, bias = c->od_b, tone = c->od_tone, mk = c->od_mk, w = c->od_w;
+    for (i = 0; i < CTL;) {
+        REP4({
+            int32_t dry = x[i], o;
+            lp += mulq15(mulq12(dry, g) + bias - lp, tone);
+            o = absi(((lp - 32768) & 131071) - 65536) - 32768;   /* (folded back at +-1, a triangle of period 4) */
+            dc += (((o << 8) - dc) * 37) >> 15;
+            o -= dc >> 8;
+            o = mulq12(o, mk);
+            x[i] = dry + mulq15(o - dry, w);
+        })
+    }
+    v->od_dc = dc;
+    v->od_lp = lp;
+}
+FAST static void vc_od(vchain_t *v, const vck_t *c, int32_t *x)
+{
+    if (c->od_kind == 1)
+        vc_od_rat(v, c, x);
+    else if (c->od_kind == 2)
+        vc_od_fold(v, c, x);
+    else
+        vc_od_valve(v, c, x);
 }
 FAST static void vc_bw(vchain_t *v, const vck_t *c, int32_t *x)
 {
