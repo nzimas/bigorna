@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// BIGORNA: a pattern of the Try it page's demo, recorded offline in the emulator the page runs (docs/try: fm1-emu's
-// WebAssembly module, the site's package, the demo's sessions, docs/try/bigorna-demo.bin): booted at 240 MHz, MASTER
+// BIGORNA: a pattern of the demo's sessions, recorded offline in fm1-emu (tools/demo: its WebAssembly module, MIT, and
+// the sessions, tools/demo/bigorna-demo.bin) with the site's package: booted at 240 MHz, MASTER
 // at 800 of 1023, ARP, the pattern's white key, PLAY; SECONDS from PLAY, as raw audio (16-bit, stereo, 44.1 kHz:
 // tools/make_loop.py cuts the home page's loop from it). Slower than real time (the emulator cannot play it live: the
 // sessions keep both cores busy), but every sample as the firmware makes it.
 //   node tools/render_demo.mjs PATTERN SECONDS OUT.raw      (PATTERN 1 .. 16)
 // (after fm1-emu's web/bench.mjs, MIT: the same calls into the module)
 import { readFileSync, writeFileSync } from "node:fs";
-import { jitImports } from "../docs/try/jit.js";
+import { jitImports } from "./demo/jit.js";
 
 const [pat, secs, out] = [+process.argv[2], +process.argv[3], process.argv[4]];
 if (!(pat >= 1 && pat <= 16) || !(secs > 0) || !out) {
@@ -22,7 +22,7 @@ const script = `100:pot:800,1000:ARP,1200:ARP^,2000:${key},2200:${key}^,${PLAY_M
 
 let x;
 const stats = { regions: 0, failed: 0, compileMs: 0, compileMaxMs: 0, bytes: 0 };
-const { instance } = await WebAssembly.instantiate(readFileSync("docs/try/fm1_web.wasm"), { env: jitImports(() => x, stats) });
+const { instance } = await WebAssembly.instantiate(readFileSync("tools/demo/fm1_web.wasm"), { env: jitImports(() => x, stats) });
 x = instance.exports;
 x.fm1_jit(1, 16);
 x.fm1_ahead(1024);
@@ -31,7 +31,7 @@ const put = (bytes) => {
   new Uint8Array(x.memory.buffer, p, bytes.length).set(bytes);
   return p;
 };
-const pkg = readFileSync("docs/firmware/bigorna.fwsc"), demo = readFileSync("docs/try/bigorna-demo.bin");
+const pkg = readFileSync("docs/firmware/bigorna.fwsc"), demo = readFileSync("tools/demo/bigorna-demo.bin");
 if (x.fm1_boot_fwsc(put(pkg), pkg.length, 0, 0, MHZ) !== 0) throw new Error("render_demo: the package did not boot");
 if (x.fm1_flash_restore(put(demo), demo.length) !== 0) throw new Error("render_demo: the demo's sectors were refused");
 const sb = new TextEncoder().encode(script);

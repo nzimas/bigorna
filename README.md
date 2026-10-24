@@ -16,8 +16,6 @@ looper, and send effects. *Bigorna* is Portuguese for anvil.
 
 Website, browser installer and manual: <https://nzimas.github.io/bigorna/>
 
-Try it without an FM-1, in the browser, on an emulated FM-1: <https://nzimas.github.io/bigorna/try.html>
-
 > [!WARNING]
 > Bigorna is unofficial. It is not made, endorsed or supported by M-VAVE or Elektron, and installing it may void
 > any warranty that applies to your FM-1. See the [disclaimer](#disclaimer).

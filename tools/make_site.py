@@ -6,11 +6,6 @@
 #   docs/manual.html     the README's manual (from "# Manual" to "# Building from source")
 #   docs/changelog.html  CHANGELOG.md
 #   docs/firmware/       the package the browser installer writes, and latest.json (its file, version, SHA-256)
-#   docs/try.html        site/try.html: the emulator (docs/try/, fm1-emu copied unchanged) running that package;
-#                        docs/try/firmwares.json, its catalog: Bigorna alone, its id after the build (the emulator keeps
-#                        a package and its saves under the id, so a new build is fetched anew); with nothing saved,
-#                        the emulator starts with docs/try/bigorna-demo.bin's sessions (tools/make_demo.mjs); its address
-#                        carries its hash: a save made with another demo, or before one, gives way to it
 #   tools/make_site.py [PACKAGE.fwsc]        (default build/bigorna.fwsc; run tools/build.py first)
 # The logo: tools/make_logo.py (docs/assets/); the stylesheet and scripts: docs/css, docs/js, written by hand.
 # The markdown is the little the README uses: headings, paragraphs, lists, tables, quotes, code, emphasis, links.
@@ -142,7 +137,7 @@ def to_html(md, toc):
 
 def page(title, current, body, desc, head=""):
     """every page: the menu down the left (above the content on a narrow screen), the content, the footer"""
-    nav = [("./", "Home"), ("screens.html", "Screens"), ("try.html", "Try it"), ("install.html", "Install"), ("backup.html", "Backup"), ("manual.html", "Manual"),
+    nav = [("./", "Home"), ("screens.html", "Screens"), ("install.html", "Install"), ("backup.html", "Backup"), ("manual.html", "Manual"),
            ("changelog.html", "Changelog"), ("projects.html", "Other projects"), (REPO, "GitHub")]
     links = "\n      ".join(f'<a href="{h}"' + (' aria-current="page"' if n == current else "") + f">{n}</a>"
                            for h, n in nav)
@@ -268,30 +263,9 @@ def firmware(pkg):
     print(f"site: firmware {ver} ({product}, {len(raw)} B)")
 
 
-def try_page():
-    """the emulator runs the package docs/firmware holds, so its version is latest.json's"""
-    ver = json.loads((DOCS / "firmware" / "latest.json").read_text())["version"]
-    fw_id = "bigorna-" + ver.split()[-1]
-    (DOCS / "try" / "firmwares.json").write_text(json.dumps({
-        "note": "Bigorna alone (tools/make_site.py): the package the installer writes, from this site.",
-        "default": fw_id,
-        "firmwares": [{"id": fw_id, "name": "Bigorna", "version": ver, "author": "Nuno Zimas", "license": "GPL-3.0",
-                       "about": "A firmware for rhythmic noise, power noise, industrial and IDM, after the Elektron "
-                                "Digitone II: six tracks, four machines, a 16-step sequencer, a looper, send effects.",
-                       "repo": REPO, "package": "../firmware/bigorna.fwsc",
-                       "flash": "bigorna-demo.bin?v=" + hashlib.sha256((DOCS / "try" / "bigorna-demo.bin").read_bytes()).hexdigest()[:10]}]},
-        indent=1) + "\n")
-    body = (ROOT / "site" / "try.html").read_text().replace("{FW_ID}", fw_id).replace("{BUILD}", ver.lower())
-    (DOCS / "try.html").write_text(page(
-        "Try Bigorna in the browser", "Try it", body,
-        "Bigorna on an emulated M-VAVE FM-1, in the browser: the same package the installer writes.",
-        f'\n<script src="js/try.js?v={hashlib.sha256((DOCS / "js" / "try.js").read_bytes()).hexdigest()[:10]}" defer></script>'))
-
-
 if __name__ == "__main__":
     fragments()
     manual()
     changelog()
     firmware(Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build" / "bigorna.fwsc")
-    try_page()
-    print("site: docs/index.html, try.html, install.html, backup.html, manual.html, changelog.html, projects.html")
+    print("site: docs/index.html, install.html, backup.html, manual.html, changelog.html, projects.html")

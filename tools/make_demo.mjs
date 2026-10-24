@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// BIGORNA: the Try it page's demo (docs/try/bigorna-demo.bin): the sessions of a backup file (the Backup page's, or
-// tools/fm1_backup.py's) restored by the firmware itself (build/host bkserve, tests/run_tests.sh builds it) into an
+// BIGORNA: the demo's sessions (tools/demo/bigorna-demo.bin, for tools/render_demo.mjs): the sessions of a backup file
+// (the Backup page's, or tools/fm1_backup.py's) restored by the firmware itself (build/host bkserve, tests/run_tests.sh builds it) into an
 // erased store, the session to start with loaded at its pattern (so the FM-1 notes it as the last), the store's
 // sectors written as fm1-emu boots them (persistence.js: each its offset, u32, then its 4 KB).
 //   node tools/make_demo.mjs BACKUP.json SESSION PATTERN [OUT]      (SESSION 1 .. 16, PATTERN 1 .. 16)
@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { writeRecord, restoreOrder } from "../docs/js/fm1backup.js";
 
-const [file, ses, pat, out = "docs/try/bigorna-demo.bin"] = process.argv.slice(2);
+const [file, ses, pat, out = "tools/demo/bigorna-demo.bin"] = process.argv.slice(2);
 if (!file || !(ses >= 1 && ses <= 16) || !(pat >= 1 && pat <= 16)) {
   console.log("make_demo: BACKUP.json SESSION PATTERN [OUT]");
   process.exit(1);

@@ -210,12 +210,6 @@ main .project h2 { margin: 0; padding: 0; border: 0; font-size: 32px; }
 .dev dt { color: var(--dim); }
 .dev dd { margin: 0; font-weight: 700; }
 
-/* Try it: the emulator's window (its height set to its page's by js/try.js) */
-.emu { margin: 24px 0 8px; border: 1px solid var(--line); background: #0a0b0c; }
-.emu iframe { display: block; width: 100%; height: 760px; border: 0; }
-kbd { font: 700 0.85em/1 ui-monospace, Menlo, monospace; padding: 0.15em 0.4em; border: 1px solid var(--mid);
-      border-bottom-width: 2px; border-radius: 3px; background: var(--plate2); color: var(--fg); }
-
 /* narrow screens: the menu above the content */
 @media (max-width: 860px) {
   .layout { flex-direction: column; }
