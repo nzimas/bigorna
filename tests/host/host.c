@@ -978,7 +978,7 @@ static int cmd_projects(const char *dir)
                     for (l = 0; l < NPL; l++)
                         locks += seq_lid[t][i][l] != PL_NONE;
                 }
-                if (pat_bytes() > PAT_SEQ_ROOM)
+                if (pat_bytes() > SEQ_PX)
                     bad++;
             }
         EXPECT(!bad, "phrases: in the scale, within the pattern's room");
@@ -3911,6 +3911,16 @@ static int cmd_arp(const char *dir)
         prj_head_fill(PRJ_MAGIC, 4u * 16u, PRJ_LEN50);
         prj_flash_erase(prj_sector(4, 0));
         prj_flash_prog(prj_sector(4, 0), prj_buf, PRJ_SECT);
+        {                                        /* (its patterns as builds before 62 saved them: no state) */
+            uint32_t s, j;
+            for (s = 1; s <= PAT_SECTS; s++)
+                if (!prj_read(4, s)) {
+                    pat_t *pp = (pat_t *)(void *)(prj_buf + sizeof(prj_head_t));
+                    for (j = 0; j < PAT_PER; j++)
+                        pp[j].st = 0;
+                    prj_write(4, s);
+                }
+        }
         prj_scan(1);
         AEXPECT(prj_has[4] && !prj_load(4) && !arp_on[0] && arp_p[0][AR_MODE] == AM_UP && arp_p[0][AR_DENS] == 127u,
                 "a session of build 51 loads: the arpeggiators off, their start settings");
@@ -4060,11 +4070,165 @@ static int cmd_newses(const char *dir)
     return fails != 0;
 }
 
+/* (build 62) a pattern holds the tracks' state as it was saved -- muted, machine, octave, level, pan, sidechain,
+ * CHORD mode, arpeggiator -- and gives it back when it plays; a pattern saved before (or empty) leaves it as it is */
+#define PEXPECT(c, what) do { if (!(c)) { printf("FAIL pstate: %s\n", what); fails++; } } while (0)
+static void ps_set_a(void)                       /* (state A) */
+{
+    uint8_t ar[NARP];
+    memcpy(ar, AR_DEF, NARP);
+    ar[AR_MODE] = AM_DOWN;
+    ar[AR_GATE] = 100;
+    memset((void *)trk_mute, 0, NTRACK);
+    trk_mute[2] = 1;
+    arp_set(1, 1, ar);
+    ui.chord_on[3] = 1;
+    ui.chord_form[3] = 2;
+    ui.eng[4] = 2;
+    ui.oct[0] = 2;
+    ui.level[1] = 7;
+    ui.pan[2] = -10;
+    level_pan_apply(1);
+    level_pan_apply(2);
+    sc_src[5] = 2;
+    sc_lvl[5] = 90;
+}
+static int ps_is_a(void)
+{
+    return !trk_mute[0] && !trk_mute[1] && trk_mute[2] && arp_on[1] && arp_p[1][AR_MODE] == AM_DOWN &&
+           arp_p[1][AR_GATE] == 100u && ui.chord_on[3] && ui.chord_form[3] == 2u && ui.eng[4] == 2u && ui.oct[0] == 2 &&
+           ui.level[1] == 7 && ui.pan[2] == -10 && sc_src[5] == 2u && sc_lvl[5] == 90u;
+}
+static void ps_set_b(void)                       /* (state B) */
+{
+    memset((void *)trk_mute, 0, NTRACK);
+    trk_mute[4] = trk_mute[5] = 1;
+    arp_set(1, 0, AR_DEF);
+    ui.chord_on[3] = 0;
+    ui.eng[4] = 0;
+    ui.oct[0] = -1;
+    ui.level[1] = LEVEL_UNITY;
+    ui.pan[2] = 0;
+    sc_src[5] = 0;
+    sc_lvl[5] = 64;
+}
+static int ps_is_b(void)
+{
+    return !trk_mute[2] && trk_mute[4] && trk_mute[5] && !arp_on[1] && !ui.chord_on[3] && ui.eng[4] == 0u &&
+           ui.oct[0] == -1 && ui.level[1] == LEVEL_UNITY && ui.pan[2] == 0 && sc_src[5] == 0u && sc_lvl[5] == 64u;
+}
+static int cmd_pstate(const char *dir)
+{
+    int32_t out[2 * CTL];
+    uint32_t i, t;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    seq_note[0][0] = 60;
+    ps_set_a();
+    PEXPECT(!prj_save(0) && pat_store[0].st == PX_ON, "(session 1 saved, pattern 1 with it, its state)");
+    pat_switch(1);                               /* (stopped: at once) */
+    PEXPECT(pat_cur == 1u && ps_is_a(), "an empty pattern: the state left as it plays");
+    ps_set_b();
+    pat_poll();
+    PEXPECT(pat_dirty, "the state changed: the pattern changed");
+    seq_note[1][4] = 62;
+    PEXPECT(!pat_save(1) && !pat_dirty && pat_store[1].st == PX_ON, "pattern 2 saved, with state B");
+    pat_switch(0);
+    PEXPECT(pat_cur == 0u && ps_is_a() && seq_note[0][0] == 60u && !pat_dirty, "pattern 1: state A back, its steps");
+    pat_switch(1);
+    PEXPECT(pat_cur == 1u && ps_is_b() && seq_note[1][4] == 62u && !seq_note[0][0], "pattern 2: state B back");
+    {   /* (the flash holds it: the session loaded again, at pattern 2) */
+        PEXPECT(!prj_save(0), "(session 1 saved at pattern 2)");
+        ps_set_a();
+        PEXPECT(!prj_load(0) && pat_cur == 1u && ps_is_b(), "the session loaded: its pattern's state");
+        pat_switch(0);
+        PEXPECT(ps_is_a(), "and pattern 1's, from the flash");
+    }
+    /* a change not saved: kept in the store as the steps are, while another plays */
+    pat_switch(1);
+    trk_mute[0] = 1;
+    pat_switch(0);
+    PEXPECT(!trk_mute[0] && pat_dirtyv[1], "pattern 2's mute not saved: kept in the store, pattern 1 as saved");
+    pat_switch(1);
+    PEXPECT(trk_mute[0] && pat_dirty, "pattern 2 again: the mute as it was left");
+    /* switched while playing: at the end of the chosen track's time through, with its state */
+    seq_run = 1;
+    pat_switch(0);
+    PEXPECT(trk_mute[0] && seq_pend == 1u, "playing: pattern 1 waits, the state as it plays");
+    for (i = 0; i < 4000u && seq_pend; i++) {
+        mix_block(out);
+        pat_poll();
+    }
+    PEXPECT(!seq_pend && pat_cur == 0u && ps_is_a() && !trk_mute[0], "taken in: pattern 1's state");
+    seq_run = 0;
+    /* a pattern saved before build 62: no state -- the state left as it plays; its steps as ever */
+    pat_store[2] = pat_store[0];
+    pat_store[2].st = 0;
+    pat_switch(1);
+    pat_switch(2);
+    PEXPECT(pat_cur == 2u && ps_is_b() && seq_note[0][0] == 60u && !pat_dirty,
+            "a pattern of build 61: the state left as it plays, its steps");
+    /* its session's mutes, as build 61 kept them (a session loaded: they, then its pattern's -- none) */
+    PEXPECT(!prj_save(3), "(session 4 saved, at pattern 3)");
+    {
+        uint32_t s, j;
+        for (s = 1; s <= PAT_SECTS; s++)
+            if (!prj_read(3, s)) {
+                pat_t *pp = (pat_t *)(void *)(prj_buf + sizeof(prj_head_t));
+                for (j = 0; j < PAT_PER; j++)
+                    pp[j].st = 0;
+                prj_write(3, s);
+            }
+    }
+    ps_set_a();
+    PEXPECT(!prj_load(3) && pat_cur == 2u && ps_is_b(), "a session of build 61: the session's mutes and settings");
+    /* the room: every step a note and four locks -- the steps end before the state, the state whole */
+    {
+        static pat_t pp;
+        static seqbuf_t sb, sb2;
+        uint32_t o = SEQ_REC4, r;
+        for (t = 0; t < NTRACK; t++)
+            for (i = 0; i < NSTEP; i++) {
+                uint32_t l;
+                seq_note[t][i] = (uint8_t)(48u + i);
+                for (l = 0; l < 4u && l < NPL; l++) {
+                    seq_lid[t][i][l] = (uint8_t)l;
+                    seq_lv[t][i][l] = 5;
+                }
+            }
+        ps_set_a();
+        pat_take(&pp);
+        for (r = 0; r < pp.seq[SEQ_NREC]; r++)
+            o += 6u + 3u * (pp.seq[o + 5u] & 63u) + 3u * (pp.seq[o + 5u] >> 7) + (pp.seq[o + 5u] >> 6 & 1u);
+        PEXPECT(o <= SEQ_PX && pp.seq[SEQ_NREC] > 0u, "a full pattern: its steps end before the state");
+        ps_set_b();
+        pat_store[7] = pp;
+        pat_give(7);
+        PEXPECT(ps_is_a(), "a full pattern: its state whole");
+        pat_decode(&pp, &sb);
+        memcpy(sb2.note, sb.note, sizeof sb.note);
+        memcpy(sb2.lid, sb.lid, sizeof sb.lid);
+        pp.st = 0;                               /* (as build 61 reads it: the same steps) */
+        pat_decode(&pp, &sb);
+        PEXPECT(!memcmp(sb2.note, sb.note, sizeof sb.note) && !memcmp(sb2.lid, sb.lid, sizeof sb.lid) &&
+                sb.note[0][0] == 48u, "a full pattern read without its state: the steps as ever");
+    }
+    ui_draw();
+    shot(dir, "pattern_state");
+    printf("pstate: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
     if (argc >= 3 && !strcmp(argv[1], "newses"))
         return cmd_newses(argv[2]);
+    if (argc >= 3 && !strcmp(argv[1], "pstate"))
+        return cmd_pstate(argv[2]);
     if (argc >= 2 && !strcmp(argv[1], "bkserve"))
         return cmd_bkserve();
     if (argc >= 3 && !strcmp(argv[1], "arp"))

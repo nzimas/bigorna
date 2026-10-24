@@ -382,7 +382,7 @@ static void ph_lockval(uint32_t i, uint32_t l, int acc, int32_t *pan)
 /* over the pattern's room: track t's locks go, at random; then the other tracks'; then t's softest notes */
 static void ph_trim(uint32_t t)
 {
-    while (pat_bytes() > PAT_SEQ_ROOM) {
+    while (pat_bytes() > SEQ_PX) {
         uint32_t u, i, j, k = ph_rnd(NSTEP * NPL), found = 0;
         for (u = 0; u < NTRACK && !found; u++) {
             uint32_t tt = (t + u) % NTRACK;

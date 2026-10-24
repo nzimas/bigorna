@@ -16,6 +16,8 @@ looper, and send effects. *Bigorna* is Portuguese for anvil.
 
 Website, browser installer and manual: <https://nzimas.github.io/bigorna/>
 
+Try it without an FM-1, in the browser, on an emulated FM-1: <https://nzimas.github.io/bigorna/try.html>
+
 > [!WARNING]
 > Bigorna is unofficial. It is not made, endorsed or supported by M-VAVE or Elektron, and installing it may void
 > any warranty that applies to your FM-1. See the [disclaimer](#disclaimer).
@@ -216,7 +218,8 @@ reads MUTE MODE). The track buttons then mute instead of choosing: lit, a track 
 let go soon mutes its track or plays it again. Held 1 s, its track is soloed, every other muted; held 1 s again,
 the mutes come back as they were. MUTE mode off, the mutes stay, and the buttons choose tracks again. A muted track
 fades out over ~9 ms, its sends with it; its steps keep playing silently. The chosen track's number is dark grey
-while it is muted. Mutes are kept with the session.
+while it is muted. Mutes are kept with the pattern (and with the session): saving a pattern saves them, and loading
+a pattern gives them back (see Patterns).
 
 ### BREAK
 
@@ -376,7 +379,14 @@ page takes it down.
 
 ## Patterns (ARP)
 
-A session has 16 patterns: every track's steps, lengths, clocks and directions. ARP shows the PATTERNS grid; the
+A session has 16 patterns: every track's steps, lengths, clocks and directions, and (from build 62) each track's
+state when the pattern was saved: muted or not, machine, octave, level, pan, sidechain (SC SOURCE and amount), CHORD
+mode and form, and the arpeggiator (on or off and its settings). Loading a pattern gives that state back with its
+steps; while the sequencer plays, at the moment the pattern starts. Changing any of these marks the pattern as
+changed (its number orange), like editing a step. A pattern saved by build 61 or earlier, or an empty one, has no
+state: loading it leaves the state as it is. The sounds, the send effects, the compressor, the tempo, root and scale,
+and the loops belong to the session, not to a pattern. The state takes 78 bytes of the pattern's 644 for steps
+(566 are left: a step with a note takes 6 bytes, and 3 more for each lock). ARP shows the PATTERNS grid; the
 white keys are the 16 patterns (dim; the one playing brighter). A key let go soon loads its pattern — while the
 sequencer plays, at the end of the chosen track's steps. Held 0.8 s, copies it; another held 0.8 s pastes it there;
 SHIFT and held 0.8 s empties it. ARP held saves the pattern playing. A pattern keeps its edits when another is
@@ -402,7 +412,7 @@ first empty slot's page shows SAVE NEW? with YES chosen: SAVE saves it there and
 left: NO). With all 16 slots taken, NO FREE SLOT shows.
 
 A session holds the whole state of the machine: every track's machine, sounds, octave, level, pan, chord mode and
-mutes, the track chosen, the effects, the tempo, the root and scale, its 16 patterns and the pattern playing, and
+mutes (as they were when it was saved; the pattern playing's own state is applied after it), the track chosen, the effects, the tempo, the root and scale, its 16 patterns and the pattern playing, and
 every loop on every track (notes, length, mute). Loading a session gives all of it back; its loops start at the
 next bar if the sequencer is playing. A session saved by build 37 or earlier has no loops: loading it empties them.
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## Build 62
+
+Added
+- A pattern holds each track's state when it is saved: muted or not, machine, octave, level, pan, sidechain (SC
+  SOURCE and amount), CHORD mode and form, and the arpeggiator (on or off and its eight settings). Loading or
+  switching to the pattern gives the state back; while the sequencer plays, when the pattern starts. ARP held, SAVE
+  of the session, and copying a pattern take the state with the steps.
+
+Changed
+- Changing any of those settings marks the pattern playing as changed (its number orange), as editing a step does;
+  the change is kept in RAM with the pattern while another plays, until the session is saved or loaded.
+- The steps of a pattern have 566 bytes instead of 644: the state takes the last 78 bytes of the pattern's step
+  area. The phrase generator trims to the smaller room. The flash layout, the session format and RAM use are
+  unchanged.
+
+Compatibility
+- Patterns saved by earlier builds load unchanged. They have no state: loading one leaves the state as it is, and a
+  session's own saved mutes and settings apply when it loads, as before.
+- Patterns saved by build 62 load in earlier builds with their steps; those builds ignore the state. A pattern from
+  an earlier build whose steps take more than 566 bytes loses its last steps' locks when it is saved again.
+
 ## Build 61
 
 Added
