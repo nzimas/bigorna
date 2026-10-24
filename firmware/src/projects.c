@@ -492,7 +492,15 @@ static int lop_save(uint32_t k, uint32_t *gen, uint8_t *nsec)
             h[6] = (uint8_t)p->n;
             h[7] = (uint8_t)(p->n >> 8);
             lw_put(h, 8);
-            lw_put(p->ev, p->n * (uint32_t)sizeof(lev_t));
+            {                                    /* (its notes as they play: the transposition in them, build 68) */
+                uint32_t e;
+                int32_t d = lp_trn[t] - lp_ref[t][l];
+                for (e = 0; e < p->n; e++) {
+                    lev_t v = p->ev[e];
+                    v.note = (uint8_t)(d ? scale_move((int32_t)v.note, d) : v.note);
+                    lw_put(&v, sizeof v);
+                }
+            }
         }
     lw_flush();                                  /* (the last, part full) */
     if (lw.err || lw.j != lw.nsec)
@@ -1013,8 +1021,7 @@ static void pat_give(uint32_t k, int follow)
     const pat_t *p = &pat_store[k];
     seq_pend = 0;                                /* (a pattern waiting: not now) */
     pat_decode(p, &sb_tmp);
-    if (follow)
-        lp_follow(sb_tmp.trn);
+    lp_follow(sb_tmp.trn, follow);
     seq_copy_in(&sb_tmp);
     memcpy(ui.gen_den, sb_tmp.den, NTRACK);
     memcpy(ui.gen_cx, sb_tmp.cx, NTRACK);
@@ -1719,7 +1726,6 @@ static void pat_poll(void)
     }
     memcpy(ui.gen_den, sb_next.den, NTRACK);
     memcpy(ui.gen_cx, sb_next.cx, NTRACK);
-    lp_follow(sb_next.trn);                      /* (the loops as its transposition: build 67) */
     memcpy(ui.trn, sb_next.trn, NTRACK);
     pat_cur = seq_pend_k;
     pat_tempo = pat_store[pat_cur].used ? pat_store[pat_cur].tempo : 0;

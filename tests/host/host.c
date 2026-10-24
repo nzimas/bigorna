@@ -3623,6 +3623,7 @@ static int cmd_lfo(const char *dir)
 
 /* transposition (build 51): OCT- / OCT+ the keys' octave in the track's view, the track's steps in the step view,
  * SHIFT every track's; in steps of the scale; kept with the pattern */
+#define LPN(t, l, i) lp_note(t, l, loops[t][l].ev[i].note)   /* (a loop's note as it plays: build 68) */
 #define TEXPECT(c, what) do { if (!(c)) { printf("FAIL trn: %s\n", what); fails++; } } while (0)
 static int cmd_trn(const char *dir)
 {
@@ -3661,14 +3662,15 @@ static int cmd_trn(const char *dir)
         memset(loops, 0, sizeof loops);
         p->n = 2; p->len = 16; p->ev[0].note = 60; p->ev[1].note = 69; p->ev[0].step = 0; p->ev[1].step = 8;
         p->on = 1;
+        lp_ref[0][0] = lp_trn[0] = ui.trn[0];    /* (recorded now: build 68) */
         loops[0][1].n = 1; loops[0][1].ev[0].note = 60;   /* (not on: an empty slot's leftovers) */
         ui.sv = 1;
         ui.sel = 0;
         btn(B_OCTUP, 0);
-        TEXPECT(p->ev[0].note == 62 && p->ev[1].note == 71 && loops[0][1].ev[0].note == 60 && seq_note[0][0] == 62 &&
+        TEXPECT(LPN(0, 0, 0) == 62 && LPN(0, 0, 1) == 71 && loops[0][1].ev[0].note == 60 && seq_note[0][0] == 62 &&
                 ui.trn[0] == 1, "the step view: OCT+ the track's loop up a step of the scale too, with its steps");
         btn(B_OCTDN, 1);
-        TEXPECT(p->ev[0].note == 60 && p->ev[1].note == 69 && seq_note[0][0] == 60 && !ui.trn[0] && ui.trn[1] == 0,
+        TEXPECT(LPN(0, 0, 0) == 60 && LPN(0, 0, 1) == 69 && seq_note[0][0] == 60 && !ui.trn[0] && ui.trn[1] == 0,
                 "SHIFT + OCT-: every track's steps and loops down");
         btn(B_OCTUP, 1);                         /* (back as the tests below had it: track 1 at 0, track 2 at +1) */
         btn(B_OCTDN, 0);
@@ -3704,13 +3706,14 @@ static int cmd_trn(const char *dir)
         lq->ev[1].note = 55;
         lq->ev[1].step = 8;
         lq->on = 1;
+        lp_ref[1][0] = lp_trn[1] = ui.trn[1];    /* (recorded now) */
         pat_give(0, 1);
-        TEXPECT(ui.trn[1] == 1 && lq->ev[0].note == 50 && lq->ev[1].note == 53,
+        TEXPECT(ui.trn[1] == 1 && LPN(1, 0, 0) == 50 && LPN(1, 0, 1) == 53,
                 "pattern 1 in: track 2's loop moved as its transposition, one step down");
         pat_give(1, 1);
-        TEXPECT(ui.trn[1] == 2 && lq->ev[0].note == 52 && lq->ev[1].note == 55, "pattern 2 again: the loop as it was");
+        TEXPECT(ui.trn[1] == 2 && LPN(1, 0, 0) == 52 && LPN(1, 0, 1) == 55, "pattern 2 again: the loop as it was");
         pat_give(1, 0);
-        TEXPECT(lq->ev[0].note == 52, "(a session loaded: the loops as saved, not moved)");
+        TEXPECT(LPN(1, 0, 0) == 52, "(a session loaded: the loops as saved, not moved)");
         {   /* playing: as the pattern is taken in */
             int32_t out[2 * CTL];
             uint32_t j;
@@ -3720,7 +3723,7 @@ static int cmd_trn(const char *dir)
                 mix_block(out);
                 pat_poll();
             }
-            TEXPECT(!seq_pend && pat_cur == 0u && ui.trn[1] == 1 && lq->ev[0].note == 50,
+            TEXPECT(!seq_pend && pat_cur == 0u && ui.trn[1] == 1 && LPN(1, 0, 0) == 50,
                     "playing: pattern 1 taken in, the loop moved with it");
             seq_run = 0;
             pat_give(1, 1);
@@ -4623,6 +4626,89 @@ static int cmd_loopin(const char *dir)
     return fails != 0;
 }
 
+/* (build 68) a pattern with another transposition, switched to while playing: the loops play its transposition from
+ * the step it comes in on (before: from the next, the main loop moving the notes after the sequencer had played) */
+#define XEXPECT(c, what) do { if (!(c)) { printf("FAIL lptrn: %s\n", what); fails++; } } while (0)
+static int lx_sounds(uint32_t t, uint32_t n)
+{
+    uint32_t i;
+    for (i = 0; i < SEQ_HOLD; i++)
+        if (sq_note[t][i] == n)
+            return 1;
+    return 0;
+}
+static void lx_settle(void)                      /* (a few blocks on: a pattern due taken in) */
+{
+    int32_t out[2 * CTL];
+    uint32_t i;
+    for (i = 0; i < 4u; i++) {
+        mix_block(out);
+        pat_poll();
+    }
+}
+static int cmd_lptrn(const char *dir)
+{
+    loop_t *lp = &loops[3][0];
+    uint32_t i;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    ui.scale = 0;                                /* (CHROMATIC: a step a semitone) */
+    for (i = 0; i < NSTEP; i += 4u)
+        seq_note[0][i] = 36;
+    ui.sel = 0;
+    XEXPECT(!pat_save(0), "(pattern 1: no transposition)");
+    ui.trn[3] = 2;
+    XEXPECT(!pat_save(1), "(pattern 2: track 4 at +2)");
+    ui.trn[3] = 0;
+    pat_switch(0);
+    XEXPECT(!ui.trn[3] && !lp_trn[3], "(pattern 1)");
+    btn(B_PLAY, 0);
+    li_until(1);
+    memset(lp, 0, sizeof *lp);                   /* a loop on track 4, a bar, C at its first step (short) */
+    lp->len = 16;
+    lp->n = 1;
+    lp->ev[0].note = 60; lp->ev[0].vel = 100; lp->ev[0].len8 = 4;
+    lp->anchor = 0;
+    lp_ref[3][0] = 0;
+    lp->on = 1;
+    li_until(16);
+    XEXPECT(lx_sounds(3, 60), "pattern 1: the loop's C at bar 2");
+    li_until(20);
+    pat_switch(1);
+    li_until(32);                                /* (bar 3: pattern 2 comes in with the loop's first step) */
+    XEXPECT(lx_sounds(3, 62) && !lx_sounds(3, 60), "pattern 2 in at bar 3: the loop's first step there already at +2 (D)");
+    lx_settle();
+    XEXPECT(pat_cur == 1u && lp_trn[3] == 2, "(pattern 2 playing)");
+    li_until(36);
+    pat_switch(0);
+    li_until(48);
+    XEXPECT(lx_sounds(3, 60) && !lx_sounds(3, 62), "pattern 1 back at bar 4: C at once");
+    lx_settle();
+    XEXPECT(pat_cur == 0u && !lp_trn[3], "(pattern 1 playing)");
+    /* the session saved at pattern 2: the loop as it plays there; loaded, the same */
+    pat_switch(1);
+    li_until(64);
+    lx_settle();
+    XEXPECT(pat_cur == 1u && !prj_save(2), "(session 3 saved, at pattern 2)");
+    XEXPECT(lp->ev[0].note == 60 && lp_ref[3][0] == 0, "(in RAM the loop as recorded)");
+    XEXPECT(!prj_load(2) && pat_cur == 1u && lp->ev[0].note == 62 && lp_ref[3][0] == 2 && lp_note(3, 0, 62) == 62,
+            "loaded: the loop saved as it played (D, at +2), played the same");
+    btn(B_PLAY, 0);
+    {
+        int32_t out[2 * CTL];
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+    }
+    pat_switch(0);
+    XEXPECT(lp_note(3, 0, lp->ev[0].note) == 60, "and pattern 1 from there: C");
+    (void)dir;
+    printf("lptrn: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -4634,6 +4720,8 @@ int main(int argc, char **argv)
         return cmd_brksave(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "loopin"))
         return cmd_loopin(argv[2]);
+    if (argc >= 3 && !strcmp(argv[1], "lptrn"))
+        return cmd_lptrn(argv[2]);
     if (argc >= 2 && !strcmp(argv[1], "bkserve"))
         return cmd_bkserve();
     if (argc >= 3 && !strcmp(argv[1], "arp"))

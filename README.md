@@ -173,9 +173,11 @@ scale's next. The transposition shows at the top right, under the octave, in the
 and TRN with its value on the screen as it changes. It is part of the pattern: the moved notes and the count are
 saved with it and with the session, and a copied pattern takes them along. A loop's notes are moved in place and
 saved with the session (loops belong to the session, not to a pattern; a loop being recorded is left as it is). The
-loops follow the transposition of the pattern playing: when another pattern comes in, each track's loops move by the
-difference between its transposition and the one before, so a pattern saved without transposition plays its loops
-as they were before the transposition. The keys' octave is left as it is.
+loops follow the transposition of the pattern playing: when another pattern comes in, each track's loops play moved
+by the difference between its transposition and the one their notes were recorded at, from the step the pattern
+comes in on, so a pattern saved without transposition plays its loops as they were before the transposition. (In
+RAM a loop keeps its notes as recorded and is moved as it plays; a saved session holds its loops as they play in the
+pattern it was saved playing.) The keys' octave is left as it is.
 
 ### CHORD mode
 

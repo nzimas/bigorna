@@ -1,5 +1,21 @@
 # Changelog
 
+## Build 68
+
+Fixed
+- A pattern with another transposition, switched to while playing: its loops played the new transposition from
+  their second note, not the first. The loop notes were moved by the main loop after the sequencer had already played
+  the first one. Now the sequencer applies the new transposition to the loops at the step the pattern comes in on,
+  including when the track's clock runs a little behind the tempo's 16ths.
+
+Changed
+- Loops keep their notes as recorded in RAM and are transposed as they play (by the track's transposition less the
+  one they were recorded at), instead of being rewritten in place.
+- At the step a waiting pattern comes in on, the sequencer takes the pattern in before playing that step's loop notes.
+
+Compatibility
+- Nothing saved changes. A saved session still holds its loops as they play in the pattern it was saved playing.
+
 ## Build 67
 
 Fixed

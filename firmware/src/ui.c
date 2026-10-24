@@ -366,31 +366,19 @@ static int32_t scale_move(int32_t n, int32_t d)
 }
 /* transposition (build 51): track t's steps moved d steps of the scale (CHROMATIC: semitones), each note to the
  * scale's next; TRN counts how far, kept with the pattern. Its loops too (build 54), each note the same way -- not
- * the one being recorded -- kept with the session */
+ * the one being recorded -- kept with the session (from build 68 played so, kept as recorded: lp_trn) */
 #define TRN_MAX 24
-static int lp_trn(uint32_t t, int32_t d)         /* (track t's loops moved d steps; any moved) */
+/* (build 67) a pattern coming in, its transpositions to[]: the loops follow them as its steps do (build 68: played
+ * so, tracks.c's lp_trn); a session loaded (keep 0), its loops as saved, at them */
+static void lp_follow(const int8_t *to, int keep)
 {
-    uint32_t l, e;
-    int any = 0;
-    for (l = 0; d && l < NLOOP; l++) {
-        loop_t *p = &loops[t][l];
-        if (!p->on || (ui.lrec && ui.lt == t && ui.ll == l))
-            continue;
-        for (e = 0; e < p->n; e++)
-            p->ev[e].note = (uint8_t)scale_move((int32_t)p->ev[e].note, d);
-        any = 1;
+    uint32_t t, l;
+    for (t = 0; t < NTRACK; t++) {
+        for (l = 0; !keep && l < NLOOP; l++)
+            lp_ref[t][l] = to[t];
+        lp_trn[t] = to[t];
     }
-    return any;
-}
-/* (build 67) a pattern coming in, its transpositions to[]: each track's loops moved by its own less the one playing,
- * so that the loops follow the pattern's transposition as its steps do */
-static void lp_follow(const int8_t *to)
-{
-    uint32_t t;
-    for (t = 0; t < NTRACK; t++)
-        lp_trn(t, (int32_t)to[t] - ui.trn[t]);
-}
-static int32_t trn_track(uint32_t t, int32_t d)
+}static int32_t trn_track(uint32_t t, int32_t d)
 {
     int32_t v = clampi(ui.trn[t] + d, -TRN_MAX, TRN_MAX);
     uint32_t i;
@@ -400,9 +388,11 @@ static int32_t trn_track(uint32_t t, int32_t d)
     for (i = 0; i < NSTEP; i++)
         if (seq_note[t][i])
             seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], d);
-    if (lp_trn(t, d))
-        prj_dirty = 1;
     ui.trn[t] = (int8_t)v;
+    lp_trn[t] = (int8_t)v;                       /* (its loops played so: build 68) */
+    for (i = 0; i < NLOOP; i++)
+        if (loops[t][i].on)
+            prj_dirty = 1;
     pat_dirty = 1;
     return d;
 }
@@ -734,6 +724,7 @@ static void loop_end(void)
         p->ev[j] = e;
     }
     p->len = (uint16_t)len;
+    lp_ref[ui.lt][ui.ll] = lp_trn[ui.lt];        /* (its notes as played, at the transposition playing: build 68) */
     p->anchor = ui.lstart;                       /* (its first step where recording began: on now, at (q - lstart) % len) */
     p->mute = 0;
     p->cur = 0;

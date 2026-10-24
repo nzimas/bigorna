@@ -1148,6 +1148,17 @@ static volatile uint32_t seq_gcount;      /* the steps played since PLAY (the fi
 /* (build 65) a track a pattern change unmuted: each of its loops silent until it comes round to its first step, then
  * on in its place (a bit a loop; set at the switch -- the ISR's, playing; the main loop's, stopped -- cleared here) */
 static volatile uint8_t loop_wait[NTRACK];
+/* (build 68) a loop's notes kept as recorded, at the transposition lp_ref (the track's TRN as it was recorded, or as
+ * the session was saved); played moved by the track's transposition playing, lp_trn, less it -- so that the loops
+ * follow a pattern's transposition from its first step (lp_trn: set by the main loop, and by the sequencer as a
+ * pattern comes in) */
+static int8_t lp_ref[NTRACK][NLOOP];
+static volatile int8_t lp_trn[NTRACK];
+static uint32_t lp_note(uint32_t t, uint32_t l, uint32_t n)
+{
+    int32_t d = lp_trn[t] - lp_ref[t][l];
+    return d ? (uint32_t)sc_move((int32_t)n, d) : n;
+}
 static void loop_wait_set(uint32_t t)
 {
     uint32_t l, m = 0;
@@ -1167,7 +1178,7 @@ static void loop_kick(void)                      /* (each block: a loop's first 
             loop_wait[t] &= (uint8_t)~(1u << l);  /* (its first step: no more waiting) */
             for (p->cur = 0; p->cur < p->n && p->ev[p->cur].step == 0u; p->cur++)
                 if (!p->mute)
-                    seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
+                    seq_sound(t, lp_note(t, l, p->ev[p->cur].note), p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
             p->kick = 0;
         }
 }
@@ -1189,7 +1200,7 @@ static void loop_step(void)
                 p->cur++;
             for (; p->cur < p->n && p->ev[p->cur].step == ph; p->cur++)
                 if (!p->mute && !(loop_wait[t] >> l & 1u))
-                    seq_sound(t, p->ev[p->cur].note, p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
+                    seq_sound(t, lp_note(t, l, p->ev[p->cur].note), p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
         }
 }
 /* a pattern's steps whole, as the sequencer plays them (projects.c fills one, the ISR takes it in) */
@@ -1476,15 +1487,9 @@ static void seq_block(void)
                 note_off(t, sq_note[t][i], SRC_SEQ);
                 sq_note[t][i] = 0;
             }
-    if (seq_acc >= SEQ_16TH) {
-        seq_acc -= SEQ_16TH;
-        seq_gstep = (uint8_t)((seq_gstep + 1u) & 15u);
-        seq_gcount++;
-        met_tick(seq_gstep);
-        brk_tick();
-        loop_step();
-    }
-    if (seq_pend == 1u && seq_tacc[seq_pend_t] >= SEQ_STEP8 && seq_wraps(seq_pend_t)) {   /* the pattern waiting, in */
+    /* the pattern waiting, in -- before the tempo's 16th that comes with it, so that its loops play that step as the
+     * pattern has them (build 68) */
+    if (seq_pend == 1u && seq_tacc[seq_pend_t] >= SEQ_STEP8 && seq_wraps(seq_pend_t)) {
         seq_copy_out(&sb_old);
         seq_copy_in(&sb_next);
         for (t = 0; t < NTRACK; t++) {
@@ -1496,6 +1501,8 @@ static void seq_block(void)
             seq_tacc[t] = SEQ_STEP8;
         }
         memset(seq_plays, 0, sizeof seq_plays);
+        for (t = 0; t < NTRACK; t++)             /* (its transpositions: the loops' from now) */
+            lp_trn[t] = sb_next.trn[t];
         if (seq_pend_mu & 0x80u) {               /* (build 65) its mutes, now: a track it unmutes, its notes from the
                                                   * muted time let go, its loops waiting for their first step (one at
                                                   * its first step now: played at once) */
@@ -1508,7 +1515,7 @@ static void seq_block(void)
                     loop_wait_set(t);
                     for (l = 0; l < NLOOP; l++) {
                         loop_t *p = &loops[t][l];
-                        if (p->on && p->len && (int32_t)(seq_gcount - p->anchor) >= 0 &&
+                        if (seq_acc < SEQ_16TH && p->on && p->len && (int32_t)(seq_gcount - p->anchor) >= 0 &&
                             (seq_gcount - p->anchor) % p->len == 0u) {
                             loop_wait[t] &= (uint8_t)~(1u << l);
                             p->kick = 1;
@@ -1521,6 +1528,19 @@ static void seq_block(void)
         }
         RING_PUBLISH();
         seq_pend = 2;
+    }
+    if (seq_acc >= SEQ_16TH) {
+        seq_acc -= SEQ_16TH;
+        seq_gstep = (uint8_t)((seq_gstep + 1u) & 15u);
+        seq_gcount++;
+        met_tick(seq_gstep);
+        brk_tick();
+        if (seq_pend == 1u && seq_wraps(seq_pend_t) && seq_tacc[seq_pend_t] >= SEQ_STEP8 - SEQ_STEP8 / 4u)
+            for (t = 0; t < NTRACK; t++)         /* (the pattern waiting comes in within a quarter step, the track's
+                                                  * clock a little behind the tempo's: its transpositions for the loops
+                                                  * already, build 68) */
+                lp_trn[t] = sb_next.trn[t];
+        loop_step();
     }
     {   /* BREAK let go: its ratchets and echoes still to come dropped at once, so the pattern is back as the key
          * comes up (the notes sounding ring on) */
