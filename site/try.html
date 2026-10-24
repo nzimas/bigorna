@@ -1,0 +1,47 @@
+<h1>Try it</h1>
+<p class="lead">Bigorna in the browser, without an FM-1. Press Start: the page boots the same package the installer
+  writes ({BUILD}), on an emulated FM-1 — its processor, screen, keys, knobs and audio.</p>
+
+<div class="emu">
+  <iframe id="emu" src="try/?fw={FW_ID}&amp;embed=1&amp;mhz=240" title="Bigorna on an emulated FM-1"
+          allow="autoplay; midi"></iframe>
+</div>
+<p class="note"><a href="try/?fw={FW_ID}&amp;mhz=240">The emulator on a page of its own</a>, with its guide.</p>
+
+<h2>Playing it</h2>
+<p>Click or drag the panel as you would press and turn the FM-1's: drag a knob up or down, or scroll over it.
+  A key held with the mouse stays held while you press another on the computer's keyboard — hold SHIFT (the last
+  black key) with the mouse, then press <kbd>7</kbd> for SHIFT + HOME. The panel carries the FM-1's own labels; under
+  Bigorna the six top buttons are tracks 1 to 6 (see <a href="manual.html#the-panel">The panel</a>).</p>
+
+<table>
+  <thead><tr><th>Computer key</th><th>Under Bigorna</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>1</kbd> … <kbd>6</kbd></td><td>Tracks 1 to 6</td></tr>
+    <tr><td><kbd>7</kbd> <kbd>8</kbd> <kbd>9</kbd> <kbd>0</kbd></td><td>HOME, SAVE, ARP, SEQ</td></tr>
+    <tr><td><kbd>Space</kbd>, <kbd>R</kbd></td><td>PLAY, REC</td></tr>
+    <tr><td><kbd>Z</kbd>, <kbd>X</kbd></td><td>OCT−, OCT+</td></tr>
+    <tr><td><kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> <kbd>;</kbd> <kbd>'</kbd></td><td>White keys</td></tr>
+    <tr><td><kbd>W</kbd>, <kbd>E</kbd></td><td>MIDI LEARN, the arpeggiator (the 4th and 5th black keys)</td></tr>
+    <tr><td><kbd>O</kbd>, <kbd>P</kbd></td><td>STEP, EDIT</td></tr>
+    <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>SELECT (the track's level)</td></tr>
+    <tr><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>PRESETS (the track's machine)</td></tr>
+    <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>ALGORITHM (the track's pan)</td></tr>
+  </tbody>
+</table>
+
+<h2>What to know</h2>
+<ul>
+  <li>The emulator starts at the FM-1's own clock, 240 MHz. If the sound breaks up, choose a lower clock below the
+    panel: Bigorna then has fewer cycles, and with many voices playing it may drop some.</li>
+  <li>Sessions saved with SAVE stay in this browser, for this build only; a new build starts empty. The emulator's
+    full page can export them to a file.</li>
+  <li>MIDI in works in Chrome, Edge and Firefox (choose the input below the panel). There is no MIDI out, no USB and no
+    installing from here: to put Bigorna on an FM-1, see <a href="install.html">Install</a>.</li>
+  <li>It is an emulation: timing, load and sound are close to the FM-1's, not the same.</li>
+</ul>
+
+<h2>The emulator</h2>
+<p>The emulator is <a href="https://github.com/joakimeriksson/fm1-emu">fm1-emu</a>, by Joakim Eriksson (MIT
+  licence), copied here unchanged with a catalog that holds only Bigorna. It is not made by M-VAVE, and Bigorna's
+  author did not write it.</p>

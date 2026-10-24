@@ -18,6 +18,7 @@ copyright headers; changes are noted in each file.
 | The patch recipes (`gen.c`): ported from SynthSeeder, by the same author | GPL-3.0-only (in this firmware) | |
 | Terminus Bold 8x16, Atkinson Hyperlegible Bold (the screen's type) | SIL OFL 1.1 | `assets/fonts/` |
 | Michroma Regular (the logo's lettering, turned into paths by `tools/make_logo.py`; the font is not in the logo files) | SIL OFL 1.1 | `assets/fonts/`, <https://github.com/google/fonts/tree/main/ofl/michroma> |
+| The website's emulator, `docs/try/` (except its `firmwares.json` and `smk37/firmwares.json`): **fm1-emu** (Copyright (c) 2026 Joakim Eriksson), copied unchanged; not part of the firmware | MIT | `docs/try/LICENSE`, <https://github.com/joakimeriksson/fm1-emu> |
 | JieLi AC79 SDK: `uboot.boot`, `cfg_tool.bin`, `eq_cfg_hw.bin` are read from your SDK checkout at build time and placed in the package; no SDK file is in this tree | Apache-2.0 | <https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK> |
 
 The machines follow the behaviour and parameters of the Elektron Digitone II as its manual describes them and as
