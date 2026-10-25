@@ -10,8 +10,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Big+Shoulders+Display:wght@700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/site.css?v=a6d62f8fee">
-<script src="js/demo.js?v=22587db833" defer></script>
+<link rel="stylesheet" href="css/site.css?v=03af89f2d5">
+<script src="js/demo.js?v=6f607b87c1" defer></script>
 </head>
 <body>
 <div class="layout">
@@ -55,17 +55,38 @@
   </div>
 </div>
 
-<section class="demo riveted" id="demo" aria-label="Demo pattern"
-         data-src="assets/demo/pattern-7.mp3" data-loop-start="0.5" data-loop-end="11.794127">
-  <button class="demo-play" type="button" aria-label="Play the demo pattern" aria-pressed="false">
-    <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
-    <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="1"/></svg>
-  </button>
-  <div class="demo-text">
-    <p class="demo-title">Demo pattern</p>
-    <p class="demo-meta"><span class="demo-state">Six tracks on an FM-1, 170 BPM</span></p>
+<section class="demo riveted" id="demo" aria-label="Demo patterns">
+  <div class="demo-head">
+    <p class="demo-title">Demo patterns</p>
+    <p class="demo-state">Six tracks on an FM-1</p>
   </div>
   <canvas class="demo-scope" aria-hidden="true"></canvas>
+  <ol class="demo-list">
+    <li data-src="assets/demo/session-3.mp3" data-loop-start="0.5" data-loop-end="11.794127">
+      <button class="demo-play" type="button" aria-label="Play Session 3, pattern 7" aria-pressed="false">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
+        <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="1"/></svg>
+      </button>
+      <span class="demo-name">Session 3, pattern 7</span>
+      <span class="demo-bpm">170 BPM</span>
+    </li>
+    <li data-src="assets/demo/session-2.mp3" data-loop-start="0.5" data-loop-end="27.928571">
+      <button class="demo-play" type="button" aria-label="Play Session 2, pattern 1" aria-pressed="false">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
+        <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="1"/></svg>
+      </button>
+      <span class="demo-name">Session 2, pattern 1</span>
+      <span class="demo-bpm">140 BPM</span>
+    </li>
+    <li data-src="assets/demo/session-1.mp3" data-loop-start="0.5" data-loop-end="14.722222">
+      <button class="demo-play" type="button" aria-label="Play Session 1, pattern 1" aria-pressed="false">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
+        <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="1"/></svg>
+      </button>
+      <span class="demo-name">Session 1, pattern 1</span>
+      <span class="demo-bpm">135 BPM</span>
+    </li>
+  </ol>
 </section>
 
 <h2>Features</h2>
@@ -182,6 +203,6 @@
     </footer>
   </div>
 </div>
-<script src="js/menu.js?v=a6d62f8fee"></script>
+<script src="js/menu.js?v=03af89f2d5"></script>
 </body>
 </html>

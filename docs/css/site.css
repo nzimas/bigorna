@@ -99,35 +99,40 @@ p.note { color: var(--dim); font-size: 15px; }
 .btn.primary:hover { background: #fff; border-color: #fff; color: #111; }
 .btn[disabled] { opacity: 0.35; cursor: not-allowed; }
 
-/* the demo pattern: a play button, its name, a spectrum while it plays (js/demo.js) */
-.demo { position: relative; display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 22px;
-        margin: 34px 0 8px; padding: 22px 30px; min-height: 112px; overflow: hidden;
+/* the demo patterns: one plays at a time, looped until stopped; a spectrum while one plays (js/demo.js) */
+.demo { position: relative; margin: 34px 0 8px; padding: 24px 30px 14px; overflow: hidden;
         background-color: #101114; border: 1px solid var(--line); border-top: 3px solid #3a3e45;
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 40px -24px rgba(0, 0, 0, 0.9); }
-.demo-play { position: relative; z-index: 1; width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center;
-             border: 2px solid var(--hot); background: var(--hot); color: #111; cursor: pointer; padding: 0;
-             transition: transform 0.12s ease, background-color 0.15s ease, box-shadow 0.2s ease;
-             box-shadow: 0 0 0 6px rgba(210, 213, 218, 0.06); }
-.demo-play:hover { background: #fff; border-color: #fff; transform: scale(1.04); }
-.demo-play:active { transform: scale(0.97); }
-.demo-play:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
-.demo-play svg { width: 28px; height: 28px; fill: currentColor; }
-.demo-play .i-stop, .demo.on .demo-play .i-play { display: none; }
-.demo.on .demo-play .i-stop { display: block; }
-.demo.on .demo-play { background: transparent; color: var(--hot); box-shadow: 0 0 0 6px rgba(210, 213, 218, 0.1); }
-.demo.on .demo-play:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
-.demo.wait .demo-play { opacity: 0.6; cursor: progress; }
-.demo-text { position: relative; z-index: 1; min-width: 0; }
+.demo-head { position: relative; z-index: 1; }
 .demo-title { margin: 0; font-family: var(--head); font-weight: 800; font-size: 34px; line-height: 1; letter-spacing: 0.05em;
               text-transform: uppercase; color: var(--steel); }
-.demo-meta { margin: 8px 0 0; color: var(--dim); font-size: 15px; letter-spacing: 0.02em; white-space: nowrap; }
-.demo-scope { position: absolute; right: 30px; top: 16px; width: 44%; height: calc(100% - 32px); opacity: 0.9;
-              -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%); mask-image: linear-gradient(90deg, transparent, #000 22%); }
+.demo-state { margin: 8px 0 0; color: var(--dim); font-size: 15px; letter-spacing: 0.02em; }
+.demo-scope { position: absolute; right: 30px; top: 18px; width: 46%; height: 62px; opacity: 0.9;
+              -webkit-mask-image: linear-gradient(90deg, transparent, #000 25%); mask-image: linear-gradient(90deg, transparent, #000 25%); }
+.demo-list { list-style: none; margin: 18px 0 0; padding: 0; position: relative; z-index: 1; }
+.demo-list li { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; padding: 10px 0;
+                border-top: 1px solid var(--line); }
+.demo-name { font-weight: 700; color: var(--fg); }
+.demo-bpm { color: var(--dim); font-size: 15px; font-variant-numeric: tabular-nums; }
+.demo-list li.on .demo-name { color: #fff; }
+.demo-play { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; padding: 0;
+             border: 2px solid var(--hot); background: var(--hot); color: #111; cursor: pointer;
+             transition: transform 0.12s ease, background-color 0.15s ease, box-shadow 0.2s ease;
+             box-shadow: 0 0 0 5px rgba(210, 213, 218, 0.06); }
+.demo-play:hover { background: #fff; border-color: #fff; transform: scale(1.05); }
+.demo-play:active { transform: scale(0.96); }
+.demo-play:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.demo-play svg { width: 20px; height: 20px; fill: currentColor; }
+.demo-play .i-stop, li.on .demo-play .i-play { display: none; }
+li.on .demo-play .i-stop { display: block; }
+li.on .demo-play { background: transparent; color: var(--hot); box-shadow: 0 0 0 5px rgba(210, 213, 218, 0.1); }
+li.on .demo-play:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+li.wait .demo-play { opacity: 0.6; cursor: progress; }
 @media (max-width: 600px) {
-  .demo { grid-template-columns: auto 1fr; padding: 18px 20px; gap: 16px; }
+  .demo { padding: 20px 18px 10px; }
   .demo-title { font-size: 28px; }
-  .demo-meta { white-space: normal; }
-  .demo-scope { right: 0; top: 0; width: 100%; height: 100%; opacity: 0.25; }
+  .demo-scope { right: 18px; width: 50%; height: 48px; opacity: 0.5; }
+  .demo-list li { gap: 14px; }
 }
 
 .features { display: grid; grid-template-columns: max-content 1fr; gap: 8px 26px; margin: 16px 0 0; }
