@@ -202,6 +202,26 @@ main .project h2 { margin: 0; padding: 0; border: 0; font-size: 32px; }
        color: var(--dim); font-size: 13px; font-weight: 700; vertical-align: 2px; }
 .tag.current { color: var(--fg); border-color: var(--steel); }
 
+/* apps */
+.apps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin: 34px 0 0; }
+.app { --accent: var(--hot); min-width: 0; background-color: var(--plate2); border: 1px solid var(--line);
+       border-top: 4px solid var(--steel); padding: 24px 28px 26px; }
+.app-head { display: flex; align-items: center; gap: 18px; }
+.app-icon { width: 72px; height: 72px; border-radius: 16px; flex: none; }
+main .app h2 { margin: 0 0 4px; padding: 0; border: 0; font-size: 32px; }
+main .app h3 { margin: 26px 0 8px; font-size: 22px; }
+.app > p { margin: 16px 0 0; }
+.app-art { display: block; width: 100%; height: auto; margin: 20px 0 0; border: 1px solid var(--line); }
+.stores { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 20px 0 0; }
+.stores a { display: block; line-height: 0; }
+.stores img { height: 44px; width: auto; }
+.app-shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 24px 0 0; }
+.app-shots a { display: block; line-height: 0; border: 1px solid var(--line); overflow: hidden; }
+.app-shots img { width: 100%; height: auto; }
+.app-shots a:hover, .app-shots a:focus-visible { border-color: var(--accent); }
+.app-features { margin: 0; padding-left: 1.2em; list-style: disc; }
+.app-features li { margin: 6px 0; }
+
 /* the installer */
 .panel { background-color: var(--plate2); border: 1px solid var(--line); padding: 24px 28px; margin-top: 20px; }
 .status { font-size: 24px; font-weight: 700; margin: 0 0 8px; font-family: var(--head); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -241,6 +261,10 @@ main .project h2 { margin: 0; padding: 0; border: 0; font-size: 32px; }
   .editions li { grid-template-columns: 1fr; }
   .editions li > .btn { justify-self: start; }
   .ed-links { justify-content: flex-start; }
+  .app { padding: 20px 18px 22px; }
+  main .app h2 { font-size: 26px; }
+  .app-icon { width: 56px; height: 56px; border-radius: 13px; }
+  .app-shots { grid-template-columns: minmax(0, 1fr); }
   .donate-side { display: none; }
   .donate-foot { display: flex; margin: 24px 0 8px; padding-top: 24px; }
   .content { padding: 16px 12px 0; }

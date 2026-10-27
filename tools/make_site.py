@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # BIGORNA (as TONITOR's): the website's generated parts, in docs/ (GitHub Pages):
-#   docs/index.html, docs/install.html, docs/projects.html   site/*.html in the common frame (the home page's demo
+#   docs/index.html, docs/install.html, docs/projects.html, docs/apps.html   site/*.html in the common frame (the home page's demo
 #                        pattern: docs/assets/demo/, tools/render_demo.mjs then tools/make_loop.py; its player js/demo.js)
 #   docs/manual.html     the README's manual (from "# Manual" to "# Building from source")
 #   docs/changelog.html  CHANGELOG.md
@@ -138,7 +138,8 @@ def to_html(md, toc):
 def page(title, current, body, desc, head=""):
     """every page: the menu down the left (above the content on a narrow screen), the content, the footer"""
     nav = [("./", "Home"), ("screens.html", "Screens"), ("install.html", "Install"), ("backup.html", "Backup"), ("manual.html", "Manual"),
-           ("changelog.html", "Changelog"), ("projects.html", "Other projects"), (REPO, "GitHub")]
+           ("changelog.html", "Changelog"), ("projects.html", "Other projects"), ("apps.html", "Apps"),
+           (REPO, "GitHub")]
     links = "\n      ".join(f'<a href="{h}"' + (' aria-current="page"' if n == current else "") + f">{n}</a>"
                            for h, n in nav)
     return f"""<!doctype html>
@@ -224,6 +225,9 @@ def fragments():
         "Other projects by Nuno Zimas", "Other projects", (src / "projects.html").read_text(),
         "Firmware and instruments by Nuno Zimas for the M-VAVE FM-1, the Elektron Model:Cycles and Digitone II, the "
         "Ableton Move, the Akai MPC One and macOS."))
+    (DOCS / "apps.html").write_text(page(
+        "Apps by Nuno Zimas", "Apps", (src / "apps.html").read_text(),
+        "Music apps by Nuno Zimas for phones and tablets: Vascular, a touch instrument for iOS and Android."))
 
 
 def manual():
@@ -268,4 +272,4 @@ if __name__ == "__main__":
     manual()
     changelog()
     firmware(Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build" / "bigorna.fwsc")
-    print("site: docs/index.html, install.html, backup.html, manual.html, changelog.html, projects.html")
+    print("site: docs/index.html, install.html, backup.html, manual.html, changelog.html, projects.html, apps.html")
