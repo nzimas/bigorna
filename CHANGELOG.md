@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 70
+
+Changed
+- The step view: the steps are silent. Pressing or holding a step, or turning its note, no longer plays it. The notes
+  are heard from the keys with the step view off.
+- 14 more scales, from Tonitor's list: MINOR MELODIC, ENIGMATIC, LYDIAN, MIXOLYDIAN, LOCRIAN, BLUES, HUNGARIAN MINOR,
+  DOUBLE HARMONIC, PHRYGIAN DOMINANT, JAPANESE HIRAJOSHI, JAPANESE IWATO, PELOG, OCTATONIC, PROMETHEUS (24 in all).
+  They come after the ten there were, so the scales already chosen keep their numbers.
+
+Added
+- SHIFT + STEP (the 3rd black key from the right) empties the chosen track's 16 steps: notes, velocities, lengths,
+  conditions, ratchets, MOD settings and locks. The track's length, clock, direction and transposition, its loops and
+  the other tracks are kept. The step view stays on or off as it was.
+
+Compatibility
+- Nothing saved changes. A session saved with one of the new scales, loaded by build 69 or earlier, plays CHROMATIC.
+
 ## Build 69
 
 Fixed

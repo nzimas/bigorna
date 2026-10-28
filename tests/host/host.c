@@ -686,7 +686,7 @@ static int cmd_projects(const char *dir)
     /* the steps: SHIFT held, the white keys are the chosen track's; the last note played goes in */
     btn(B_GLO, 0);
     {
-        uint32_t kw[16], k, n0, n1, i;
+        uint32_t kw[16], k, n0, n1, i, w0;
         int32_t out[2 * CTL];
         for (k = 0; k < NKEY; k++)
             if (white_ix(k) >= 0)
@@ -703,13 +703,16 @@ static int cmd_projects(const char *dir)
         EXPECT(ui.trig, "the 3rd black key: TRIG on");
         ui_leds();
         EXPECT(host_led[14u + KEY_STEP], "STEP lit");
+        w0 = ev_w;
         fm1_in.notes |= 1u << kw[0];
         ui_input();
         EXPECT(seq_note[5][0] == n0 && pat_dirty, "the step view and an empty step: the last note there");
+        EXPECT(ev_w == w0, "a step pressed: silent (build 70)");
         EXPECT(seq_vel[5][0] == VEL_DEF && seq_glen[5][0] == GLEN_DEF && !seq_cond[5][0], "a new step: the defaults");
         turn(EN_K1, 1);                          /* (a step held, EDIT not up: the knobs its note, velocity ..) */
         n1 = seq_note[5][0];
         EXPECT(n1 > n0 && in_scale((int32_t)n1), "TRIG, KNOB 1: the note up the scale");
+        EXPECT(ev_w == w0, "its note turned: still silent");
         turn(EN_K2, -20);
         turn(EN_K3, 2);
         turn(EN_K4, CD_AB - CD_NONE + 2);        /* 1:2, !1:2, 2:2 */
@@ -771,6 +774,34 @@ static int cmd_projects(const char *dir)
         for (i = 0; i < 4u; i++)
             mix_block(out);
         EXPECT(!seq_run, "PLAY again: stopped");
+        {   /* SHIFT + STEP: the track's steps emptied, the view as it was; kept again for what follows */
+            uint8_t keep[NSTEP], kv[NSTEP], kc[NSTEP], kg[NSTEP];
+            uint32_t any = 0, keep0 = 0x55u;
+            seq_note[0][0] = (uint8_t)keep0;     /* (another track's step: kept) */
+            for (i = 0; i < NSTEP; i++) {
+                keep[i] = seq_note[5][i];
+                kv[i] = seq_vel[5][i];
+                kc[i] = seq_cond[5][i];
+                kg[i] = seq_glen[5][i];
+            }
+            (void)pl_set(5, 8, PL_PAN, 20);
+            fm1_in.notes |= 1u << KEY_SHIFT;
+            ui_input();
+            tap(KEY_STEP);
+            fm1_in.notes &= ~(1u << KEY_SHIFT);
+            ui_input();
+            for (i = 0; i < NSTEP; i++)
+                any |= seq_note[5][i] | (seq_cond[5][i] != CD_NONE) | (seq_lid[5][i][0] != PL_NONE);
+            EXPECT(!any && !step_view() && seq_note[0][0] == keep0, "SHIFT + STEP: the track's steps emptied, the view off still");
+            for (i = 0; i < NSTEP; i++) {
+                seq_note[5][i] = keep[i];
+                seq_vel[5][i] = kv[i];
+                seq_cond[5][i] = kc[i];
+                seq_glen[5][i] = kg[i];
+            }
+            seq_note[0][0] = 0;
+            pat_dirty = 1;
+        }
         /* ARP held: the pattern (1) saved, its steps with it; the grid: ARP loads the one chosen */
         fm1_in.buttons |= 1u << PANEL_BTN[B_ARP];
         host_press = 1u << PANEL_BTN[B_ARP];

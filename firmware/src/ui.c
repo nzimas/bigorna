@@ -26,8 +26,10 @@
  *                             held go to it, it plays them in turn (build 52); held 0.8 s: its page (ARP) up or down
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
- *                             16 steps: a key on an empty step puts the track's last note played there; a key on a
- *                             step that holds a note, let go soon (0.4 s) and nothing changed, empties it. In the
+ *                             16 steps, silent (build 70): a key on an empty step puts the track's last note played
+ *                             there; a key on a step that holds a note, let go soon (0.4 s) and nothing changed,
+ *                             empties it. SHIFT + STEP: the chosen track's 16 steps emptied, with their locks (its
+ *                             length, clock, direction and loops kept), the view as it was. In the
  *                             view the black keys, lit dimly:
  *                               the 1st   a new phrase for the track (phrase.c): its steps, conditions and locks;
  *                                         SHIFT and it: new locks on the steps the track holds, nothing else changed
@@ -164,8 +166,6 @@ static struct {
         int8_t mut;
         int16_t lv[NPL];
     } sclip;
-    uint8_t step_heard;          /* .. the note it sounds as it is held (0 none) */
-    uint8_t step_hn[3];          /* .. the notes (its chord's) */
     uint8_t qk, qk_long;         /* the PATTERNS grid: the white key held (KEY_NONE none); held 0.8 s, copied (SHIFT:
                                   * the pattern playing saved there); SHIFT and the 1st black key held, pressed, emptied */
     uint8_t rec;                 /* REC_* */
@@ -303,15 +303,31 @@ static sound_t *cur(void) { return &ui.snd[ui.sel][ui.eng[ui.sel]]; }
 #define LEVEL_UNITY 20
 #define PAN_MAX 20
 static const int8_t PAN_DEF[NTRACK] = {0, 6, -6, 10, -10, 3};
-#define NSCALE 10
+#define NSCALE 24                /* (new ones at the end: sessions keep the number; after TONITOR's list) */
 static const char *const SCALE_L1[NSCALE] = {"CHROMATIC", "MAJOR", "MINOR", "MINOR", "DORIAN", "PHRYGIAN", "MINOR",
-                                             "MAJOR", "WHOLE", "JAPANESE"};
-static const char *const SCALE_L2[NSCALE] = {"", "", "NATURAL", "HARMONIC", "", "", "PENTA", "PENTA", "TONE", "IN"};
-static const uint8_t SCALE_N[NSCALE] = {12, 7, 7, 7, 7, 7, 5, 5, 6, 5};
+    "MAJOR", "WHOLE", "JAPANESE", "MINOR", "ENIGMATIC", "LYDIAN", "MIXOLYDIAN", "LOCRIAN", "BLUES", "HUNGARIAN",
+    "DOUBLE", "PHRYGIAN", "JAPANESE", "JAPANESE", "PELOG", "OCTATONIC", "PROMETHEUS"};
+static const char *const SCALE_L2[NSCALE] = {"", "", "NATURAL", "HARMONIC", "", "", "PENTA", "PENTA", "TONE", "IN",
+    "MELODIC", "", "", "", "", "", "MINOR", "HARMONIC", "DOMINANT", "HIRAJOSHI", "IWATO", "", "", ""};
+static const uint8_t SCALE_N[NSCALE] = {12, 7, 7, 7, 7, 7, 5, 5, 6, 5, 7, 7, 7, 7, 7, 6, 7, 7, 7, 5, 5, 5, 8, 6};
 static const uint8_t SCALE_STEP[NSCALE][12] = {
     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
     {0, 2, 4, 5, 7, 9, 11}, {0, 2, 3, 5, 7, 8, 10}, {0, 2, 3, 5, 7, 8, 11}, {0, 2, 3, 5, 7, 9, 10},
     {0, 1, 3, 5, 7, 8, 10}, {0, 3, 5, 7, 10}, {0, 2, 4, 7, 9}, {0, 2, 4, 6, 8, 10}, {0, 1, 5, 7, 8},
+    {0, 2, 3, 5, 7, 9, 11},      /* melodic minor (rising) */
+    {0, 1, 4, 6, 8, 10, 11},     /* enigmatic */
+    {0, 2, 4, 6, 7, 9, 11},      /* lydian */
+    {0, 2, 4, 5, 7, 9, 10},      /* mixolydian */
+    {0, 1, 3, 5, 6, 8, 10},      /* locrian */
+    {0, 3, 5, 6, 7, 10},         /* blues */
+    {0, 2, 3, 6, 7, 8, 11},      /* hungarian minor */
+    {0, 1, 4, 5, 7, 8, 11},      /* double harmonic */
+    {0, 1, 4, 5, 7, 8, 10},      /* phrygian dominant */
+    {0, 2, 3, 7, 8},             /* hirajoshi */
+    {0, 1, 5, 6, 10},            /* iwato */
+    {0, 1, 3, 7, 8},             /* pelog (selisir), in equal temperament */
+    {0, 1, 3, 4, 6, 7, 9, 10},   /* octatonic, half step first */
+    {0, 2, 4, 6, 9, 10},         /* prometheus */
 };
 static const char *const NOTE_NAME[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 #define SCALE_BASE 48
@@ -436,6 +452,22 @@ static void pl_clear(uint32_t t, uint32_t i)
     uint32_t j;
     for (j = 0; j < NPL; j++)
         seq_lid[t][i][j] = PL_NONE;
+}
+static void steps_clear(uint32_t t)               /* track t's steps emptied: notes, what they held, their locks */
+{
+    uint32_t i;
+    for (i = 0; i < NSTEP; i++) {
+        seq_note[t][i] = 0;
+        seq_vel[t][i] = VEL_DEF;
+        seq_glen[t][i] = GLEN_DEF;
+        seq_cond[t][i] = CD_NONE;
+        seq_rtg[t][i] = 0;
+        seq_mut[t][i] = 0;
+        seq_mcy[t][i] = seq_mfx[t][i] = seq_fcy[t][i] = 0;
+        seq_chf[t][i] = 0;
+        pl_clear(t, i);
+    }
+    pat_dirty = 1;
 }
 /* a parameter's definition (the pan's, as a bipolar 0 .. 127), and the sound's own value of it */
 static void pl_par(const sound_t *s, uint32_t id, par_t *p)
@@ -1284,7 +1316,8 @@ static void key_off(uint32_t k)
 }
 
 /* SHIFT and a white key: step i of the chosen track. Pressed on an empty step, the track's last note put there; let go
- * without PRESETS turned, a step that held a note emptied. Held, the step's note sounds */
+ * without PRESETS turned, a step that held a note emptied. Held, it is silent (build 70: heard from the keys, out of
+ * the step view) */
 static void step_say(uint32_t i, uint32_t n)
 {
     char m[16] = "STEP ";
@@ -1295,26 +1328,6 @@ static void step_say(uint32_t i, uint32_t n)
     else
         str_cpy(m + str_len(m), "OFF", 4);
     say(m, 1500);
-}
-static void step_hear(uint32_t n)                /* (the step held: its note, or its chord) */
-{
-    uint32_t j;
-    if (ui.step_heard)
-        for (j = 0; j < 3u; j++)
-            if (ui.step_hn[j])
-                ev_post(EV_OFF, ui.sel, ui.step_hn[j], 0);
-    ui.step_heard = (uint8_t)n;
-    ui.step_hn[0] = ui.step_hn[1] = ui.step_hn[2] = 0;
-    if (n) {
-        uint32_t i = (uint32_t)white_ix(ui.step_key), f1 = ui.eng[ui.sel] == ENG_FMD ? 0u : seq_chf[ui.sel][i];
-        int32_t c[3] = {(int32_t)n, 0, 0};
-        if (f1)
-            chord_of((int32_t)n, f1 - 1u, c);
-        for (j = 0; j < (f1 ? 3u : 1u); j++) {
-            ui.step_hn[j] = (uint8_t)c[j];
-            ev_post(EV_ON, ui.sel, (uint32_t)c[j], seq_vel[ui.sel][i]);
-        }
-    }
 }
 static void step_down(uint32_t k)
 {
@@ -1337,7 +1350,6 @@ static void step_down(uint32_t k)
     }
     step_say(i, n);
     ui.force = 1;
-    step_hear(n);
 }
 /* a parameter of the step held turned: locked (from the sound's value, if it had none) */
 static void pl_turn(uint32_t id, int32_t s, int show)
@@ -1382,10 +1394,9 @@ static void step_knob(uint32_t j, int32_t s)
             seq_rtg[t][i] = (uint8_t)clampi((int32_t)seq_rtg[t][i] + s, 0, NRTG - 1);
         else
             return;
-    } else if (j == 0u) {
+    } else if (j == 0u)
         seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], s);
-        step_hear(seq_note[t][i]);
-    } else if (j == 1u)
+    else if (j == 1u)
         seq_vel[t][i] = (uint8_t)clampi(pct_raw(pct_disp(seq_vel[t][i]) + s), 1, 127);   /* (shown 1 .. 100) */
     else if (j == 2u)
         seq_glen[t][i] = (uint8_t)clampi(seq_glen[t][i] + s, 0, NGLEN - 1);
@@ -1399,7 +1410,6 @@ static void step_knob(uint32_t j, int32_t s)
 static void step_up(void)
 {
     uint32_t i = (uint32_t)white_ix(ui.step_key);
-    step_hear(0);
     if (!ui.step_new && !ui.step_edit && (uint32_t)(fm1_ms - ui.step_t0) < 400u) {
         seq_note[ui.sel][i] = 0;
         pat_dirty = 1;
@@ -2082,7 +2092,13 @@ static void ui_input(void)
             ui.force = 1;
         }
     }
-    if ((ch & keys) >> KEY_STEP & 1u) {              /* STEP: the step view on or off */
+    if (((ch & keys) >> KEY_STEP & 1u) && sh) {      /* SHIFT + STEP: the chosen track's steps emptied (the view kept) */
+        if (ui.step_key != KEY_NONE)
+            step_up();
+        steps_clear(ui.sel);
+        say("STEPS CLEARED", 1200);
+        ui.force = 1;
+    } else if ((ch & keys) >> KEY_STEP & 1u) {       /* STEP: the step view on or off */
         ui.sv = (uint8_t)!ui.sv;
         if (!ui.sv && ui.step_key != KEY_NONE)
             step_up();

@@ -509,17 +509,7 @@ static void phrase_new(uint32_t t)
     ph_s = s;
     ph_ref = ui.last_note[t] ? ui.last_note[t] : (int32_t)key_note(0, ui.oct[t]);
     role = phrase_role(s);
-    for (i = 0; i < NSTEP; i++) {
-        seq_note[t][i] = 0;
-        seq_vel[t][i] = VEL_DEF;
-        seq_glen[t][i] = GLEN_DEF;
-        seq_cond[t][i] = CD_NONE;
-        seq_rtg[t][i] = 0;
-        seq_mut[t][i] = 0;
-        seq_mcy[t][i] = seq_mfx[t][i] = seq_fcy[t][i] = 0;
-        seq_chf[t][i] = 0;                       /* (the phrase's notes: single) */
-        pl_clear(t, i);
-    }
+    steps_clear(t);                              /* (the phrase's notes: single) */
     switch (role) {
     case RO_KICK: ph_kick(); break;
     case RO_SNARE: ph_snare(); break;

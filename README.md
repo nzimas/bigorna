@@ -46,7 +46,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | 4th black key | MIDI LEARN on or off |
 | 5th black key | The track's arpeggiator on or off; held 0.8 s: the ARP page |
 | Black key before the last | EDIT: the sound's pages |
-| 3rd black key from the right | STEP: the step view |
+| 3rd black key from the right | STEP: the step view; SHIFT + STEP: the chosen track's steps emptied |
 | Last black key | SHIFT |
 | KNOB 1 to 4 | The filter's FREQ and RESO, the delay and reverb sends; with SHIFT, KNOB 3 the chorus send, KNOB 4 the overdrive |
 | SELECT (knob) | The track's level |
@@ -158,7 +158,9 @@ Per track, on the track's sound before its level:
 The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and
 root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first five),
 MAJOR, MINOR NATURAL, MINOR
-HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, IN. OCT− and OCT+ move the track's octave. USB
+HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, JAPANESE IN, MINOR MELODIC, ENIGMATIC, LYDIAN,
+MIXOLYDIAN, LOCRIAN, BLUES, HUNGARIAN MINOR, DOUBLE HARMONIC, PHRYGIAN DOMINANT, JAPANESE HIRAJOSHI, JAPANESE IWATO,
+PELOG, OCTATONIC, PROMETHEUS (the list from Tonitor's). OCT− and OCT+ move the track's octave. USB
 MIDI notes play the chosen track as the keys do.
 
 ### Transposition
@@ -336,7 +338,8 @@ direction. PLAY starts and stops it.
 ### The step view
 
 STEP turns the step view on or off. The white keys are the track's 16 steps (lit: a note; dim: empty; the step
-playing shows the other way round; past the track's length, dark):
+playing shows the other way round; past the track's length, dark). The steps are silent: pressing or holding one,
+or turning its note, plays nothing; to hear the notes, play them from the keys with the step view off:
 
 - a key on an empty step puts the track's last note (or chord) there
 - a key on a step with a note, let go soon and nothing changed, empties it
@@ -344,6 +347,9 @@ playing shows the other way round; past the track's length, dark):
   overdrive), SELECT locks the level, ALGORITHM the pan
 - a step held with the EDIT pages up: the knobs lock any parameter of the sound on the page; up to eight locks a
   step, shown in the track's colour
+- SHIFT + STEP: the chosen track's 16 steps emptied, with their velocities, lengths, conditions, ratchets, MOD
+  settings and locks (STEPS CLEARED shows). The track's length, clock, direction and transposition, its loops and the
+  other tracks are kept; the view stays as it was. This works with the step view on or off
 - SHIFT and a step held 0.8 s: copied (COPY and its number blink); SHIFT and another held 0.8 s: pasted there, on
   this track or another
 
