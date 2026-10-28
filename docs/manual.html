@@ -100,7 +100,7 @@
 <tr><td>4th black key</td><td>MIDI LEARN on or off</td></tr>
 <tr><td>5th black key</td><td>The track's arpeggiator on or off; held 0.8 s: the ARP page</td></tr>
 <tr><td>Black key before the last</td><td>EDIT: the sound's pages</td></tr>
-<tr><td>3rd black key from the right</td><td>STEP: the step view</td></tr>
+<tr><td>3rd black key from the right</td><td>STEP: the step view; SHIFT + STEP: the chosen track's steps emptied</td></tr>
 <tr><td>Last black key</td><td>SHIFT</td></tr>
 <tr><td>KNOB 1 to 4</td><td>The filter's FREQ and RESO, the delay and reverb sends; with SHIFT, KNOB 3 the chorus send, KNOB 4 the overdrive</td></tr>
 <tr><td>SELECT (knob)</td><td>The track's level</td></tr>
@@ -176,7 +176,7 @@
 <li>SLICE, SLICE RATE, SLC DEPTH, SLC EDGE, SLC SHIFT: a slicer gate synced to the tempo — sixteen patterns at 1/8, 1/16, 1/32 or 1/16 triplets, how deep, how soft its edges, shifted in steps</li>
 </ul>
 <h2 id="playing">Playing</h2>
-<p>The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first five), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, IN. OCT− and OCT+ move the track's octave. USB MIDI notes play the chosen track as the keys do.</p>
+<p>The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first five), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, JAPANESE IN, MINOR MELODIC, ENIGMATIC, LYDIAN, MIXOLYDIAN, LOCRIAN, BLUES, HUNGARIAN MINOR, DOUBLE HARMONIC, PHRYGIAN DOMINANT, JAPANESE HIRAJOSHI, JAPANESE IWATO, PELOG, OCTATONIC, PROMETHEUS (the list from Tonitor's). OCT− and OCT+ move the track's octave. USB MIDI notes play the chosen track as the keys do.</p>
 <h3 id="transposition">Transposition</h3>
 <p>In the step view, OCT− and OCT+ transpose the chosen track's steps and its loops; SHIFT + OCT− or OCT+ (in the track's view or the step view) transposes every track's steps and loops at once. Steps and loops move by the same amount, each from the notes it plays. Each press moves every note one step of the scale and root chosen, down or up (in CHROMATIC, a semitone), so the notes stay in the scale; a note that is not in it moves to the scale's next. The transposition shows at the top right, under the octave, in the track's colour (T+2, T−1), up to 24 steps each way, and TRN with its value on the screen as it changes. It is part of the pattern: the moved notes and the count are saved with it and with the session, and a copied pattern takes them along. A loop's notes are moved in place and saved with the session (loops belong to the session, not to a pattern; a loop being recorded is left as it is). The loops follow the transposition of the pattern playing: when another pattern comes in, each track's loops play moved by the difference between its transposition and the one their notes were recorded at, from the step the pattern comes in on, so a pattern saved without transposition plays its loops as they were before the transposition. (In RAM a loop keeps its notes as recorded and is moved as it plays; a saved session holds its loops as they play in the pattern it was saved playing.) The keys' octave is left as it is.</p>
 <h3 id="chord-mode">CHORD mode</h3>
@@ -248,12 +248,13 @@
 <h2 id="the-sequencer">The sequencer</h2>
 <p>Each track has 16 steps, its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X the tempo's sixteenths) and direction. PLAY starts and stops it.</p>
 <h3 id="the-step-view">The step view</h3>
-<p>STEP turns the step view on or off. The white keys are the track's 16 steps (lit: a note; dim: empty; the step playing shows the other way round; past the track's length, dark):</p>
+<p>STEP turns the step view on or off. The white keys are the track's 16 steps (lit: a note; dim: empty; the step playing shows the other way round; past the track's length, dark). The steps are silent: pressing or holding one, or turning its note, plays nothing; to hear the notes, play them from the keys with the step view off:</p>
 <ul>
 <li>a key on an empty step puts the track's last note (or chord) there</li>
 <li>a key on a step with a note, let go soon and nothing changed, empties it</li>
 <li>a step held: the knobs lock what they set in the track's view (FREQ, RESO, the sends; SHIFT: chorus, overdrive), SELECT locks the level, ALGORITHM the pan</li>
 <li>a step held with the EDIT pages up: the knobs lock any parameter of the sound on the page; up to eight locks a step, shown in the track's colour</li>
+<li>SHIFT + STEP: the chosen track's 16 steps emptied, with their velocities, lengths, conditions, ratchets, MOD settings and locks (STEPS CLEARED shows). The track's length, clock, direction and transposition, its loops and the other tracks are kept; the view stays as it was. This works with the step view on or off</li>
 <li>SHIFT and a step held 0.8 s: copied (COPY and its number blink); SHIFT and another held 0.8 s: pasted there, on this track or another</li>
 </ul>
 <p>The black keys, lit dimly, do this in the step view:</p>
