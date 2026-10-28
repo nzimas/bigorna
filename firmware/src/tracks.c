@@ -856,6 +856,9 @@ static uint32_t seq_next(uint32_t t, uint32_t len)
             p = 0;
             break;
         }
+        if (!seq_ppd[t])                         /* (PING chosen while playing, never started in it: on up, build 71 --
+                                                  * at 0 it stood on its step for good) */
+            seq_ppd[t] = 1;
         if (seq_ppd[t] > 0 && pos + 1u >= len)
             seq_ppd[t] = -1;
         else if (seq_ppd[t] < 0 && pos == 0u) {

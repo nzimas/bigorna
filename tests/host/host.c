@@ -1322,6 +1322,28 @@ static int cmd_projects(const char *dir)
             mix_block(out);
         tap(KEY_DIR[1]);
         EXPECT(seq_dir[3] == DIR_FWD, "again: forward");
+        {   /* (build 71) PING-PONG chosen while playing, never started in it: it bounces, as from PLAY */
+            seq_ppd[3] = 0;
+            seq_run = 1;
+            for (i = 0; i < 1000u && seq_pos[3] != 1u; i++)
+                mix_block(out);
+            tap(KEY_DIR[1]);
+            memset(seen, 0, sizeof seen);
+            for (i = 0, k = seq_pos[3]; i < 4000u; i++) {
+                mix_block(out);
+                if (seq_pos[3] != k && seen[0] < 6u) {
+                    k = seq_pos[3];
+                    seen[++seen[0]] = k;
+                }
+            }
+            EXPECT(seen[0] == 6u && seen[1] == 2u && seen[2] == 3u && seen[3] == 2u && seen[4] == 1u && seen[5] == 0u &&
+                   seen[6] == 1u, "PING-PONG chosen while playing: 3 4 3 2 1 2");
+            seq_run = 0;
+            for (i = 0; i < 4u; i++)
+                mix_block(out);
+            tap(KEY_DIR[1]);
+            EXPECT(seq_dir[3] == DIR_FWD, "and forward again");
+        }
         /* TRIG's other half: RATCHET 4 on step 1 -- four hits in the step */
         fm1_in.notes |= 1u << kw[0];
         ui_input();

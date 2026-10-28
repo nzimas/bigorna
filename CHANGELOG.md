@@ -1,5 +1,16 @@
 # Changelog
 
+## Build 71
+
+Fixed
+- PING-PONG stopped the track on one step when chosen while the sequencer played, unless the track had been started
+  in PING-PONG. Its way up or down was set only when the sequencer started, so a track started in another direction
+  moved by nothing: it stayed on its step, and a pattern waiting to come in never did. Now it goes up from the step
+  it is on.
+
+Compatibility
+- Nothing saved changes.
+
 ## Build 70
 
 Changed
