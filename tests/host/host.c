@@ -104,8 +104,38 @@ static int audio_worker_online;
 static int audio_worker_submit(void (*fn)(void *), void *ctx) { (void)fn; (void)ctx; return 0; }
 static int audio_worker_join(void) { return 1; }
 static void audio_worker_check(void) {}
+static void fm1_irq_off(void) {}              /* (build 73: the looper's moves) */
+static void fm1_irq_on(void) {}
 #include "tracks.c"
 #include "params.c"
+/* (build 73) the pattern playing's loop l on track t: HL, as it is (none: an empty one, apart); HN, made if none */
+static loop_t hl_none;
+static loop_t *HL(uint32_t t, uint32_t l)
+{
+    loop_t *p = lp_get(t, l);
+    if (p)
+        return p;
+    memset(&hl_none, 0, sizeof hl_none);
+    hl_none.pat = LP_FREE;
+    return &hl_none;
+}
+typedef struct { loop_t h; lev_t ev[LOOP_EV]; } hl_copy_t;
+static void hl_snap(hl_copy_t (*w)[NLOOP])       /* (the pattern playing's loops, kept: their notes too) */
+{
+    uint32_t t, l;
+    for (t = 0; t < NTRACK; t++)
+        for (l = 0; l < NLOOP; l++) {
+            const loop_t *p = HL(t, l);
+            w[t][l].h = *p;
+            memset(w[t][l].ev, 0, sizeof w[t][l].ev);
+            memcpy(w[t][l].ev, p->ev, (p->ev ? p->n : 0u) * sizeof(lev_t));
+        }
+}
+static loop_t *HN(uint32_t t, uint32_t l)
+{
+    loop_t *p = lp_get(t, l);
+    return p ? p : lp_new(seq_lpat, t, l, LOOP_EV);
+}
 #include "gen.c"
 
 #define FM1_NCOL 11u
@@ -1618,7 +1648,7 @@ static int cmd_projects(const char *dir)
          * under BREAK on every track the pattern is broken up, the loop plays its own steps -- during and after */
         int32_t out[2 * CTL];
         uint32_t i, last, k, n1, both = 0, same = 1, after = 1, moved = 0, phase;
-        loop_t *lp = &loops[1][0];
+        loop_t *lp = HN(1, 0);
         ui.sel = 0;
         ui.page = PG_MAIN;
         ui.sv = 0;
@@ -1697,7 +1727,7 @@ static int cmd_projects(const char *dir)
          * chord due then sounds, and only it, during the break and after */
         int32_t out[2 * CTL];
         uint32_t i, c, k, ok = 1, g, ph, want, n;
-        loop_t *lp = &loops[1][0];
+        loop_t *lp = HN(1, 0);
         for (i = 0; i < NSTEP; i++)
             seq_note[1][i] = 0;
         for (c = 0; c < 4u; c++)                 /* (four chords, each held two bars) */
@@ -1751,7 +1781,7 @@ static int cmd_projects(const char *dir)
          * its own step; after, every kick on a beat */
         int32_t out[2 * CTL];
         uint32_t kw2[16], k, run, bad = 0, total = 0, kbad = 0, ktot = 0, i;
-        loop_t *lp = &loops[2][0];
+        loop_t *lp;
         for (k = 0; k < NKEY; k++)
             if (white_ix(k) >= 0)
                 kw2[white_ix(k)] = k;
@@ -1789,6 +1819,7 @@ static int cmd_projects(const char *dir)
         while (!(seq_gcount == 63u && seq_acc_now > SEQ_16TH * 2u / 3u))
             mix_block(out);
         btn(B_REC, 0);
+        lp = HL(2, 0);                           /* (the loop recorded: the pattern's) */
         EXPECT(lp->on && lp->len == 32u && lp->anchor == 32u && lp->n == 5u && lp->ev[0].len8 >= 80u,
                "(the loop: 2 bars from the downbeat, a held note and four on the beats)");
         for (run = 0; run < 200u; run++) {
@@ -1880,23 +1911,23 @@ static int cmd_projects(const char *dir)
         fm1_in.notes |= 1u << kw[0];
         ui_input();
         n0 = key_note(kw[0], ui.oct[0]);
-        EXPECT(seq_run && ui.lrec == 2 && loops[0][0].n == 1u && loops[0][0].ev[0].step == 0u, "the first note: step 0");
+        EXPECT(seq_run && ui.lrec == 2 && (*HL(0, 0)).n == 1u && (*HL(0, 0)).ev[0].step == 0u, "the first note: step 0");
         fm1_ms += 15000u * 10u / (uint32_t)fx_bpm10;   /* (held a step) */
         fm1_in.notes &= ~(1u << kw[0]);
         ui_input();
-        EXPECT(loops[0][0].ev[0].len8 == 8u, "held a step: 8 eighths");
+        EXPECT((*HL(0, 0)).ev[0].len8 == 8u, "held a step: 8 eighths");
         while (!(seq_gcount == 3u && seq_acc_now > SEQ_16TH * 3u / 5u))
             mix_block(out);
         tap(kw[2]);
         n2 = key_note(kw[2], ui.oct[0]);
-        EXPECT(loops[0][0].n == 2u && loops[0][0].ev[1].step == 4u, "late in step 4: quantized to step 5");
+        EXPECT((*HL(0, 0)).n == 2u && (*HL(0, 0)).ev[1].step == 4u, "late in step 4: quantized to step 5");
         ui_draw();
         shot(dir, "loop_rec");
         while (!(seq_gcount == 9u && seq_acc_now < SEQ_16TH / 3u))
             mix_block(out);
         btn(B_REC, 0);
-        EXPECT(!ui.lrec && loops[0][0].on && loops[0][0].len == 16u && loops[0][0].anchor == 0u && !met_on &&
-               !loops[0][0].kick, "REC after 9 steps: the loop ends, a bar long (the nearest), from its first note");
+        EXPECT(!ui.lrec && (*HL(0, 0)).on && (*HL(0, 0)).len == 16u && (*HL(0, 0)).anchor == 0u && !met_on &&
+               !(*HL(0, 0)).kick, "REC after 9 steps: the loop ends, a bar long (the nearest), from its first note");
         EXPECT(!strcmp(ui.msg, "LOOP 1  1 BAR"), "LOOP 1  1 BAR shown");
         while (seq_gcount != 16u)                /* (on, at step 9 of 16: its first note at the next bar) */
             mix_block(out);
@@ -1913,9 +1944,11 @@ static int cmd_projects(const char *dir)
         {   /* the rounding: recorded so many steps, the loop's length in whole bars, its phase where it was */
             static const uint32_t REC[4] = {23, 24, 37, 600}, LEN[4] = {16, 32, 32, 512};
             uint32_t c, gc = seq_gcount, ac = seq_acc_now, ok = 1;
-            loop_t keep = loops[0][2];
+            int had = lp_get(0, 2) != 0;
             for (c = 0; c < 4u; c++) {
-                loop_t *p = &loops[0][2];
+                loop_t *p = HN(0, 2);
+                lp_resize(p, LOOP_EV);
+                lrp = p;
                 p->n = 1;
                 p->ev[0].step = 0;
                 p->ev[0].note = 60;
@@ -1932,7 +1965,8 @@ static int cmd_projects(const char *dir)
                       (seq_gcount - p->anchor) % p->len == REC[c] % LEN[c];
             }
             EXPECT(ok, "a loop's length: the nearest whole bars (23 steps 1, 24 2, 37 2, 600 the most, 32), its phase kept");
-            loops[0][2] = keep;
+            if (!had)
+                lp_free(lp_get(0, 2));
             seq_gcount = gc;
             seq_acc_now = ac;
         }
@@ -1947,12 +1981,12 @@ static int cmd_projects(const char *dir)
         ui_leds();
         EXPECT(host_led[14u + kw[0]] && !host_led[14u + kw[1]], "loop 1 lit, no loop 2");
         tap(kw[0]);
-        EXPECT(loops[0][0].mute, "its key: muted");
+        EXPECT((*HL(0, 0)).mute, "its key: muted");
         fm1_in.notes |= 1u << kw[0];
         ui_input();
         fm1_ms += 900;
         ui_input();
-        EXPECT(!loops[0][0].on, "held: emptied");
+        EXPECT(!(*HL(0, 0)).on, "held: emptied");
         fm1_in.notes = 0;
         ui_input();
         fm1_in.buttons = 0;
@@ -1966,19 +2000,19 @@ static int cmd_projects(const char *dir)
         EXPECT(!ui.click, "SHIFT + PLAY: the metronome off");
         btn(B_PLAY, 1);
         /* SHIFT + REC held on 1.5 s: the track's loops emptied */
-        loops[0][1].on = 1;
-        loops[0][1].len = 16;
-        loops[0][1].n = 0;
+        (*HN(0, 1)).on = 1;
+        (*HN(0, 1)).len = 16;
+        (*HN(0, 1)).n = 0;
         fm1_in.notes |= 1u << KEY_SHIFT;
         fm1_in.buttons |= 1u << PANEL_BTN[B_REC];
         host_press = 1u << PANEL_BTN[B_REC];
         ui_input();
         fm1_ms += 600;
         ui_input();
-        EXPECT(loops[0][1].on, "SHIFT + REC held 0.6 s: the loops shown, kept");
+        EXPECT((*HL(0, 1)).on, "SHIFT + REC held 0.6 s: the loops shown, kept");
         fm1_ms += 1000;
         ui_input();
-        EXPECT(!loops[0][1].on && ui.flash_on, "held 1.5 s: the track's loops emptied");
+        EXPECT(!(*HL(0, 1)).on && ui.flash_on, "held 1.5 s: the track's loops emptied");
         fm1_in.buttons = 0;
         fm1_in.notes = 0;
         ui_input();
@@ -2409,7 +2443,7 @@ static int cmd_projects(const char *dir)
         h->head_crc = prj_crc(sec, __builtin_offsetof(prj_head_t, head_crc));
         memcpy(host_flash + prj_sector(12, 0), sec, sizeof sec);
         prj_scan(1);
-        EXPECT(prj_has[12] && !prj_load(12) && trk_mute[3] && !loops[0][0].on, "a session from build 37 (2780 bytes): found, loaded");
+        EXPECT(prj_has[12] && !prj_load(12) && trk_mute[3] && !(*HL(0, 0)).on, "a session from build 37 (2780 bytes): found, loaded");
         EXPECT(!prj_load(2), "(session 3 back)");
         {   /* (build 50) a session as builds 38 .. 49 kept it -- its loops' generation where they had it -- found, its
              * loops' sectors counted in use, loaded, its sounds as they were and their LFOs off; LFOs saved now */
@@ -2643,24 +2677,24 @@ static int cmd_projects(const char *dir)
     }
     {   /* the loops with the session (build 38): saved, loaded back whole; every loop full (7 sectors) saved over and
          * over into one slot; copied; the last session loaded at the start */
-        static loop_t want[NTRACK][NLOOP];
+        static hl_copy_t want[NTRACK][NLOOP];
         uint32_t t, l, i, k, same, j;
         int rc;
         for (k = 0; k < PRJ_SLOTS && prj_has[k]; k++)
             ;
         lop_clear();
-        loops[2][1].n = 3;
-        loops[2][1].len = 400;
-        loops[2][1].mute = 1;
+        (*HN(2, 1)).n = 3;
+        (*HN(2, 1)).len = 400;
+        (*HN(2, 1)).mute = 1;
         for (i = 0; i < 3u; i++) {
-            loops[2][1].ev[i].step = (uint16_t)(i * 100u);
-            loops[2][1].ev[i].len8 = (uint16_t)(1000u + i);
-            loops[2][1].ev[i].note = (uint8_t)(50u + i);
-            loops[2][1].ev[i].vel = (uint8_t)(90u + i);
+            (*HN(2, 1)).ev[i].step = (uint16_t)(i * 100u);
+            (*HN(2, 1)).ev[i].len8 = (uint16_t)(1000u + i);
+            (*HN(2, 1)).ev[i].note = (uint8_t)(50u + i);
+            (*HN(2, 1)).ev[i].vel = (uint8_t)(90u + i);
         }
-        loops[2][1].on = 1;
+        (*HN(2, 1)).on = 1;
         ui.sel = 4;
-        memcpy(want, loops, sizeof want);
+        hl_snap(want);
         rc = prj_save(k);
         EXPECT(!rc && prj_lgen[k] && prj_has[k], "a session saved with a loop");
         lop_clear();
@@ -2668,13 +2702,13 @@ static int cmd_projects(const char *dir)
         rc = prj_load(k);
         for (t = 0, same = 1; t < NTRACK; t++)
             for (l = 0; l < NLOOP; l++)
-                same &= loops[t][l].on == want[t][l].on && loops[t][l].n == want[t][l].n &&
-                        loops[t][l].len == want[t][l].len && loops[t][l].mute == want[t][l].mute &&
-                        !memcmp(loops[t][l].ev, want[t][l].ev, loops[t][l].n * sizeof(lev_t));
+                same &= (*HL(t, l)).on == want[t][l].h.on && (*HL(t, l)).n == want[t][l].h.n &&
+                        (*HL(t, l)).len == want[t][l].h.len && (*HL(t, l)).mute == want[t][l].h.mute &&
+                        !memcmp((*HL(t, l)).ev, want[t][l].ev, (*HL(t, l)).n * sizeof(lev_t));
         EXPECT(!rc && same && ui.sel == 4u, "loaded: its loop back, length, notes and mute; the track chosen");
         for (t = 0; t < NTRACK; t++)             /* every loop full: 32 bars, 256 notes */
             for (l = 0; l < NLOOP; l++) {
-                loop_t *p = &loops[t][l];
+                loop_t *p = HN(t, l);
                 p->n = LOOP_EV;
                 p->len = LOOP_MAX;
                 p->mute = (uint8_t)(l == 2u);
@@ -2686,7 +2720,7 @@ static int cmd_projects(const char *dir)
                 }
                 p->on = 1;
             }
-        memcpy(want, loops, sizeof want);
+        hl_snap(want);
         for (j = 0, rc = 0; j < 12u && !rc; j++)
             rc = prj_save(k);
         EXPECT(!rc && j == 12u, "every loop full: saved into one slot 12 times over (the store reused)");
@@ -2694,8 +2728,8 @@ static int cmd_projects(const char *dir)
         rc = prj_load(k);
         for (t = 0, same = 1; t < NTRACK; t++)
             for (l = 0; l < NLOOP; l++)
-                same &= loops[t][l].on && loops[t][l].n == LOOP_EV && loops[t][l].len == LOOP_MAX &&
-                        loops[t][l].mute == want[t][l].mute && !memcmp(loops[t][l].ev, want[t][l].ev, sizeof want[t][l].ev);
+                same &= (*HL(t, l)).on && (*HL(t, l)).n == LOOP_EV && (*HL(t, l)).len == LOOP_MAX &&
+                        (*HL(t, l)).mute == want[t][l].h.mute && !memcmp((*HL(t, l)).ev, want[t][l].ev, sizeof want[t][l].ev);
         EXPECT(!rc && same, "every loop full: loaded back whole");
         {
             uint32_t to;
@@ -2708,7 +2742,7 @@ static int cmd_projects(const char *dir)
             rc = prj_load(to);
             for (t = 0, same = 1; t < NTRACK; t++)
                 for (l = 0; l < NLOOP; l++)
-                    same &= loops[t][l].n == LOOP_EV && !memcmp(loops[t][l].ev, want[t][l].ev, sizeof want[t][l].ev);
+                    same &= (*HL(t, l)).n == LOOP_EV && !memcmp((*HL(t, l)).ev, want[t][l].ev, sizeof want[t][l].ev);
             EXPECT(!rc && same, "the copy's loops whole, the first deleted");
             /* the start: the last session (the copy, just loaded) loaded again */
             lop_clear();
@@ -2716,7 +2750,7 @@ static int cmd_projects(const char *dir)
             prj_scan(1);
             EXPECT(lst_slot == (int8_t)to, "the last session noted");
             prj_boot();
-            EXPECT(prj_cur == (int8_t)to && loops[0][0].n == LOOP_EV, "the start: the last session loaded, its loops");
+            EXPECT(prj_cur == (int8_t)to && (*HL(0, 0)).n == LOOP_EV, "the start: the last session loaded, its loops");
             /* a session from before (no loops): loaded, the loops emptied */
             {
                 uint32_t old;
@@ -2724,7 +2758,7 @@ static int cmd_projects(const char *dir)
                     ;
                 if (old != to && prj_lgen[old] == 0u) {
                     rc = prj_load(old);
-                    EXPECT(!rc && !loops[0][0].on && !loops[0][0].n, "a session with no loops: the loops emptied");
+                    EXPECT(!rc && !(*HL(0, 0)).on && !(*HL(0, 0)).n, "a session with no loops: the loops emptied");
                 }
             }
         }
@@ -3682,7 +3716,7 @@ static int cmd_lfo(const char *dir)
 
 /* transposition (build 51): OCT- / OCT+ the keys' octave in the track's view, the track's steps in the step view,
  * SHIFT every track's; in steps of the scale; kept with the pattern */
-#define LPN(t, l, i) lp_note(t, l, loops[t][l].ev[i].note)   /* (a loop's note as it plays: build 68) */
+#define LPN(t, l, i) lp_note(HL(t, l), HL(t, l)->ev[i].note)   /* (a loop's note as it plays: build 68) */
 #define TEXPECT(c, what) do { if (!(c)) { printf("FAIL trn: %s\n", what); fails++; } } while (0)
 static int cmd_trn(const char *dir)
 {
@@ -3717,23 +3751,24 @@ static int cmd_trn(const char *dir)
     TEXPECT(seq_note[0][0] == 60 && seq_note[0][2] == 71 && !ui.trn[0] && seq_note[1][0] == 50 && ui.trn[1] == 1 &&
             !ui.oct[0], "SHIFT + OCT+: every track's steps up a step of the scale, the octave kept");
     {   /* the track's loops with its steps (build 54): a loop on track 1 (C, A), another not on */
-        loop_t *p = &loops[0][0];
-        memset(loops, 0, sizeof loops);
+        loop_t *p;
+        lop_clear();
+        p = HN(0, 0);
         p->n = 2; p->len = 16; p->ev[0].note = 60; p->ev[1].note = 69; p->ev[0].step = 0; p->ev[1].step = 8;
         p->on = 1;
-        lp_ref[0][0] = lp_trn[0] = ui.trn[0];    /* (recorded now: build 68) */
-        loops[0][1].n = 1; loops[0][1].ev[0].note = 60;   /* (not on: an empty slot's leftovers) */
+        HL(0, 0)->ref = lp_trn[0] = ui.trn[0];    /* (recorded now: build 68) */
+        (*HN(0, 1)).n = 1; (*HN(0, 1)).ev[0].note = 60;   /* (not on: one being recorded) */
         ui.sv = 1;
         ui.sel = 0;
         btn(B_OCTUP, 0);
-        TEXPECT(LPN(0, 0, 0) == 62 && LPN(0, 0, 1) == 71 && loops[0][1].ev[0].note == 60 && seq_note[0][0] == 62 &&
+        TEXPECT(LPN(0, 0, 0) == 62 && LPN(0, 0, 1) == 71 && (*HL(0, 1)).ev[0].note == 60 && seq_note[0][0] == 62 &&
                 ui.trn[0] == 1, "the step view: OCT+ the track's loop up a step of the scale too, with its steps");
         btn(B_OCTDN, 1);
         TEXPECT(LPN(0, 0, 0) == 60 && LPN(0, 0, 1) == 69 && seq_note[0][0] == 60 && !ui.trn[0] && ui.trn[1] == 0,
                 "SHIFT + OCT-: every track's steps and loops down");
         btn(B_OCTUP, 1);                         /* (back as the tests below had it: track 1 at 0, track 2 at +1) */
         btn(B_OCTDN, 0);
-        memset(loops, 0, sizeof loops);
+        lop_clear();
     }
     ui.scale = 0;                                /* CHROMATIC: semitones */
     ui.sv = 1;
@@ -3756,23 +3791,21 @@ static int cmd_trn(const char *dir)
     TEXPECT(!ui.trn[0] && ui.trn[1] == 1 && seq_note[0][0] == 60 && seq_note[1][0] == 50, "pattern 1 as it was");
     pat_give(1, 1);
     TEXPECT(ui.trn[0] == 1 && ui.trn[1] == 2 && seq_note[0][0] == 62 && seq_note[1][0] == 52, "pattern 2 as transposed");
-    {   /* (build 67) the loops follow the pattern's transposition: moved as it comes in, back as the other does */
-        loop_t *lq = &loops[1][0];
-        memset(lq, 0, sizeof *lq);
+    {   /* (build 73) a loop is its pattern's: pattern 2's not in pattern 1 (playing or not); pattern 2 again, as it
+         * was, at its transposition */
+        loop_t *lq = HN(1, 0);
         lq->len = 16;
         lq->n = 2;
         lq->ev[0].note = 52;                     /* (as pattern 2 has it: TRN +2 on track 2) */
         lq->ev[1].note = 55;
         lq->ev[1].step = 8;
         lq->on = 1;
-        lp_ref[1][0] = lp_trn[1] = ui.trn[1];    /* (recorded now) */
+        lq->ref = lp_trn[1] = ui.trn[1];         /* (recorded now) */
         pat_give(0, 1);
-        TEXPECT(ui.trn[1] == 1 && LPN(1, 0, 0) == 50 && LPN(1, 0, 1) == 53,
-                "pattern 1 in: track 2's loop moved as its transposition, one step down");
+        TEXPECT(ui.trn[1] == 1 && seq_lpat == 0u && !lp_get(1, 0), "pattern 1 in: pattern 2's loop not in it");
         pat_give(1, 1);
-        TEXPECT(ui.trn[1] == 2 && LPN(1, 0, 0) == 52 && LPN(1, 0, 1) == 55, "pattern 2 again: the loop as it was");
-        pat_give(1, 0);
-        TEXPECT(LPN(1, 0, 0) == 52, "(a session loaded: the loops as saved, not moved)");
+        TEXPECT(ui.trn[1] == 2 && lp_get(1, 0) == lq && LPN(1, 0, 0) == 52 && LPN(1, 0, 1) == 55,
+                "pattern 2 again: its loop as it was");
         {   /* playing: as the pattern is taken in */
             int32_t out[2 * CTL];
             uint32_t j;
@@ -3782,12 +3815,12 @@ static int cmd_trn(const char *dir)
                 mix_block(out);
                 pat_poll();
             }
-            TEXPECT(!seq_pend && pat_cur == 0u && ui.trn[1] == 1 && LPN(1, 0, 0) == 50,
-                    "playing: pattern 1 taken in, the loop moved with it");
+            TEXPECT(!seq_pend && pat_cur == 0u && seq_lpat == 0u && !lp_get(1, 0),
+                    "playing: pattern 1 taken in, pattern 2's loop not with it");
             seq_run = 0;
             pat_give(1, 1);
         }
-        memset(lq, 0, sizeof *lq);
+        lop_clear();
     }
     {   /* a pattern saved before build 51: no transposition */
         pat_t p = pat_store[1];
@@ -3992,7 +4025,7 @@ static int cmd_arp(const char *dir)
     arp_run(B16 * 16u);
     btn(B_REC, 0);
     {
-        const loop_t *p = &loops[0][0];
+        const loop_t *p = &(*HL(0, 0));
         uint32_t i, ok = p->on && p->len == 16u && p->n == 8u;
         for (i = 0; ok && i < p->n; i++)
             ok &= p->ev[i].note == 60u && p->ev[i].step == 2u * i;
@@ -4072,15 +4105,15 @@ static int cmd_bkserve(void)
     ui_init();
     fm1_ms = 5000;
     ui.tempo = 133;
-    loops[1][0].n = 3; loops[1][0].len = 32; loops[1][0].on = 1;
-    loops[1][0].ev[0].note = 60; loops[1][0].ev[1].note = 63; loops[1][0].ev[2].note = 67;
-    loops[1][0].ev[1].step = 8; loops[1][0].ev[2].step = 20;
-    loops[4][0].n = loops[4][1].n = loops[4][2].n = 250;   /* (three long ones: the stream over two sectors) */
-    loops[4][0].len = loops[4][1].len = loops[4][2].len = 512;
-    loops[4][0].on = loops[4][1].on = loops[4][2].on = 1;
+    (*HN(1, 0)).n = 3; (*HN(1, 0)).len = 32; (*HN(1, 0)).on = 1;
+    (*HN(1, 0)).ev[0].note = 60; (*HN(1, 0)).ev[1].note = 63; (*HN(1, 0)).ev[2].note = 67;
+    (*HN(1, 0)).ev[1].step = 8; (*HN(1, 0)).ev[2].step = 20;
+    (*HN(4, 0)).n = (*HN(4, 1)).n = (*HN(4, 2)).n = 250;   /* (three long ones: the stream over two sectors) */
+    (*HN(4, 0)).len = (*HN(4, 1)).len = (*HN(4, 2)).len = 512;
+    (*HN(4, 0)).on = (*HN(4, 1)).on = (*HN(4, 2)).on = 1;
     if (prj_save(2))
         printf("SAVE FAILED\n");
-    memset(loops, 0, sizeof loops);
+    lop_clear();
     ui.tempo = 97;
     if (prj_save(9))
         printf("SAVE FAILED\n");
@@ -4137,7 +4170,7 @@ static int cmd_bkserve(void)
             uint32_t t, l, nl = 0;
             for (t = 0; t < NTRACK; t++)
                 for (l = 0; l < NLOOP; l++)
-                    nl += loops[t][l].on ? loops[t][l].n : 0u;
+                    nl += (*HL(t, l)).on ? (*HL(t, l)).n : 0u;
             setup_load();
             printf(rc ? "FAIL %d\n" : "OK %d %u %u\n", rc ? rc : ui.tempo, nl, mcfg.send_cc);
         } else {
@@ -4190,23 +4223,23 @@ static int cmd_newses(const char *dir)
     fm1_ms = 5000;
     ui.tempo = 150;
     seq_note[0][0] = 60;
-    loops[2][0].n = 2; loops[2][0].len = 16; loops[2][0].on = 1; loops[2][0].ev[0].note = 50; loops[2][0].ev[1].note = 52;
+    (*HN(2, 0)).n = 2; (*HN(2, 0)).len = 16; (*HN(2, 0)).on = 1; (*HN(2, 0)).ev[0].note = 50; (*HN(2, 0)).ev[1].note = 52;
     arp_on[1] = 1;
     ui.chord_on[3] = 1;
     fx_dl[0] = 5;
     ui.snd[0][ui.eng[0]].amp[A_VOL] = 33;
     ns_slot_save(0);                             /* (nothing saved yet: what plays goes into slot 1) */
-    NEXPECT(prj_cur == 0 && prj_has[0] && ui.tempo == 150 && seq_note[0][0] == 60 && loops[2][0].on,
+    NEXPECT(prj_cur == 0 && prj_has[0] && ui.tempo == 150 && seq_note[0][0] == 60 && (*HL(2, 0)).on,
             "nothing saved yet: SAVE on an empty slot keeps what plays");
     ns_slot_save(3);
     NEXPECT(prj_cur == 3 && prj_has[3] && ui.page == PG_MAIN, "a saved session playing: SAVE on an empty slot, a new "
             "session there, saved");
-    NEXPECT(ui.tempo == 120 && !seq_note[0][0] && !loops[2][0].on && !arp_on[1] && !ui.chord_on[3] && fx_dl[0] == DL0[0] &&
+    NEXPECT(ui.tempo == 120 && !seq_note[0][0] && !(*HL(2, 0)).on && !arp_on[1] && !ui.chord_on[3] && fx_dl[0] == DL0[0] &&
             ui.snd[0][ui.eng[0]].amp[A_VOL] != 33 && !prj_dirty && !pat_dirty && !seq_run,
             "the new session: nothing of the one before (tempo, steps, loops, ARP, chords, effects, sounds)");
     ui_draw();
     shot(dir, "new_session");
-    NEXPECT(!prj_load(0) && ui.tempo == 150 && seq_note[0][0] == 60 && loops[2][0].on && arp_on[1],
+    NEXPECT(!prj_load(0) && ui.tempo == 150 && seq_note[0][0] == 60 && (*HL(2, 0)).on && arp_on[1],
             "the session before, loaded again: all of it");
     ui.tempo = 151;                              /* (changes not saved: asked) */
     prj_dirty = 1;
@@ -4578,8 +4611,9 @@ static int cmd_brksave(const char *dir)
     return fails != 0;
 }
 
-/* (build 65) a pattern change that unmutes a track: its notes from the muted time let go, its loops silent until each
- * comes round to its first step, then on in its place; the mutes as the pattern comes in */
+/* (build 73) a loop is its pattern's: another pattern in, it is silent (an empty one: nothing at all); its own back,
+ * from its first step with the pattern's; saved into another slot, the loops with it; a pattern emptied, its loops
+ * gone. (Build 65: a pattern that unmutes a track, its notes from the muted time let go) */
 #define QEXPECT(c, what) do { if (!(c)) { printf("FAIL loopin: %s\n", what); fails++; } } while (0)
 static void li_until(uint32_t g)                 /* (played until the tempo's 16th g; the main loop's poll each block) */
 {
@@ -4599,8 +4633,8 @@ static int li_sounding(uint32_t t)               /* (a voice of track t sounding
 }
 static int cmd_loopin(const char *dir)
 {
-    loop_t *lp = &loops[3][0];
-    uint32_t n0, i;
+    loop_t *lp;
+    uint32_t n0, i, top;
     memset(host_flash, 0xFF, sizeof host_flash);
     prj_scan(1);
     tracks_init();
@@ -4613,49 +4647,56 @@ static int cmd_loopin(const char *dir)
     QEXPECT(!pat_save(0), "(pattern 1 saved, track 4 muted)");
     trk_mute[3] = 0;
     QEXPECT(!pat_save(1), "(pattern 2 saved, track 4 playing)");
+    QEXPECT(!pat_save(0), "(pattern 1 again, track 4 playing)");
     pat_switch(0);
-    QEXPECT(trk_mute[3] && !loop_wait[3], "(pattern 1: track 4 muted)");
+    QEXPECT(seq_lpat == 0u, "(pattern 1: its loops)");
     btn(B_PLAY, 0);
     li_until(1);                                 /* (started: the loops' anchors from it) */
-    /* a loop on track 4: two bars, a long note at its first step, another at its 25th; its first step at bar 2 */
-    memset(lp, 0, sizeof *lp);
+    /* a loop on track 4 in pattern 1: two bars, a long note at its first step, another at its 25th; its first step at
+     * bar 2 */
+    lp = HN(3, 0);
     lp->len = 32;
     lp->n = 2;
-    lp->ev[0].step = 0;  lp->ev[0].note = 60; lp->ev[0].vel = 100; lp->ev[0].len8 = 8 * 12;
-    lp->ev[1].step = 24; lp->ev[1].note = 62; lp->ev[1].vel = 100; lp->ev[1].len8 = 8 * 12;
+    lp->ev[0].step = 0;  lp->ev[0].note = 60; lp->ev[0].vel = 100; lp->ev[0].len8 = 8 * 4;
+    lp->ev[1].step = 24; lp->ev[1].note = 62; lp->ev[1].vel = 100; lp->ev[1].len8 = 8 * 4;
     lp->anchor = 16;
     lp->on = 1;
     li_until(17);
-    QEXPECT(seq_sounded[3] == 1u && li_sounding(3), "muted, the loop plays on unheard (its first note, at bar 2)");
-    pat_switch(1);                               /* (in at bar 3: the loop at its 17th step) */
-    QEXPECT(seq_pend == 1u && trk_mute[3], "pattern 2 waiting, track 4 still muted");
-    li_until(32);
-    QEXPECT(pat_cur == 1u && !trk_mute[3] && (loop_wait[3] & 1u) && !li_sounding(3),
-            "pattern 2 in (bar 3): track 4 unmuted as it comes in, the note from the muted time let go, the loop waiting");
-    n0 = seq_sounded[3];
-    li_until(47);
-    QEXPECT(seq_sounded[3] == n0 && (loop_wait[3] & 1u), "the loop's 25th step (bar 3): not played, waiting");
-    li_until(48);
-    QEXPECT(seq_sounded[3] == n0 + 1u && !(loop_wait[3] & 1u) && li_sounding(3),
-            "bar 4, the loop's first step: on, in its place");
-    li_until(72);
-    QEXPECT(seq_sounded[3] == n0 + 2u, "and on from there (its 25th step)");
-    /* in at the loop's own first step: played at once, nothing lost */
-    pat_switch(0);
-    li_until(81);
-    QEXPECT(pat_cur == 0u && trk_mute[3], "(pattern 1 again at bar 6: track 4 muted)");
-    li_until(100);
+    QEXPECT(seq_sounded[3] == 1u && li_sounding(3), "pattern 1: its loop plays (its first note, at bar 2)");
     pat_switch(1);
-    li_until(112);                               /* (bar 8: the loop's first step, as pattern 2 comes in) */
-    {
-        int32_t out[2 * CTL];
-        for (i = 0; i < 4u; i++)
-            mix_block(out);
-    }
-    pat_poll();
-    QEXPECT(pat_cur == 1u && !trk_mute[3] && !(loop_wait[3] & 1u) && li_sounding(3) && sq_note[3][0] + sq_note[3][1] +
-            sq_note[3][2] + sq_note[3][3] >= 60u, "in at the loop's first step: its first note played at once");
-    /* stopped: a pattern that unmutes a track -- its loops from their first step once started */
+    li_until(33);
+    QEXPECT(pat_cur == 1u && seq_lpat == 1u && !lp_get(3, 0), "pattern 2 in (bar 3): pattern 1's loop not in it");
+    n0 = seq_sounded[3];
+    li_until(80);
+    QEXPECT(seq_sounded[3] == n0, "pattern 2: the loop silent (its 25th step, its first, gone by)");
+    pat_switch(0);                               /* (in at bar 7) */
+    li_until(97);
+    QEXPECT(pat_cur == 0u && lp_get(3, 0) == lp && seq_sounded[3] == n0 + 1u && li_sounding(3),
+            "pattern 1 back (bar 7): its loop from its first step, with the pattern's");
+    li_until(121);
+    QEXPECT(seq_sounded[3] == n0 + 2u, "and on from there (its 25th step)");
+    /* the pattern playing saved into slot 5: its loop with it; there, played as its own */
+    top = lp_top();
+    pat_save_as(4);
+    QEXPECT(lp_at(4, 3, 0) && lp_at(4, 3, 0) != lp && lp_at(4, 3, 0)->on && lp_at(4, 3, 0)->n == 2u &&
+            !memcmp(lp_at(4, 3, 0)->ev, lp->ev, 2u * sizeof(lev_t)) && lp_top() == top + 2u && lp->on,
+            "saved into pattern 5: its loop copied there, pattern 1's kept");
+    pat_switch(4);
+    li_until(129);
+    n0 = seq_sounded[3];
+    QEXPECT(pat_cur == 4u && seq_lpat == 4u && li_sounding(3), "pattern 5 in: its own copy of the loop plays");
+    /* an empty pattern: no loop at all */
+    pat_switch(5);
+    li_until(145);
+    n0 = seq_sounded[3];
+    li_until(220);
+    QEXPECT(pat_cur == 5u && seq_sounded[3] == n0 && !lp_get(3, 0) && !lp_get(3, 1) && !lp_get(3, 2),
+            "an empty pattern: no loop plays");
+    /* pattern 5 emptied: its loop gone, its room given back; pattern 1's as it was */
+    pat_clear(4);
+    QEXPECT(!lp_at(4, 3, 0) && lp_top() == top && lp_at(0, 3, 0) == lp && lp->ev[1].note == 62u,
+            "pattern 5 emptied: its loop gone, the room back, pattern 1's untouched");
+    /* stopped: a pattern switched to at once, its loops with it */
     btn(B_PLAY, 0);
     {
         int32_t out[2 * CTL];
@@ -4664,22 +4705,7 @@ static int cmd_loopin(const char *dir)
     }
     QEXPECT(!seq_run, "(stopped)");
     pat_switch(0);
-    QEXPECT(pat_cur == 0u && trk_mute[3], "(stopped: pattern 1, track 4 muted)");
-    loop_wait[3] = 0;
-    pat_switch(1);
-    QEXPECT(pat_cur == 1u && !trk_mute[3] && (loop_wait[3] & 1u), "stopped: unmuted, the loop waiting for its first step");
-    /* a pattern without the mutes (empty): nothing changed as it comes in */
-    btn(B_PLAY, 0);
-    {
-        int32_t out[2 * CTL];
-        for (i = 0; i < 2u; i++)                 /* (started again: from the first 16th) */
-            mix_block(out);
-    }
-    li_until(20);
-    trk_mute[3] = 1;
-    pat_switch(5);
-    li_until(36);
-    QEXPECT(pat_cur == 5u && trk_mute[3], "an empty pattern: the mutes as they were");
+    QEXPECT(pat_cur == 0u && seq_lpat == 0u && lp_get(3, 0) == lp, "stopped: pattern 1, its loop");
     (void)dir;
     printf("loopin: %d failures\n", fails);
     return fails != 0;
@@ -4707,7 +4733,7 @@ static void lx_settle(void)                      /* (a few blocks on: a pattern 
 }
 static int cmd_lptrn(const char *dir)
 {
-    loop_t *lp = &loops[3][0];
+    loop_t *lp;
     uint32_t i;
     memset(host_flash, 0xFF, sizeof host_flash);
     prj_scan(1);
@@ -4724,45 +4750,38 @@ static int cmd_lptrn(const char *dir)
     ui.trn[3] = 0;
     pat_switch(0);
     XEXPECT(!ui.trn[3] && !lp_trn[3], "(pattern 1)");
+    /* (build 73) a loop recorded in pattern 2 (track 4 at +2): its notes at pattern 2's transposition; played
+     * there, and only there; the session saved at pattern 1: the loop as it plays in its own pattern */
+    pat_switch(1);
+    XEXPECT(pat_cur == 1u && lp_trn[3] == 2, "(pattern 2)");
     btn(B_PLAY, 0);
     li_until(1);
-    memset(lp, 0, sizeof *lp);                   /* a loop on track 4, a bar, C at its first step (short) */
+    lp = HN(3, 0);                               /* a loop on track 4, a bar, D at its first step (short) */
     lp->len = 16;
     lp->n = 1;
-    lp->ev[0].note = 60; lp->ev[0].vel = 100; lp->ev[0].len8 = 4;
+    lp->ev[0].note = 62; lp->ev[0].vel = 100; lp->ev[0].len8 = 4;
     lp->anchor = 0;
-    lp_ref[3][0] = 0;
+    lp->ref = 2;                                 /* (recorded at +2) */
     lp->on = 1;
     li_until(16);
-    XEXPECT(lx_sounds(3, 60), "pattern 1: the loop's C at bar 2");
+    XEXPECT(lx_sounds(3, 62), "pattern 2: the loop's D at bar 2, as recorded");
     li_until(20);
-    pat_switch(1);
-    li_until(32);                                /* (bar 3: pattern 2 comes in with the loop's first step) */
-    XEXPECT(lx_sounds(3, 62) && !lx_sounds(3, 60), "pattern 2 in at bar 3: the loop's first step there already at +2 (D)");
-    lx_settle();
-    XEXPECT(pat_cur == 1u && lp_trn[3] == 2, "(pattern 2 playing)");
-    li_until(36);
     pat_switch(0);
-    li_until(48);
-    XEXPECT(lx_sounds(3, 60) && !lx_sounds(3, 62), "pattern 1 back at bar 4: C at once");
+    li_until(32);
     lx_settle();
-    XEXPECT(pat_cur == 0u && !lp_trn[3], "(pattern 1 playing)");
-    /* the session saved at pattern 2: the loop as it plays there; loaded, the same */
-    pat_switch(1);
-    li_until(64);
-    lx_settle();
-    XEXPECT(pat_cur == 1u && !prj_save(2), "(session 3 saved, at pattern 2)");
-    XEXPECT(lp->ev[0].note == 60 && lp_ref[3][0] == 0, "(in RAM the loop as recorded)");
-    XEXPECT(!prj_load(2) && pat_cur == 1u && lp->ev[0].note == 62 && lp_ref[3][0] == 2 && lp_note(3, 0, 62) == 62,
-            "loaded: the loop saved as it played (D, at +2), played the same");
+    XEXPECT(pat_cur == 0u && !lx_sounds(3, 60) && !lx_sounds(3, 62), "pattern 1 in at bar 3: the loop not with it");
+    XEXPECT(!prj_save(2), "(session 3 saved, at pattern 1)");
+    XEXPECT(!prj_load(2) && pat_cur == 0u && !lp_get(3, 0) && lp_at(1, 3, 0) && lp_at(1, 3, 0)->ev[0].note == 62 &&
+            lp_at(1, 3, 0)->ref == 2, "loaded: the loop pattern 2's, at its transposition (D, at +2)");
+    lp = lp_at(1, 3, 0);
     btn(B_PLAY, 0);
     {
         int32_t out[2 * CTL];
         for (i = 0; i < 8u; i++)
             mix_block(out);
     }
-    pat_switch(0);
-    XEXPECT(lp_note(3, 0, lp->ev[0].note) == 60, "and pattern 1 from there: C");
+    pat_switch(1);
+    XEXPECT(lp_get(3, 0) == lp && lp_note(lp, lp->ev[0].note) == 62, "and pattern 2 from there: D");
     /* (build 69) the session loaded at a pattern: the grid's cursor (white) on it, not on pattern 1 */
     {
         int32_t out[2 * CTL];

@@ -385,16 +385,13 @@ static int32_t scale_move(int32_t n, int32_t d)
  * scale's next; TRN counts how far, kept with the pattern. Its loops too (build 54), each note the same way -- not
  * the one being recorded -- kept with the session (from build 68 played so, kept as recorded: lp_trn) */
 #define TRN_MAX 24
-/* (build 67) a pattern coming in, its transpositions to[]: the loops follow them as its steps do (build 68: played
- * so, tracks.c's lp_trn); a session loaded (keep 0), its loops as saved, at them */
-static void lp_follow(const int8_t *to, int keep)
+/* (build 67) a pattern given, its transpositions to[]: its loops played so (tracks.c's lp_trn; build 73: each loop
+ * its own pattern's, kept at its own ref) */
+static void lp_follow(const int8_t *to)
 {
-    uint32_t t, l;
-    for (t = 0; t < NTRACK; t++) {
-        for (l = 0; !keep && l < NLOOP; l++)
-            lp_ref[t][l] = to[t];
+    uint32_t t;
+    for (t = 0; t < NTRACK; t++)
         lp_trn[t] = to[t];
-    }
 }static int32_t trn_track(uint32_t t, int32_t d)
 {
     int32_t v = clampi(ui.trn[t] + d, -TRN_MAX, TRN_MAX);
@@ -408,7 +405,7 @@ static void lp_follow(const int8_t *to, int keep)
     ui.trn[t] = (int8_t)v;
     lp_trn[t] = (int8_t)v;                       /* (its loops played so: build 68) */
     for (i = 0; i < NLOOP; i++)
-        if (loops[t][i].on)
+        if (lp_get(t, i))
             prj_dirty = 1;
     pat_dirty = 1;
     return d;
@@ -663,16 +660,20 @@ static uint32_t loop_len8(uint32_t ms)           /* a time held, in eighths of a
     uint32_t e = ((ms > 900000u ? 900000u : ms) * (uint32_t)fx_bpm10 + 9375u) / 18750u;   /* (x 8 / 150000; < 2^32) */
     return e ? (e < 4096u ? e : 4096u) : 1u;     /* (rounded; up to the loop's whole 32 bars) */
 }
+static loop_t *lrp;                              /* the loop armed or being recorded (ui.lrec) */
 static void loop_arm(void)
 {
     uint32_t t = ui.sel, l;
-    for (l = 0; l < NLOOP && loops[t][l].on; l++)
+    for (l = 0; l < NLOOP && lp_get(t, l); l++)
         ;
     if (l == NLOOP) {
         say("3 LOOPS", 1200);
         return;
     }
-    loops[t][l].n = 0;
+    if (!(lrp = lp_new(seq_lpat, t, l, LOOP_EV))) {   /* (every pattern's loops: the table or the notes full) */
+        say("NO ROOM", 1200);
+        return;
+    }
     ui.lt = (uint8_t)t;
     ui.ll = (uint8_t)l;
     ui.lrec = 1;
@@ -682,7 +683,8 @@ static void loop_arm(void)
 }
 static void loop_drop(void)                      /* the loop being recorded, dropped */
 {
-    loops[ui.lt][ui.ll].n = 0;
+    lp_free(lrp);
+    lrp = 0;
     ui.lrec = 0;
     rec_set(ui.rec);
 }
@@ -690,9 +692,9 @@ static void loop_drop(void)                      /* the loop being recorded, dro
  * arpeggiator's: where it played it; 0xFFFFFFFF: now) */
 static void loop_note_at(const uint8_t *nn, uint32_t cnt, uint32_t vel, uint32_t k, uint32_t q)
 {
-    loop_t *p = &loops[ui.lt][ui.ll];
+    loop_t *p = lrp;
     uint32_t j;
-    if (!ui.lrec || ui.sel != ui.lt)
+    if (!ui.lrec || !p || ui.sel != ui.lt)
         return;
     if (!seq_run) {                              /* (stopped: the sequencer starts on it) */
         seq_run = 1;
@@ -704,7 +706,7 @@ static void loop_note_at(const uint8_t *nn, uint32_t cnt, uint32_t vel, uint32_t
         ui.lrec = 2;
         ui.force = 1;
     }
-    if (q - ui.lstart >= LOOP_MAX || p->n + cnt > LOOP_EV)
+    if (q - ui.lstart >= LOOP_MAX || p->n + cnt > p->cap)
         return;
     if (k < NKEY) {
         ui.lk_ev[k] = p->n;
@@ -726,8 +728,8 @@ static void loop_note(const uint8_t *nn, uint32_t cnt, uint32_t vel, uint32_t k)
 static void loop_release(uint32_t k)             /* a key the looper recorded let go: its notes' length */
 {
     uint32_t j;
-    for (j = 0; ui.lrec == 2 && j < ui.lk_n[k] && ui.lk_ev[k] + j < loops[ui.lt][ui.ll].n; j++)
-        loops[ui.lt][ui.ll].ev[ui.lk_ev[k] + j].len8 = (uint16_t)loop_len8(fm1_ms - ui.lk_t0[k]);
+    for (j = 0; ui.lrec == 2 && lrp && j < ui.lk_n[k] && ui.lk_ev[k] + j < lrp->n; j++)
+        lrp->ev[ui.lk_ev[k] + j].len8 = (uint16_t)loop_len8(fm1_ms - ui.lk_t0[k]);
     ui.lk_ev[k] = 0xFFFF;
 }
 /* REC: the loop ends, its length the nearest whole number of bars (one at least; build 42), so it never drifts from
@@ -735,10 +737,10 @@ static void loop_release(uint32_t k)             /* a key the looper recorded le
  * nothing played: not armed) */
 static void loop_end(void)
 {
-    loop_t *p = &loops[ui.lt][ui.ll];
+    loop_t *p = lrp;
     uint32_t q = loop_qnow(), len, i, j;
     char m[16] = "LOOP ";
-    if (ui.lrec != 2 || !p->n) {
+    if (ui.lrec != 2 || !p || !p->n) {
         loop_drop();
         say("LOOP OFF", 900);
         return;
@@ -757,7 +759,8 @@ static void loop_end(void)
         p->ev[j] = e;
     }
     p->len = (uint16_t)len;
-    lp_ref[ui.lt][ui.ll] = lp_trn[ui.lt];        /* (its notes as played, at the transposition playing: build 68) */
+    lp_resize(p, p->n);                          /* (its room: its notes, the rest given back) */
+    p->ref = lp_trn[ui.lt];                      /* (its notes as played, at the transposition playing: build 68) */
     p->anchor = ui.lstart;                       /* (its first step where recording began: on now, at (q - lstart) % len) */
     p->mute = 0;
     p->cur = 0;
@@ -765,6 +768,7 @@ static void loop_end(void)
                                                   * step due now and gone by: played at once) */
     RING_PUBLISH();
     p->on = 1;
+    lrp = 0;
     ui.lrec = 0;
     rec_set(ui.rec);
     fmt_int(m + 5, ui.ll + 1);
@@ -777,7 +781,7 @@ static uint32_t loops_n(uint32_t t)
 {
     uint32_t l, n = 0;
     for (l = 0; l < NLOOP; l++)
-        n += loops[t][l].on;
+        n += lp_get(t, l) != 0 && lp_get(t, l)->on;
     return n;
 }
 /* a note played while recording (k: its key, NKEY none): into the chosen track's nearest step; the step the
@@ -849,8 +853,8 @@ static void arp_take(void)
             if (i < NSTEP)
                 seq_glen[r.t][i] = (uint8_t)glen_of8(r.len8);
         }
-        if (ui.lrec && ui.lt == r.t) {
-            loop_t *p = &loops[ui.lt][ui.ll];
+        if (ui.lrec && lrp && ui.lt == r.t) {
+            loop_t *p = lrp;
             uint32_t n0 = p->n;
             loop_note_at(&r.note, 1, r.vel, NKEY, r.q);
             if (p->n > n0)
@@ -1768,11 +1772,9 @@ static void ui_input(void)
             ui.force = 1;
         } else if (!ui.lv_any && sh && (uint32_t)(fm1_ms - ui.lrec_t0) >= 1500u) {   /* (held on: all emptied) */
             uint32_t l;
-            for (l = 0; l < NLOOP; l++) {
-                loops[ui.sel][l].on = 0;
-                RING_PUBLISH();
-                loops[ui.sel][l].n = loops[ui.sel][l].len = 0;
-            }
+            for (l = 0; l < NLOOP; l++)
+                if (lp_get(ui.sel, l) != lrp)
+                    lp_free(lp_get(ui.sel, l));
             ui.lv_any = ui.lview = 1;
             flash("EMPTY", "LOOPS", C_BAD);
         } else if (!ui.lview && (uint32_t)(fm1_ms - ui.lrec_t0) >= 400u) {
@@ -1970,11 +1972,11 @@ static void ui_input(void)
                 ui.lv_t0 = fm1_ms;
             }
         if (ui.lv_k != KEY_NONE) {
-            loop_t *p = &loops[ui.sel][white_ix(ui.lv_k)];
+            loop_t *p = lp_get(ui.sel, (uint32_t)white_ix(ui.lv_k));
             char m[12] = "LOOP ";
             fmt_int(m + 5, white_ix(ui.lv_k) + 1);
             if (!((keys >> ui.lv_k) & 1u)) {
-                if (!ui.lv_long && p->on) {     /* (let go soon: muted, or playing again) */
+                if (!ui.lv_long && p && p->on) {   /* (let go soon: muted, or playing again) */
                     p->mute = (uint8_t)!p->mute;
                     str_cpy(m + str_len(m), p->mute ? " MUTE" : " ON", 6);
                     say(m, 900);
@@ -1982,10 +1984,8 @@ static void ui_input(void)
                 ui.lv_k = KEY_NONE;
             } else if (!ui.lv_long && (uint32_t)(fm1_ms - ui.lv_t0) >= 800u) {
                 ui.lv_long = 1;                  /* (held: emptied) */
-                p->on = 0;
-                RING_PUBLISH();
-                p->n = 0;
-                p->len = 0;
+                if (p != lrp)
+                    lp_free(p);
                 flash("EMPTY", m, C_BAD);
             }
         }
@@ -2271,9 +2271,9 @@ static void ui_leds(void)
     for (k = 0; k < NKEY; k++) {
         if (ui.lrec_down && white_ix(k) >= 0) {      /* (the loops: playing lit, muted dim) */
             int32_t w = white_ix(k);
-            const loop_t *p = &loops[ui.sel][w < (int32_t)NLOOP ? w : 0];
-            fm1_led_key(14u + k, w < (int32_t)NLOOP && p->on && !p->mute);
-            led_dim_key(14u + k, w < (int32_t)NLOOP && p->on && p->mute);
+            const loop_t *p = w < (int32_t)NLOOP ? lp_get(ui.sel, (uint32_t)w) : 0;
+            fm1_led_key(14u + k, p && p->on && !p->mute);
+            led_dim_key(14u + k, p && p->on && p->mute);
             continue;
         }
         if (ui.page == PG_PAT && white_ix(k) >= 0) {   /* (the PATTERNS grid: every white key a pattern, dim; the playing

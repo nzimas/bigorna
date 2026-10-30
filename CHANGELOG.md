@@ -1,5 +1,27 @@
 # Changelog
 
+## Build 73
+
+Changed
+- Loops belong to a pattern, as its steps do. Before, the loops belonged to the session and played in every pattern,
+  an empty one too. Now another pattern does not play them; an empty pattern plays nothing. When a pattern comes in,
+  its loops start from their first step with its steps, and the loops of the pattern it replaces stop.
+- Saving the pattern playing into another slot, pasting a pattern and saving a break copy its loops with it.
+  Emptying a pattern removes its loops.
+- All the patterns' loops share one memory: 40 loops and 4608 notes in all (the 18 loops of 256 notes there were
+  before still fit). When it is full, arming a loop shows NO ROOM; saving a pattern into another slot saves its steps
+  and shows LOOPS LOST for the loops that did not fit.
+- The transposition moves the pattern playing's loops only.
+
+Removed
+- A pattern that unmutes a track no longer keeps that track's loops silent until their first step: every loop of the
+  pattern starts with it.
+
+Compatibility
+- A session's loops are saved with their pattern. A session saved by builds 38 to 72 loads with its loops in the
+  pattern it was saved playing. Loaded by build 72 or earlier, a session saved by this build puts the loops of every
+  pattern together, and loops in the same place on a track in different patterns overwrite each other.
+
 ## Build 72
 
 Fixed

@@ -1130,81 +1130,174 @@ static void fxq_block(void)                      /* (each block, playing: the MI
 }
 
 /* ---------------------------------------------------------------- the looper --- */
-/* up to three loops a track, each its own length in steps (up to 32 bars; build 37), played over the track's steps in time
- * with them: notes at steps (recorded quantized: ui.c), each with its velocity and its length in eighths of a step.
- * A loop being recorded is not played (on 0) until it is ended; then it plays from its first step on the step it
- * ended at (anchor, in seq_gcount's count) */
-#define NLOOP 3u
+/* up to three loops a track in each pattern (build 73: a pattern's own -- before, the session's, playing in every
+ * pattern), each its own length in steps (up to 32 bars; build 37), played over the track's steps in time with them:
+ * notes at steps (recorded quantized: ui.c), each with its velocity and its length in eighths of a step. A loop
+ * being recorded is not played (on 0) until it is ended; then it plays from its first step on the step it ended at
+ * (anchor, in seq_gcount's count).
+ * Every pattern's loops are in one table, NLP of them, each marked with its pattern, its track and its place (0 ..
+ * 2); their notes in one pool, each loop's room (cap) one after another from the pool's start, the room free after
+ * them. The sequencer plays the loops of seq_lpat, the pattern it plays: a pattern coming in, its loops from their
+ * first step with its first step (the ones it left silent). Only the main loop changes the table and the pool;
+ * a loop's room moved (another emptied, or its own made smaller), with the interrupts off */
+#define NLOOP 3u                 /* (loops a track, in a pattern) */
+#define NLP 40u                  /* (loops in all, every pattern's) */
 #define LOOP_EV 256u             /* (notes a loop) */
+#define LP_POOL 4608u            /* (notes in all: as the 18 loops of 256 before build 73) */
 #define LOOP_MAX 512u            /* (steps: 32 bars) */
+#define LP_FREE 0xFFu
 typedef struct { uint16_t step, len8; uint8_t note, vel; } lev_t;
 typedef struct {
     volatile uint8_t on, mute;
     volatile uint8_t kick;       /* ended after its first step had gone by: that step's notes played at once */
+    volatile uint8_t pat;        /* its pattern (LP_FREE: the place unused) */
+    uint8_t t, l;                /* its track, its place there */
+    int8_t ref;                  /* the transposition its notes are kept at (below) */
     uint16_t len, n;
     volatile uint32_t anchor;
     uint16_t cur;                /* (the ISR's: the next note) */
-    lev_t ev[LOOP_EV];
+    uint16_t cap;                /* its room in the pool, notes */
+    lev_t *ev;
 } loop_t;
-static loop_t loops[NTRACK][NLOOP];
+static loop_t lps[NLP];
+static lev_t lp_pool[LP_POOL];
+static volatile uint8_t seq_lpat;                /* the pattern whose loops play (the sequencer's, as a pattern comes
+                                                  * in; the main loop's, stopped) */
+static volatile uint8_t seq_pend_lp;             /* (the pattern waiting: its loops, as it comes in) */
 static volatile uint32_t seq_gcount;      /* the steps played since PLAY (the first: 0) */
 /* (build 65) a track a pattern change unmuted: each of its loops silent until it comes round to its first step, then
  * on in its place (a bit a loop; set at the switch -- the ISR's, playing; the main loop's, stopped -- cleared here) */
 static volatile uint8_t loop_wait[NTRACK];
-/* (build 68) a loop's notes kept as recorded, at the transposition lp_ref (the track's TRN as it was recorded, or as
- * the session was saved); played moved by the track's transposition playing, lp_trn, less it -- so that the loops
- * follow a pattern's transposition from its first step (lp_trn: set by the main loop, and by the sequencer as a
- * pattern comes in) */
-static int8_t lp_ref[NTRACK][NLOOP];
+/* (build 68) a loop's notes kept as recorded, at the transposition ref (the track's TRN in its pattern as it was
+ * recorded, or as the session was saved); played moved by the track's transposition playing, lp_trn, less it (lp_trn:
+ * set by the main loop, and by the sequencer as a pattern comes in) */
 static volatile int8_t lp_trn[NTRACK];
-static uint32_t lp_note(uint32_t t, uint32_t l, uint32_t n)
+static uint32_t lp_note(const loop_t *p, uint32_t n)
 {
-    int32_t d = lp_trn[t] - lp_ref[t][l];
+    int32_t d = lp_trn[p->t] - p->ref;
     return d ? (uint32_t)sc_move((int32_t)n, d) : n;
+}
+/* pattern k's loop l on track t (0: none) */
+static loop_t *lp_at(uint32_t k, uint32_t t, uint32_t l)
+{
+    uint32_t i;
+    for (i = 0; i < NLP; i++)
+        if (lps[i].pat == k && lps[i].t == t && lps[i].l == l)
+            return &lps[i];
+    return 0;
+}
+static loop_t *lp_get(uint32_t t, uint32_t l) { return lp_at(seq_lpat, t, l); }   /* (the pattern playing's) */
+static uint32_t lp_top(void)                     /* the pool's room in use */
+{
+    uint32_t i, n = 0;
+    for (i = 0; i < NLP; i++)
+        if (lps[i].pat != LP_FREE)
+            n += lps[i].cap;
+    return n;
+}
+/* loop p's room made cap notes (smaller: its notes past it lost), the rooms after it moved -- the interrupts off,
+ * so that the sequencer never reads a loop's notes half moved */
+static void lp_resize(loop_t *p, uint32_t cap)
+{
+    lev_t *end = p->ev + p->cap;
+    uint32_t top = lp_top(), i;
+    int32_t d = (int32_t)cap - (int32_t)p->cap;
+    if (!d)
+        return;
+    fm1_irq_off();
+    memmove(end + d, end, (uint32_t)(lp_pool + top - end) * sizeof(lev_t));
+    for (i = 0; i < NLP; i++)
+        if (lps[i].pat != LP_FREE && lps[i].ev >= end)
+            lps[i].ev += d;
+    p->cap = (uint16_t)cap;
+    if (p->n > cap)
+        p->n = (uint16_t)cap;
+    fm1_irq_on();
+}
+/* a new loop: pattern k's l on track t, room for cap notes (the most the pool has, if less), empty and not on;
+ * 0 if the table or the pool is full (or the place taken) */
+static loop_t *lp_new(uint32_t k, uint32_t t, uint32_t l, uint32_t cap)
+{
+    uint32_t i, top = lp_top();
+    loop_t *p = 0;
+    if (lp_at(k, t, l) || top >= LP_POOL)
+        return 0;
+    for (i = 0; i < NLP && !p; i++)
+        if (lps[i].pat == LP_FREE)
+            p = &lps[i];
+    if (!p)
+        return 0;
+    p->on = 0;
+    p->mute = 0;
+    p->kick = 0;
+    p->t = (uint8_t)t;
+    p->l = (uint8_t)l;
+    p->ref = 0;
+    p->len = p->n = p->cur = 0;
+    p->anchor = 0;
+    p->ev = lp_pool + top;
+    p->cap = (uint16_t)(cap < LP_POOL - top ? cap : LP_POOL - top);
+    RING_PUBLISH();
+    p->pat = (uint8_t)k;
+    return p;
+}
+static void lp_free(loop_t *p)                   /* a loop gone, its room given back */
+{
+    if (!p || p->pat == LP_FREE)
+        return;
+    p->on = 0;
+    RING_PUBLISH();
+    lp_resize(p, 0);
+    p->pat = LP_FREE;
+}
+static void lp_init(void)
+{
+    uint32_t i;
+    for (i = 0; i < NLP; i++)
+        lps[i].pat = LP_FREE;
 }
 static void loop_wait_set(uint32_t t)
 {
-    uint32_t l, m = 0;
-    for (l = 0; l < NLOOP; l++)
-        if (loops[t][l].on && loops[t][l].len)
-            m |= 1u << l;
+    uint32_t i, k = seq_lpat, m = 0;
+    for (i = 0; i < NLP; i++)
+        if (lps[i].pat == k && lps[i].t == t && lps[i].on && lps[i].len)
+            m |= 1u << lps[i].l;
     loop_wait[t] = (uint8_t)m;
 }
 static void loop_kick(void)                      /* (each block: a loop's first step, late) */
 {
-    uint32_t t, l;
-    for (t = 0; t < NTRACK; t++)
-        for (l = 0; l < NLOOP; l++) {
-            loop_t *p = &loops[t][l];
-            if (!p->on || !p->kick)
-                continue;
-            loop_wait[t] &= (uint8_t)~(1u << l);  /* (its first step: no more waiting) */
-            for (p->cur = 0; p->cur < p->n && p->ev[p->cur].step == 0u; p->cur++)
-                if (!p->mute)
-                    seq_sound(t, lp_note(t, l, p->ev[p->cur].note), p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
-            p->kick = 0;
-        }
+    uint32_t i, k = seq_lpat;
+    for (i = 0; i < NLP; i++) {
+        loop_t *p = &lps[i];
+        uint32_t t = p->t;
+        if (p->pat != k || !p->on || !p->kick)
+            continue;
+        loop_wait[t] &= (uint8_t)~(1u << p->l);  /* (its first step: no more waiting) */
+        for (p->cur = 0; p->cur < p->n && p->ev[p->cur].step == 0u; p->cur++)
+            if (!p->mute)
+                seq_sound(t, lp_note(p, p->ev[p->cur].note), p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
+        p->kick = 0;
+    }
 }
 static void loop_step(void)
 {
-    uint32_t t, l;
-    for (t = 0; t < NTRACK; t++)
-        for (l = 0; l < NLOOP; l++) {
-            loop_t *p = &loops[t][l];
-            uint32_t ph;
-            if (!p->on || !p->len || (int32_t)(seq_gcount - p->anchor) < 0 || p->kick)
-                continue;
-            ph = (seq_gcount - p->anchor) % p->len;
-            if (!ph) {
-                p->cur = 0;
-                loop_wait[t] &= (uint8_t)~(1u << l);   /* (its first step: on, in its place) */
-            }
-            while (p->cur < p->n && p->ev[p->cur].step < ph)
-                p->cur++;
-            for (; p->cur < p->n && p->ev[p->cur].step == ph; p->cur++)
-                if (!p->mute && !(loop_wait[t] >> l & 1u))
-                    seq_sound(t, lp_note(t, l, p->ev[p->cur].note), p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
+    uint32_t i, k = seq_lpat;
+    for (i = 0; i < NLP; i++) {
+        loop_t *p = &lps[i];
+        uint32_t t = p->t, ph;
+        if (p->pat != k || !p->on || !p->len || (int32_t)(seq_gcount - p->anchor) < 0 || p->kick)
+            continue;
+        ph = (seq_gcount - p->anchor) % p->len;
+        if (!ph) {
+            p->cur = 0;
+            loop_wait[t] &= (uint8_t)~(1u << p->l);   /* (its first step: on, in its place) */
         }
+        while (p->cur < p->n && p->ev[p->cur].step < ph)
+            p->cur++;
+        for (; p->cur < p->n && p->ev[p->cur].step == ph; p->cur++)
+            if (!p->mute && !(loop_wait[t] >> p->l & 1u))
+                seq_sound(t, lp_note(p, p->ev[p->cur].note), p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
+    }
 }
 /* a pattern's steps whole, as the sequencer plays them (projects.c fills one, the ISR takes it in) */
 typedef struct {
@@ -1461,9 +1554,8 @@ static void seq_block(void)
                         ? 0 : -1;                /* (a note no more than a quarter of the rate's ago) */
         seq_gstep = 15;
         seq_gcount = 0xFFFFFFFFu;
-        for (t = 0; t < NTRACK; t++)             /* (the loops from their first steps) */
-            for (i = 0; i < NLOOP; i++)
-                loops[t][i].anchor = 0;
+        for (i = 0; i < NLP; i++)                /* (the loops from their first steps) */
+            lps[i].anchor = 0;
         if (xm == 2u && xk_spp) {                /* MIDI CONTINUE: from the song position, in 16ths -- each track
                                                   * where it would be by then on its clock, the loops too */
             uint32_t spp = xk_spp;
@@ -1504,27 +1596,30 @@ static void seq_block(void)
             seq_tacc[t] = SEQ_STEP8;
         }
         memset(seq_plays, 0, sizeof seq_plays);
-        for (t = 0; t < NTRACK; t++)             /* (its transpositions: the loops' from now) */
+        for (t = 0; t < NTRACK; t++) {           /* (its transpositions: its loops' from now) */
             lp_trn[t] = sb_next.trn[t];
+            loop_wait[t] = 0;
+        }
+        {   /* (build 73) its loops, from their first step with its first step: the tempo's 16th to come (this one
+             * gone by, the track's clock a little behind: now, played at once) -- the loops of the one left silent */
+            uint32_t k = seq_pend_lp, now = seq_acc < SEQ_16TH;
+            for (i = 0; i < NLP; i++)
+                if (lps[i].pat == k) {
+                    lps[i].cur = 0;
+                    lps[i].anchor = now ? seq_gcount : seq_gcount + 1u;
+                    lps[i].kick = (uint8_t)(now && lps[i].on);
+                }
+            RING_PUBLISH();
+            seq_lpat = (uint8_t)k;
+        }
         if (seq_pend_mu & 0x80u) {               /* (build 65) its mutes, now: a track it unmutes, its notes from the
-                                                  * muted time let go, its loops waiting for their first step (one at
-                                                  * its first step now: played at once) */
-            uint32_t was = 0x80u, l;
+                                                  * muted time let go */
+            uint32_t was = 0x80u;
             for (t = 0; t < NTRACK; t++) {
                 uint32_t mu = seq_pend_mu >> t & 1u;
                 was |= (uint32_t)(trk_mute[t] != 0) << t;
-                if (trk_mute[t] && !mu) {
+                if (trk_mute[t] && !mu)
                     trk_hush(t);
-                    loop_wait_set(t);
-                    for (l = 0; l < NLOOP; l++) {
-                        loop_t *p = &loops[t][l];
-                        if (seq_acc < SEQ_16TH && p->on && p->len && (int32_t)(seq_gcount - p->anchor) >= 0 &&
-                            (seq_gcount - p->anchor) % p->len == 0u) {
-                            loop_wait[t] &= (uint8_t)~(1u << l);
-                            p->kick = 1;
-                        }
-                    }
-                }
                 trk_mute[t] = (uint8_t)mu;
             }
             seq_mu_was = (uint8_t)was;
@@ -1538,11 +1633,6 @@ static void seq_block(void)
         seq_gcount++;
         met_tick(seq_gstep);
         brk_tick();
-        if (seq_pend == 1u && seq_wraps(seq_pend_t) && seq_tacc[seq_pend_t] >= SEQ_STEP8 - SEQ_STEP8 / 4u)
-            for (t = 0; t < NTRACK; t++)         /* (the pattern waiting comes in within a quarter step, the track's
-                                                  * clock a little behind the tempo's: its transpositions for the loops
-                                                  * already, build 68) */
-                lp_trn[t] = sb_next.trn[t];
         loop_step();
     }
     {   /* BREAK let go: its ratchets and echoes still to come dropped at once, so the pattern is back as the key
@@ -2407,6 +2497,7 @@ static void tracks_init(void)
     uint32_t t;
     memset(vox, 0, sizeof vox);
     memset(trk, 0, sizeof trk);
+    lp_init();
     eng_cost[ENG_FMT] = BLK_TICKS * 5u / 100u;   /* (first guesses, until measured) */
     eng_cost[ENG_FMD] = BLK_TICKS * 5u / 100u;
     eng_cost[ENG_WAV] = BLK_TICKS * 5u / 100u;

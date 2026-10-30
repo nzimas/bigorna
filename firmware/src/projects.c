@@ -448,19 +448,28 @@ static void lw_put(const void *p, uint32_t n)
 }
 static uint32_t lop_bytes(void)          /* the stream's length (0: no loop) */
 {
-    uint32_t t, l, n = 0, b = 1;
-    for (t = 0; t < NTRACK; t++)
-        for (l = 0; l < NLOOP; l++)
-            if (loops[t][l].on && loops[t][l].n) {
-                n++;
-                b += 8u + loops[t][l].n * (uint32_t)sizeof(lev_t);
-            }
+    uint32_t i, n = 0, b = 1;
+    for (i = 0; i < NLP; i++)
+        if (lps[i].pat != LP_FREE && lps[i].on && lps[i].n) {
+            n++;
+            b += 8u + lps[i].n * (uint32_t)sizeof(lev_t);
+        }
     return n ? b : 0u;
 }
-/* the loops playing into the store, for session k: their generation and sectors (0, 0: none) */
+/* (build 73) pattern k's transposition on track t (the one playing: as it plays) */
+static int32_t pat_trn(uint32_t k, uint32_t t)
+{
+    const pat_t *p = &pat_store[k % PAT_SLOTS];
+    if (k == pat_cur)
+        return ui.trn[t];
+    return p->used && p->seq[SEQ_FMT] == SEQ_V4 ? clampi((int8_t)p->seq[SEQ_TRN + t], -TRN_MAX, TRN_MAX) : 0;
+}
+/* every pattern's loops into the store, for session k: their generation and sectors (0, 0: none). Each loop: its
+ * track, its place, muted, its pattern + 1 (build 73; 0 before: the session's, in every pattern), its length, its
+ * notes as they play in its pattern */
 static int lop_save(uint32_t k, uint32_t *gen, uint8_t *nsec)
 {
-    uint32_t t, l, bytes = lop_bytes();
+    uint32_t i, bytes = lop_bytes();
     uint8_t cnt = 0;
     *gen = 0;
     *nsec = 0;
@@ -474,35 +483,33 @@ static int lop_save(uint32_t k, uint32_t *gen, uint8_t *nsec)
     lw.gen = ++lop_gmax;
     lw.bytes = bytes;
     memset(lop_data(), 0, LOP_DATA);
-    for (t = 0; t < NTRACK; t++)
-        for (l = 0; l < NLOOP; l++)
-            cnt += (uint8_t)(loops[t][l].on && loops[t][l].n);
+    for (i = 0; i < NLP; i++)
+        cnt += (uint8_t)(lps[i].pat != LP_FREE && lps[i].on && lps[i].n);
     lw_put(&cnt, 1);
-    for (t = 0; t < NTRACK; t++)
-        for (l = 0; l < NLOOP; l++) {
-            const loop_t *p = &loops[t][l];
-            uint8_t h[8];
-            if (!p->on || !p->n)
-                continue;
-            h[0] = (uint8_t)t;
-            h[1] = (uint8_t)l;
-            h[2] = p->mute;
-            h[3] = 0;
-            h[4] = (uint8_t)p->len;
-            h[5] = (uint8_t)(p->len >> 8);
-            h[6] = (uint8_t)p->n;
-            h[7] = (uint8_t)(p->n >> 8);
-            lw_put(h, 8);
-            {                                    /* (its notes as they play: the transposition in them, build 68) */
-                uint32_t e;
-                int32_t d = lp_trn[t] - lp_ref[t][l];
-                for (e = 0; e < p->n; e++) {
-                    lev_t v = p->ev[e];
-                    v.note = (uint8_t)(d ? scale_move((int32_t)v.note, d) : v.note);
-                    lw_put(&v, sizeof v);
-                }
+    for (i = 0; i < NLP; i++) {
+        const loop_t *p = &lps[i];
+        uint8_t h[8];
+        if (p->pat == LP_FREE || !p->on || !p->n)
+            continue;
+        h[0] = p->t;
+        h[1] = p->l;
+        h[2] = p->mute;
+        h[3] = (uint8_t)(p->pat + 1u);
+        h[4] = (uint8_t)p->len;
+        h[5] = (uint8_t)(p->len >> 8);
+        h[6] = (uint8_t)p->n;
+        h[7] = (uint8_t)(p->n >> 8);
+        lw_put(h, 8);
+        {                                        /* (its notes as they play: the transposition in them, build 68) */
+            uint32_t e;
+            int32_t d = pat_trn(p->pat, p->t) - p->ref;
+            for (e = 0; e < p->n; e++) {
+                lev_t v = p->ev[e];
+                v.note = (uint8_t)(d ? scale_move((int32_t)v.note, d) : v.note);
+                lw_put(&v, sizeof v);
             }
         }
+    }
     lw_flush();                                  /* (the last, part full) */
     if (lw.err || lw.j != lw.nsec)
         return lw.err ? lw.err : -3;
@@ -510,21 +517,19 @@ static int lop_save(uint32_t k, uint32_t *gen, uint8_t *nsec)
     *nsec = (uint8_t)lw.nsec;
     return 0;
 }
-/* the loops emptied (none playing, none recording) */
+/* every pattern's loops emptied (none playing, none recording) */
 static void lop_clear(void)
 {
-    uint32_t t, l;
+    uint32_t i;
     if (ui.lrec)
         loop_drop();
-    for (t = 0; t < NTRACK; t++)
-        for (l = 0; l < NLOOP; l++)
-            loops[t][l].on = 0;
+    for (i = 0; i < NLP; i++)
+        lps[i].on = 0;
     RING_PUBLISH();
-    for (t = 0; t < NTRACK; t++)
-        for (l = 0; l < NLOOP; l++) {
-            loops[t][l].n = loops[t][l].len = 0;
-            loops[t][l].mute = 0;
-        }
+    for (i = 0; i < NLP; i++) {
+        lps[i].pat = LP_FREE;
+        lps[i].cap = lps[i].n = lps[i].len = 0;
+    }
 }
 /* the stream read back: a byte at a time from the sectors in map, each read as the one before runs out */
 static struct {
@@ -550,9 +555,10 @@ static void lr_get(void *p, uint32_t n)
         lr.left--;
     }
 }
-/* session k's loops (generation gen, nsec sectors) given back; the loops emptied first, and left empty if they do
- * not read whole. Playing, they start at the next bar */
-static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec)
+/* session k's loops (generation gen, nsec sectors) given back, each to its pattern (a session saved before build
+ * 73: all to pat, the pattern it was saved playing); the loops emptied first, and left empty if they do not read
+ * whole. Playing, they start at the next bar */
+static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t pat)
 {
     uint32_t i, j, a;
     uint8_t cnt;
@@ -580,17 +586,22 @@ static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec)
     for (i = 0; i < cnt && !lr.err; i++) {
         uint8_t h[8];
         loop_t *p;
-        uint32_t n, len;
+        uint32_t n, len, pk;
         lr_get(h, 8);
         n = h[6] | (uint32_t)h[7] << 8;
         len = h[4] | (uint32_t)h[5] << 8;
-        if (lr.err || h[0] >= NTRACK || h[1] >= NLOOP || n > LOOP_EV || !len || len > LOOP_MAX)
+        pk = h[3] ? h[3] - 1u : pat;
+        if (lr.err || h[0] >= NTRACK || h[1] >= NLOOP || pk >= PAT_SLOTS || !n || n > LOOP_EV || !len ||
+            len > LOOP_MAX)
             break;
-        p = &loops[h[0]][h[1]];
+        p = lp_new(pk, h[0], h[1], n);
+        if (!p || p->cap < n)
+            break;
         lr_get(p->ev, n * (uint32_t)sizeof(lev_t));
         p->n = (uint16_t)n;
         p->len = (uint16_t)len;
         p->mute = (uint8_t)(h[2] != 0);
+        p->ref = (int8_t)pat_trn(pk, h[0]);      /* (its notes as they play in its pattern) */
         p->anchor = a;
         p->cur = 0;
         p->kick = 0;
@@ -600,9 +611,9 @@ static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec)
         return -2;
     }
     RING_PUBLISH();
-    for (i = 0; i < NTRACK * NLOOP; i++)
-        if (loops[i / NLOOP][i % NLOOP].n)
-            loops[i / NLOOP][i % NLOOP].on = 1;
+    for (i = 0; i < NLP; i++)
+        if (lps[i].pat != LP_FREE && lps[i].n)
+            lps[i].on = 1;
     return 0;
 }
 /* session k's loops copied for session to: their new generation and sectors */
@@ -1038,14 +1049,28 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
                 b->note[t][i] = p->seq[SEQ_OLD_NOTE + o];
             }
 }
-/* slot k of the store, as the pattern playing, at once (follow: switched to -- not a session loaded -- the loops
- * follow its transposition, build 67) */
+/* slot k of the store, as the pattern playing, at once, its loops with it (follow: unused since build 73 -- each
+ * loop is its own pattern's) */
 static void pat_give(uint32_t k, int follow)
 {
     const pat_t *p = &pat_store[k];
+    uint32_t i;
+    (void)follow;
     seq_pend = 0;                                /* (a pattern waiting: not now) */
     pat_decode(p, &sb_tmp);
-    lp_follow(sb_tmp.trn, follow);
+    lp_follow(sb_tmp.trn);
+    if (k != seq_lpat) {                         /* (its loops from their first step: the next bar, playing) */
+        uint32_t a = seq_run && seq_gcount != 0xFFFFFFFFu ? (seq_gcount / 16u + 1u) * 16u : 0u;
+        for (i = 0; i < NLP; i++)
+            if (lps[i].pat == k) {
+                lps[i].cur = 0;
+                lps[i].kick = 0;
+                lps[i].anchor = a;
+            }
+        memset((void *)loop_wait, 0, sizeof loop_wait);
+        RING_PUBLISH();
+        seq_lpat = (uint8_t)k;
+    }
     seq_copy_in(&sb_tmp);
     memcpy(ui.gen_den, sb_tmp.den, NTRACK);
     memcpy(ui.gen_cx, sb_tmp.cx, NTRACK);
@@ -1084,6 +1109,46 @@ static int pat_save(uint32_t k)
     prj_dirty = 1;                               /* (the project's pattern changed: saved with it) */
     return pat_flush(k);
 }
+/* (build 73) pattern k's loops emptied (the one being recorded in it: dropped) */
+static void lp_clear_pat(uint32_t k)
+{
+    uint32_t i;
+    if (ui.lrec && lrp && lrp->pat == k)
+        loop_drop();
+    for (i = 0; i < NLP; i++)
+        if (lps[i].pat == k)
+            lp_free(&lps[i]);
+}
+/* (build 73) pattern from's loops copied as pattern to's (its own emptied first; the one being recorded left out):
+ * 0, or -1 if some did not fit (the table or the notes full) */
+static int lp_copy_pat(uint32_t from, uint32_t to)
+{
+    uint32_t i;
+    int rc = 0;
+    if (from == to)
+        return 0;
+    lp_clear_pat(to);
+    for (i = 0; i < NLP; i++) {
+        const loop_t *p = &lps[i];
+        loop_t *q;
+        if (p->pat != from || !p->on || p == lrp)
+            continue;
+        q = lp_new(to, p->t, p->l, p->n);
+        if (!q || q->cap < p->n) {
+            lp_free(q);
+            rc = -1;
+            continue;
+        }
+        memcpy(q->ev, p->ev, p->n * sizeof(lev_t));
+        q->n = p->n;
+        q->len = p->len;
+        q->mute = p->mute;
+        q->ref = p->ref;
+        RING_PUBLISH();
+        q->on = 1;
+    }
+    return rc;
+}
 /* the PATTERNS grid and a white key held: pattern k emptied (the one playing too: its steps gone) */
 static void pat_clear(uint32_t k)
 {
@@ -1093,6 +1158,7 @@ static void pat_clear(uint32_t k)
         return;
     memset(&pat_store[k], 0, sizeof pat_store[k]);
     pat_dirtyv[k] = 0;
+    lp_clear_pat(k);                             /* (its loops too: build 73) */
     if (seq_pend == 1u && seq_pend_k == k)
         seq_pend = 0;                            /* (it was waiting to play: not now) */
     if (k == pat_cur)
@@ -1108,12 +1174,13 @@ static void pat_clear(uint32_t k)
 static void pat_save_as(uint32_t k)
 {
     char n[12] = "PATTERN ";
-    int rc;
+    int rc, lr = 0;
     if (k >= PAT_SLOTS)
         return;
     if (k == pat_cur)
         rc = pat_save(k);
     else {
+        lr = lp_copy_pat(pat_cur, k);            /* (its loops too: build 73) */
         pat_take(&pat_store[k]);
         pat_dirtyv[k] = 0;
         if (seq_pend == 1u && seq_pend_k == k) {   /* (waiting to play: as saved now) */
@@ -1128,7 +1195,7 @@ static void pat_save_as(uint32_t k)
         rc = pat_flush(k);
     }
     fmt_int(n + 8, (int32_t)k + 1);
-    flash(rc ? "FAILED" : "SAVED", rc ? "" : n, rc ? C_BAD : C_OK);
+    flash(rc ? "FAILED" : "SAVED", rc ? "" : lr ? "LOOPS LOST" : n, rc || lr ? C_BAD : C_OK);
     ui.force = 1;
 }
 /* the PATTERNS grid, SHIFT and a white key held: pattern k copied (the one playing as it plays, its changes too); a pattern
@@ -1148,14 +1215,15 @@ static void pat_copy_hold(uint32_t k)
         say("COPY OFF", 900);
         return;
     }
-    if (pat_clip_from >= 0) {                    /* pasted */
+    if (pat_clip_from >= 0) {                    /* pasted (its loops too: build 73) */
+        int lr = lp_copy_pat((uint32_t)pat_clip_from, k);
         pat_store[k] = pat_clip;
         pat_dirtyv[k] = 0;
         rc = pat_flush(k);
         pat_switch(k);
         pat_clip_from = -1;
         prj_dirty = 1;
-        flash(rc ? "FAILED" : "PASTED", rc ? "" : n, rc ? C_BAD : C_OK);
+        flash(rc ? "FAILED" : "PASTED", rc ? "" : lr ? "LOOPS LOST" : n, rc || lr ? C_BAD : C_OK);
         return;
     }
     if (k == pat_cur)
@@ -1233,7 +1301,7 @@ static void pat_brk_save(uint32_t k)
 {
     char n[12] = "PATTERN ";
     uint32_t t;
-    int rc;
+    int rc, lr = 0;
     if (k >= PAT_SLOTS)
         return;
     ui.force = 1;
@@ -1250,6 +1318,7 @@ static void pat_brk_save(uint32_t k)
             brk_render(&sb_tmp, t, brk_seed + t * 977u);
     pat_encode(&pat_store[k], &sb_tmp);
     pat_dirtyv[k] = 0;
+    lr = lp_copy_pat(pat_cur, k);                /* (the loops playing with it: build 73) */
     if (seq_pend == 1u && seq_pend_k == k)
         seq_pend = 0;                            /* (it was waiting to play: as it was, not now) */
     if (k == pat_cur) {                          /* (the one playing: its steps the break's, at the end of the chosen
@@ -1260,6 +1329,7 @@ static void pat_brk_save(uint32_t k)
         RING_PUBLISH();
         pat_decode(&pat_store[k], &sb_next);
         seq_pend_k = (uint8_t)k;
+        seq_pend_lp = (uint8_t)k;
         seq_pend_t = ui.sel;
         seq_pend_mu = 0;
         RING_PUBLISH();
@@ -1268,7 +1338,7 @@ static void pat_brk_save(uint32_t k)
     rc = pat_flush(k);
     prj_dirty = 1;
     fmt_int(n + 8, (int32_t)k + 1);
-    flash(rc ? "FAILED" : "BREAK SAVED", rc ? "" : n, rc ? C_BAD : C_OK);
+    flash(rc ? "FAILED" : "BREAK SAVED", rc ? "" : lr ? "LOOPS LOST" : n, rc || lr ? C_BAD : C_OK);
 }
 
 /* ---------------------------------------------------------------- projects --- */
@@ -1419,7 +1489,7 @@ static int prj_load(uint32_t k)
     memset(pat_dirtyv, 0, sizeof pat_dirtyv);
     pat_give(b.pat < PAT_SLOTS ? b.pat : 0u, 0);    /* (the pattern it was saved playing) */
     prj_dirty = 0;
-    rc = lop_load(k, b.loop_gen, b.loop_nsec);
+    rc = lop_load(k, b.loop_gen, b.loop_nsec, b.pat < PAT_SLOTS ? b.pat : 0u);
     lst_note(k);
     return rc ? -5 : 0;                          /* (-5: loaded, but its loops did not read whole) */
 }
@@ -1718,6 +1788,7 @@ static void pat_switch(uint32_t k)
         return;                                  /* (the one playing: the one waiting, not now) */
     pat_decode(&pat_store[k], &sb_next);         /* playing: at the end of the chosen track's time through */
     seq_pend_k = (uint8_t)k;
+    seq_pend_lp = (uint8_t)k;
     seq_pend_t = ui.sel;
     seq_pend_mu = (uint8_t)px_mutes_of(&pat_store[k]);   /* (its mutes, as it comes in: build 65) */
     RING_PUBLISH();
