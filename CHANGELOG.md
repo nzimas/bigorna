@@ -1,5 +1,26 @@
 # Changelog
 
+## Build 72
+
+Fixed
+- A pattern saved with one track locked on many steps lost the steps of the tracks after it. The steps were written
+  track by track, each with all its locks, and once the pattern's room was full the remaining tracks got nothing.
+  Now every step with a note on every track is always saved (all 96 fit); the room left goes to chords, then MOD
+  settings, then locks, shared one per step in turn across all six tracks.
+
+Changed
+- The PATTERNS grid: a white key held 0.8 s saves the pattern playing into that slot, empty or not, as Tonitor saves
+  its snapshots. Copy and paste moved to SHIFT + a white key held. With the 3rd black key held and the sequencer
+  stopped, a white key held saves nothing.
+- The PATTERNS grid no longer draws a green frame around the pattern playing. The cursor (the white square) is the
+  only highlight; the pattern playing still has its number in green (orange with changes not saved).
+
+Added
+- Out of the step view, the keys that play the root of the scale are lit dimly.
+
+Compatibility
+- Nothing saved changes. Patterns saved by earlier builds load as before.
+
 ## Build 71
 
 Fixed

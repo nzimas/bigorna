@@ -15,9 +15,10 @@
  *                     SAVE sets it, SHIFT + SAVE leaves it as it was; SHIFT + SAVE goes back a page
  *   ARP               the PATTERNS grid, 1 .. 16 in four rows of four: PRESETS moves through them, ARP loads the one
  *                     chosen. The white keys are the 16 patterns there, lit dimly (the one playing brighter): a white
- *                     key let go soon loads its pattern (the grid stays); held 0.8 s, copies it (COPY P5 above the
- *                     grid, blinking, and its key) -- then another held 0.8 s pastes it there, saved and loaded (the
- *                     same again, or off the grid: let go); SHIFT and held 0.8 s, empties it (the one playing too)
+ *                     key let go soon loads its pattern (the grid stays); held 0.8 s, the pattern playing saved there,
+ *                     empty or not (build 72); SHIFT and held 0.8 s, copies it (COPY P5 above the grid, blinking, and
+ *                     its key) -- then SHIFT and another held 0.8 s pastes it there, saved and loaded (the same again,
+ *                     or off the grid: let go); SHIFT and the 1st black key held, pressed, empties it
  *   HOME held         the session playing saved, into its slot
  *   ARP held          the pattern playing saved, into its slot of the session (and into the flash if the session has
  *                     a slot)
@@ -848,11 +849,13 @@ static void px_note(void)
     if (memcmp(x, px_base, sizeof x))
         pat_dirty = 1;
 }
-/* steps b, and the tracks' state playing, as a pattern (what will not fit: the last steps' locks, then the steps,
- * left out) */
+/* steps b, and the tracks' state playing, as a pattern. Every step with a note fits (96 of 6 bytes: 576 of the
+ * 590); the room left goes to the chords, then the MOD, then the locks, one a step in turn across every track
+ * (build 72: before, the tracks in order -- a track locked on every step left the tracks after it without steps) */
 static void pat_encode(pat_t *p, const seqbuf_t *b)
 {
-    uint32_t t, i, o = SEQ_REC4, n = 0;
+    static uint8_t md[NTRACK][NSTEP], ch[NTRACK][NSTEP], nl[NTRACK][NSTEP];
+    uint32_t t, i, r, more, o = SEQ_REC4, n = 0, room = SEQ_PX - SEQ_REC4;
     memset(p, 0, sizeof *p);
     p->used = 1;
     p->tempo = pat_tempo;
@@ -863,6 +866,33 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
         p->st = PX_ON;
         px_pack(p->seq + SEQ_PX, x);
     }
+    memset(md, 0, sizeof md);
+    memset(ch, 0, sizeof ch);
+    memset(nl, 0, sizeof nl);
+    for (t = 0; t < NTRACK; t++)
+        for (i = 0; i < NSTEP; i++)
+            if (b->note[t][i])
+                room -= 6u;
+    for (t = 0; t < NTRACK; t++)
+        for (i = 0; i < NSTEP; i++)
+            if (b->note[t][i] && b->chf[t][i] && room >= 1u) {
+                ch[t][i] = 1;
+                room -= 1u;
+            }
+    for (t = 0; t < NTRACK; t++)
+        for (i = 0; i < NSTEP; i++)
+            if (b->note[t][i] && mod_on(b, t, i) && room >= 3u) {
+                md[t][i] = 1;
+                room -= 3u;
+            }
+    for (r = 0, more = 1; more && room >= 3u; r++)
+        for (t = 0, more = 0; t < NTRACK; t++)
+            for (i = 0; i < NSTEP; i++)
+                if (b->note[t][i] && pl_nb(b, t, i) > r && room >= 3u) {
+                    nl[t][i]++;
+                    room -= 3u;
+                    more = 1;
+                }
     for (t = 0; t < NTRACK; t++) {
         p->seq[SEQ_LEN + t] = (uint8_t)(b->len[t] | ((b->div[t] + SEQ_DIV1) % NDIV) << 5);
         p->seq[SEQ_DIR + t] = b->dir[t];
@@ -870,15 +900,9 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
         p->seq[SEQ_CX + t] = b->cx[t];
         p->seq[SEQ_TRN + t] = (uint8_t)b->trn[t];
         for (i = 0; i < NSTEP; i++) {
-            uint32_t j, nl = pl_nb(b, t, i), at, md = (uint32_t)mod_on(b, t, i), ch = b->chf[t][i] != 0;
-            if (!b->note[t][i] || o + 6u > SEQ_PX)
+            uint32_t j, at;
+            if (!b->note[t][i])
                 continue;
-            if (md && o + 9u > SEQ_PX)
-                md = 0;
-            if (ch && o + 6u + 3u * md + 1u > SEQ_PX)
-                ch = 0;
-            while (nl && o + 6u + 3u * md + ch + 3u * nl > SEQ_PX)
-                nl--;
             p->seq[o++] = (uint8_t)(t * NSTEP + i);
             p->seq[o++] = b->note[t][i];
             p->seq[o++] = b->vel[t][i];
@@ -886,14 +910,14 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
             p->seq[o++] = b->cond[t][i];
             at = o++;
             p->seq[at] = 0;
-            if (md) {                            /* (MOD) */
+            if (md[t][i]) {                      /* (MOD) */
                 p->seq[o++] = (uint8_t)b->mut[t][i];
                 p->seq[o++] = (uint8_t)(b->mcy[t][i] | b->fcy[t][i] << 4);
                 p->seq[o++] = b->mfx[t][i];
             }
-            if (ch)                              /* (a chord: its form + 1; bit 6 of the locks' count, build 33) */
+            if (ch[t][i])                        /* (a chord: its form + 1; bit 6 of the locks' count, build 33) */
                 p->seq[o++] = b->chf[t][i];
-            for (j = 0; j < NPL && (p->seq[at] & 63u) < nl; j++) {
+            for (j = 0; j < NPL && (p->seq[at] & 63u) < nl[t][i]; j++) {
                 uint32_t id = b->lid[t][i][j];
                 int32_t v = b->lv[t][i][j];
                 if (id == PL_NONE)
@@ -903,9 +927,9 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
                 p->seq[o++] = (uint8_t)((uint32_t)v >> 8);
                 p->seq[at]++;
             }
-            if (md)
+            if (md[t][i])
                 p->seq[at] |= 0x80u;
-            if (ch)
+            if (ch[t][i])
                 p->seq[at] |= 0x40u;
             n++;
         }
@@ -1079,7 +1103,7 @@ static void pat_clear(uint32_t k)
     ui.force = 1;
 }
 
-/* (build 66) the PATTERNS grid, SHIFT and a white key held: the pattern playing (its changes too, its state) saved as
+/* (build 66; build 72 without SHIFT) the PATTERNS grid, a white key held: the pattern playing (its changes too, its state) saved as
  * pattern k, empty or not; the one playing plays on (k itself: as ARP held) */
 static void pat_save_as(uint32_t k)
 {
@@ -1107,7 +1131,7 @@ static void pat_save_as(uint32_t k)
     flash(rc ? "FAILED" : "SAVED", rc ? "" : n, rc ? C_BAD : C_OK);
     ui.force = 1;
 }
-/* the PATTERNS grid, a white key held: pattern k copied (the one playing as it plays, its changes too); a pattern
+/* the PATTERNS grid, SHIFT and a white key held: pattern k copied (the one playing as it plays, its changes too); a pattern
  * copied, pasted into k, saved there and loaded; the one copied again: let go */
 static pat_t pat_clip;
 static int8_t pat_clip_from = -1;
@@ -1863,10 +1887,9 @@ static void draw_pat_grid(void)
             char n[4];
             uint16_t col = pg_col(k);
             fmt_int(n, (int32_t)k + 1);
-            if (k == sel)
+            if (k == sel)                        /* (the one chosen: white; build 72, no frame on the one playing --
+                                                  * its number green, or orange with changes) */
                 cv_rect(x + 2, 2, 56, 42, C_WHITE);
-            else if (pg_cur(k))
-                cv_frame(x + 2, 2, 56, 42, 3, col);
             cv_text(x + 30 - text_w(&FONT_S, n) / 2, 23 - (int32_t)FONT_S.h / 2, &FONT_S, n, k == sel ? C_BLACK : col);
         }
         cv_blit(0, 55 + 46 * r);

@@ -166,8 +166,8 @@ static struct {
         int8_t mut;
         int16_t lv[NPL];
     } sclip;
-    uint8_t qk, qk_long;         /* the PATTERNS grid: the white key held (KEY_NONE none); held 0.8 s, copied (SHIFT:
-                                  * the pattern playing saved there); SHIFT and the 1st black key held, pressed, emptied */
+    uint8_t qk, qk_long;         /* the PATTERNS grid: the white key held (KEY_NONE none); held 0.8 s, the pattern
+                                  * playing saved there (SHIFT: copied); SHIFT and the 1st black key held, pressed, emptied */
     uint8_t rec;                 /* REC_* */
     uint8_t click;               /* the metronome while recording */
     uint8_t lrec;                /* the looper: 0 off, 1 armed, 2 recording */
@@ -1995,9 +1995,9 @@ static void ui_input(void)
     }
     ui.lv_k = KEY_NONE;
     if (ui.page == PG_PAT) {                         /* the PATTERNS grid: a white key let go soon, its pattern
-                                                      * loaded; held 0.8 s, copied -- or, a pattern copied, pasted there
-                                                      * (projects.c); SHIFT and held, the pattern playing saved there;
-                                                      * SHIFT and the 1st black key held, pressed, emptied (build 66).
+                                                      * loaded; held 0.8 s, the pattern playing saved there (build 72);
+                                                      * SHIFT and held, copied -- or, a pattern copied, pasted there
+                                                      * (projects.c); SHIFT and the 1st black key held, pressed, emptied.
                                                       * The 2nd black key: MUTE mode on or off, as in the track's view
                                                       * (build 63) */
         if ((ch & keys) >> KEY_TRK & 1u) {
@@ -2030,10 +2030,12 @@ static void ui_input(void)
                 ui.qk_long = 1;
                 if (ui.brk)                      /* (a break playing: saved there, build 64) */
                     pat_brk_save((uint32_t)white_ix(ui.qk));
-                else if (sh)                     /* (SHIFT: the pattern playing saved there, build 66) */
-                    pat_save_as((uint32_t)white_ix(ui.qk));
-                else
+                else if ((keys >> KEY_TRIG) & 1u)   /* (the break key held, no break -- stopped: nothing saved) */
+                    ;
+                else if (sh)                     /* (SHIFT: copied, or pasted; build 72) */
                     pat_copy_hold((uint32_t)white_ix(ui.qk));
+                else                             /* (the pattern playing saved there, build 72) */
+                    pat_save_as((uint32_t)white_ix(ui.qk));
             }
         }
         ui.keys = keys;
@@ -2347,7 +2349,8 @@ static void ui_leds(void)
             led_dim_key(14u + k, i < len);
             continue;
         }
-        led_dim_key(14u + k, 0);
+        led_dim_key(14u + k, key_plays(k) && (key_note(k, 0) + 120u - ui.root) % 12u == 0u);   /* (the root, dim:
+                                                                                         * build 72) */
         fm1_led_key(14u + k, key_plays(k) && ((ui.keys >> k) & 1u) && ui.key_track[k] == ui.sel);
     }
     fm1_led_key(14u + KEY_SHIFT, (ui.keys >> KEY_SHIFT) & 1u);

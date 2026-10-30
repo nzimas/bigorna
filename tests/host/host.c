@@ -843,27 +843,32 @@ static int cmd_projects(const char *dir)
         EXPECT(pat_cur == 12u && !seq_note[5][0], "a white key loads its pattern");
         EXPECT(host_led[14u + kw[12]], "its key lit");
         shot(dir, "pat_quick");
-        {   /* a white key held: its pattern copied; another held: pasted there, saved, loaded */
+        {   /* SHIFT and a white key held: its pattern copied; SHIFT and another held: pasted there, saved, loaded
+             * (build 72: SHIFT) */
             static pat_t keep;
             keep = pat_store[0];
+            fm1_in.notes |= 1u << KEY_SHIFT;
             fm1_in.notes |= 1u << kw[0];
             ui_input();
             fm1_ms += 900;
             ui_input();
             fm1_in.notes &= ~(1u << kw[0]);
+            fm1_in.notes &= ~(1u << KEY_SHIFT);
             ui_input();
-            EXPECT(pat_clip_from == 0 && pat_cur == 12u, "a white key held: its pattern copied (nothing loaded)");
+            EXPECT(pat_clip_from == 0 && pat_cur == 12u, "SHIFT and a white key held: its pattern copied (nothing loaded)");
             ui_leds();
             ui_draw();
             shot(dir, "pat_copied");
+            fm1_in.notes |= 1u << KEY_SHIFT;
             fm1_in.notes |= 1u << kw[5];
             ui_input();
             fm1_ms += 900;
             ui_input();
             fm1_in.notes &= ~(1u << kw[5]);
+            fm1_in.notes &= ~(1u << KEY_SHIFT);
             ui_input();
             EXPECT(pat_clip_from < 0 && pat_cur == 5u && !memcmp(&pat_store[5], &keep, sizeof keep) &&
-                   str_eq(ui.flash_l1, "PASTED"), "another held: pasted there, and loaded");
+                   str_eq(ui.flash_l1, "PASTED"), "SHIFT and another held: pasted there, and loaded");
             {
                 int rc = prj_read(2, 1u);
                 const pat_t *pq = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
@@ -873,20 +878,19 @@ static int cmd_projects(const char *dir)
             tap(kw[12]);
             EXPECT(pat_cur == 12u, "(pattern 13 back)");
         }
-        {   /* SHIFT and a white key held: the pattern playing (13) saved there, the one playing kept (build 66) */
+        {   /* a white key held: the pattern playing (13) saved there, the one playing kept (build 72: no SHIFT) */
             static pat_t keep;
             uint32_t playing = pat_cur;
             pat_take(&keep);
-            fm1_in.notes |= 1u << KEY_SHIFT;
             fm1_in.notes |= 1u << kw[0];
             ui_input();
             fm1_ms += 900;
             ui_input();
-            fm1_in.notes &= ~(1u << KEY_SHIFT);
             fm1_in.notes &= ~(1u << kw[0]);
             ui_input();
             EXPECT(pat_store[0].used && !memcmp(&pat_store[0], &keep, sizeof keep) && pat_cur == playing &&
-                   str_eq(ui.flash_l1, "SAVED"), "SHIFT and a white key held: the pattern playing saved there, it plays on");
+                   pat_clip_from < 0 && str_eq(ui.flash_l1, "SAVED"),
+                   "a white key held: the pattern playing saved there, it plays on");
             {
                 int rc = prj_read(2, 1u);
                 const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
@@ -1161,7 +1165,8 @@ static int cmd_projects(const char *dir)
         seq_note[1][0] = seq_note[1][4] = 50;
         pat_dirty = 1;                           /* (steps placed, not saved) */
         btn(B_ARP, 0);
-        fm1_in.notes |= 1u << kw[7];             /* copy 8 .. */
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        fm1_in.notes |= 1u << kw[7];             /* copy 8 (SHIFT held: build 72) .. */
         ui_input();
         fm1_ms += 900;
         ui_input();
@@ -1172,6 +1177,7 @@ static int cmd_projects(const char *dir)
         fm1_ms += 900;
         ui_input();
         fm1_in.notes &= ~(1u << kw[8]);
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
         ui_input();
         EXPECT(pat_cur == 8u && seq_note[1][0] == 50u && seq_note[1][4] == 50u, "pasted into 9: its steps");
         fm1_ms += 2000;
@@ -4779,9 +4785,86 @@ static int cmd_lptrn(const char *dir)
     return fails != 0;
 }
 
+/* (build 72) a pattern saved holds every track's steps: a track locked on every step no longer leaves the tracks
+ * after it empty (the locks share the room left); the root's keys dim in the track's view; the grid's white key held
+ * saves the pattern playing there */
+#define WEXPECT(c, what) do { if (!(c)) { printf("FAIL patsave: %s\n", what); fails++; } } while (0)
+static int cmd_patsave(void)
+{
+    static seqbuf_t w;
+    uint32_t t, i, j, k, kw[16], all = 1, lk = 0;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    for (k = 0; k < NKEY; k++)
+        if (white_ix(k) >= 0)
+            kw[white_ix(k)] = k;
+    for (t = 0; t < NTRACK; t++)                 /* (track 1 a note on every step, locked 8 times on each; the others
+                                                  * every other step) */
+        for (i = 0; i < NSTEP; i++) {
+            seq_note[t][i] = (uint8_t)(t && (i & 1u) ? 0u : 40u + t * 3u + i);
+            for (j = 0; t == 0u && j < NPL; j++) {
+                seq_lid[0][i][j] = (uint8_t)j;
+                seq_lv[0][i][j] = (int16_t)(10 + j);
+            }
+        }
+    pat_take(&pat_store[2]);
+    pat_decode(&pat_store[2], &w);
+    for (t = 0; t < NTRACK; t++)
+        for (i = 0; i < NSTEP; i++) {
+            all &= w.note[t][i] == seq_note[t][i];
+            for (j = 0; j < NPL; j++)
+                lk += w.lid[t][i][j] != PL_NONE;
+        }
+    WEXPECT(all, "track 1 locked on every step: every track's steps saved");
+    WEXPECT(lk > 0u && w.lid[0][NSTEP - 1u][0] == seq_lid[0][NSTEP - 1u][0], "the locks share the room left, the "
+            "last step's too");
+    for (t = 1; t < NTRACK; t++)                 /* (every step of every track a note: 96, each still there) */
+        for (i = 1; i < NSTEP; i += 2u)
+            seq_note[t][i] = (uint8_t)(60u + t);
+    pat_take(&pat_store[3]);
+    pat_decode(&pat_store[3], &w);
+    for (t = 0, all = 1; t < NTRACK; t++)
+        for (i = 0; i < NSTEP; i++)
+            all &= w.note[t][i] == seq_note[t][i];
+    WEXPECT(all, "96 steps, track 1 locked on each: all 96 saved");
+    /* the grid: a white key held, the pattern playing saved there, all six tracks */
+    btn(B_ARP, 0);
+    key(kw[7], 1);
+    fm1_ms += 900;
+    ui_input();
+    key(kw[7], 0);
+    pat_decode(&pat_store[7], &w);
+    for (t = 0, all = 1; t < NTRACK; t++)
+        for (i = 0; i < NSTEP; i++)
+            all &= w.note[t][i] == seq_note[t][i];
+    WEXPECT(pat_store[7].used && all && pat_cur == 0u && str_eq(ui.flash_l1, "SAVED"),
+            "a white key held on the grid: the pattern playing saved there, every track");
+    btn(B_GLO, 0);
+    /* the track's view: the root's keys dim, the others dark */
+    ui.scale = 2;                                /* (MINOR, root D) */
+    ui.root = 2;
+    ui_leds();
+    WEXPECT(host_dim_on(14u + kw[0]) && host_dim_on(14u + kw[SCALE_N[2]]) && !host_dim_on(14u + kw[1]) &&
+            !host_dim_on(14u + kw[2]), "a scale: the root's white keys dim");
+    ui.scale = 0;                                /* (CHROMATIC: the key whose note is D) */
+    ui_leds();
+    for (k = 0, all = 0, j = 0; k < NKEY; k++)
+        if (key_plays(k) && host_dim_on(14u + k)) {
+            all++;
+            j |= (key_note(k, 0) + 120u - ui.root) % 12u != 0u;
+        }
+    WEXPECT(all > 0u && !j, "chromatic: the keys dim the root's alone");
+    printf("patsave: %d failures\n", fails);
+    return fails != 0;
+}
 int main(int argc, char **argv)
 {
     wt_init();
+    if (argc >= 2 && !strcmp(argv[1], "patsave"))
+        return cmd_patsave();
     if (argc >= 3 && !strcmp(argv[1], "newses"))
         return cmd_newses(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "pstate"))
