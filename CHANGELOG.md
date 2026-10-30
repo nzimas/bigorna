@@ -1,5 +1,17 @@
 # Changelog
 
+## Build 74
+
+Fixed
+- A session saved by builds 38 to 72, loaded by build 73, had its loops only in the pattern it was saved playing, so
+  a pattern that was a copy of it played no loops. Now each of its loops goes to every saved pattern, as they played
+  before; empty patterns get none. If the loop memory runs out, LOADED, LOOPS LOST shows and the remaining patterns
+  get none.
+
+Compatibility
+- A session already saved again by build 73 keeps the loops as build 73 placed them: to give a copied pattern the
+  loops back, load the pattern that has them and hold the copy's white key on the PATTERNS grid.
+
 ## Build 73
 
 Changed

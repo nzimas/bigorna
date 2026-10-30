@@ -555,12 +555,14 @@ static void lr_get(void *p, uint32_t n)
         lr.left--;
     }
 }
-/* session k's loops (generation gen, nsec sectors) given back, each to its pattern (a session saved before build
- * 73: all to pat, the pattern it was saved playing); the loops emptied first, and left empty if they do not read
- * whole. Playing, they start at the next bar */
+static int lp_copy_pat(uint32_t from, uint32_t to);
+/* session k's loops (generation gen, nsec sectors) given back, each to its pattern; the loops emptied first, and left
+ * empty if they do not read whole. Playing, they start at the next bar. A session saved before build 73 (its loops
+ * the session's, playing in every pattern): its loops to pat, the pattern it was saved playing, and copied to every
+ * other pattern saved, as they played there (-6: not all of them fitted) */
 static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t pat)
 {
-    uint32_t i, j, a;
+    uint32_t i, j, a, old = 0;
     uint8_t cnt;
     lop_clear();
     if (!gen || !nsec)
@@ -591,6 +593,7 @@ static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t pat)
         n = h[6] | (uint32_t)h[7] << 8;
         len = h[4] | (uint32_t)h[5] << 8;
         pk = h[3] ? h[3] - 1u : pat;
+        old |= !h[3];
         if (lr.err || h[0] >= NTRACK || h[1] >= NLOOP || pk >= PAT_SLOTS || !n || n > LOOP_EV || !len ||
             len > LOOP_MAX)
             break;
@@ -614,6 +617,16 @@ static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t pat)
     for (i = 0; i < NLP; i++)
         if (lps[i].pat != LP_FREE && lps[i].n)
             lps[i].on = 1;
+    if (old && pat < PAT_SLOTS) {                /* (build 74) */
+        int rc = 0;
+        for (i = 0; i < PAT_SLOTS; i++)
+            if (i != pat && pat_store[i].used && lp_copy_pat(pat, i))
+                rc = -6;
+        for (i = 0; i < NLP; i++)                /* (each from the next bar, as the one playing) */
+            if (lps[i].pat != LP_FREE)
+                lps[i].anchor = a;
+        return rc;
+    }
     return 0;
 }
 /* session k's loops copied for session to: their new generation and sectors */

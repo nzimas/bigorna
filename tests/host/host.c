@@ -4631,6 +4631,11 @@ static int li_sounding(uint32_t t)               /* (a voice of track t sounding
         n += vox[k].track == t && vox[k].sounding && !vox[k].fade;
     return n != 0;
 }
+static int pat_save_as_rc(uint32_t k)            /* (the pattern playing saved as pattern k, its loops with it) */
+{
+    pat_save_as(k);
+    return !pat_store[k].used || strcmp(ui.flash_l1, "SAVED") != 0;
+}
 static int cmd_loopin(const char *dir)
 {
     loop_t *lp;
@@ -4706,6 +4711,27 @@ static int cmd_loopin(const char *dir)
     QEXPECT(!seq_run, "(stopped)");
     pat_switch(0);
     QEXPECT(pat_cur == 0u && seq_lpat == 0u && lp_get(3, 0) == lp, "stopped: pattern 1, its loop");
+    {   /* (build 74) a session saved before build 73 (its loops the session's, in every pattern): loaded, its loops
+         * in the pattern it was saved playing and in every other pattern saved -- not in the empty ones */
+        uint32_t sec;
+        lop_meta_t m;
+        int rc;
+        QEXPECT(!pat_save(0) && !pat_save_as_rc(2), "(patterns 1 and 3)");
+        lp_clear_pat(2);
+        QEXPECT(!prj_save(6) && lop_bytes() == 1u + 8u + 2u * sizeof(lev_t), "(session 7: one loop, in pattern 1)");
+        for (sec = 0; sec < LOP_N; sec++)        /* (its loop as builds 38 .. 72 wrote it: no pattern) */
+            if (!lop_peek(sec, &m) && m.slot == 6u && m.idx == 0u && m.gen == prj_lgen[6])
+                break;
+        QEXPECT(sec < LOP_N && !lop_read(sec), "(its loops' first sector)");
+        lop_data()[1 + 3] = 0;
+        QEXPECT(!lop_write(sec), "(written as before build 73)");
+        lop_clear();
+        rc = prj_load(6);
+        QEXPECT(!rc && pat_cur == 0u && !pat_store[3].used && !pat_store[5].used && lp_at(0, 3, 0) && lp_at(1, 3, 0) &&
+                lp_at(2, 3, 0) && lp_at(2, 3, 0)->on && lp_at(2, 3, 0)->n == 2u && !lp_at(3, 3, 0) && !lp_at(5, 3, 0),
+                "an older session: its loop in pattern 1 (saved playing) and in patterns 2 and 3 (saved), not in the "
+                "empty ones");
+    }
     (void)dir;
     printf("loopin: %d failures\n", fails);
     return fails != 0;
