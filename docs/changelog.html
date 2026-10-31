@@ -44,6 +44,36 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-80">Build 80</h2>
+<p>Changed</p>
+<ul>
+<li>A sidechain's source is one subtrack, not the whole track. SC SOURCE lists a track with subtracks as each of them (T1-A, T1-B, ...), and a track without them as before (T2). By default, and for a session or pattern that names only the track, the source is the track's kick: the first of its subtracks whose sound is a kick (none: ST-A). A source subtrack given up falls back to the kick. Build 79 summed all of a track's subtracks.</li>
+<li>Sessions keep the source's subtrack. Sessions from build 79 and earlier take the kick.</li>
+</ul>
+<h2 id="build-79">Build 79</h2>
+<p>Added</p>
+<ul>
+<li>Subtracks, after Titan Haze's lanes: a track on DRUM has subtracks ST-A to ST-D, each a track in its own right (its own sound, steps, length, clock, direction, phrase, octave, transposition, level, pan, sends and MANGLE), all playing through the track's mute, sidechain and MIDI channel. Hold the track's button and press white key 1 to 4 to choose one; SHIFT with it gives one past ST-A up. Three subtracks past ST-A are shared by all the tracks: one track with four, or several with two or three. A new subtrack gets the kit's next piece after the track's own.</li>
+<li>The keys, MIDI notes, EDIT, the step view, the TRACK and PHRASE pages, SELECT, ALGORITHM and OCT act on the subtrack chosen. The screen shows it (ST-A to ST-D) under the pattern; the TRACK page's title reads 1B.</li>
+<li>Patterns keep each subtrack's steps and settings; sessions keep its sound, level and pan; the looper notes the subtrack of each note. A track off DRUM puts its subtracks away until it is on DRUM again.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions, patterns and loops from earlier builds load as before, with no subtracks.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>A track that is ducked follows its sidechain source's subtracks too: their hits are summed before they are followed.</li>
+</ul>
+<h2 id="build-78">Build 78</h2>
+<p>Added</p>
+<ul>
+<li>MUTE QT, a session setting on the session's page (YES / NO, saved with the session). With YES, MUTE mode's mutes, unmutes and solos wait for the start of the pattern's next cycle, the moment the chosen track begins its steps again (as a pattern switch does); the track's button blinks until then. With the sequencer stopped they happen at once, and choosing a pattern drops mutes still waiting. NO (the default, and every session saved before) works as before.</li>
+</ul>
+<p>Removed</p>
+<ul>
+<li>ROOT and SCALE from the session's page: the SCALE page (ARP) sets them.</li>
+</ul>
 <h2 id="build-77">Build 77</h2>
 <p>Added</p>
 <ul>

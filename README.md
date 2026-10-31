@@ -34,49 +34,49 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 
 | Control | What it does |
 | --- | --- |
-| **The six top buttons** | choose track **1–6** (lit: chosen; glowing dimly: sounding). From any page, back to the track. In [MUTE mode](#mute-mode): mute and solo. |
-| **A track's button held + white key 1–4** | on a DRUM track: its [subtrack](#subtracks) **ST-A**–**ST-D**. **SHIFT +**: give up a subtrack past ST-A. |
-| **PRESETS** knob | the chosen track's machine: **4-OP**, **DRUM**, **WAVY**, **HIVE**. Each track keeps one sound per machine. |
-| **SHIFT + PRESETS** | a new sound of the family before or after. |
-| **HOME** | a new sound for the chosen track ([Sounds](#sounds)). |
-| **SHIFT + HOME** | a new sound of the same family. |
+| **6 top buttons** | choose track **1–6** (lit: chosen; glowing dimly: sounding). From any page, back to the track. In [MUTE mode](#mute-mode): mute and solo. |
+| **Track button held + white key 1–4** | on DRUM: its [subtrack](#subtracks) **ST-A**–**ST-D**. **SHIFT +**: give up a subtrack past ST-A. |
+| **PRESETS** knob | chosen track's machine: **4-OP**, **DRUM**, **WAVY**, **HIVE**. Each track keeps 1 sound per machine. |
+| **SHIFT + PRESETS** | new sound of the family before or after. |
+| **HOME** | new sound for the chosen track ([Sounds](#sounds)). |
+| **SHIFT + HOME** | new sound of the same family. |
 | **HOME held** (0.8 s) | save the session, as SAVE held. |
-| **OCT− / OCT+** | the chosen track's octave, −3 to +3. In the step view: the track's [transposition](#transposition). |
+| **OCT− / OCT+** | chosen track's octave, −3 to +3. In the step view: track's [transposition](#transposition). |
 | **SHIFT + OCT− / OCT+** | every track's transposition. |
-| the white keys | play the chosen track in the scale; the keys that play the root glow dimly. In the step view: the track's 16 steps. On the PATTERNS grid: the 16 patterns. |
-| black key 1 | [CHORD mode](#chord-mode) on or off. **SHIFT +**: the next chord form. |
+| white keys | play the chosen track in the scale; the keys that play the root glow dimly. In the step view: track's 16 steps. On the PATTERNS grid: 16 patterns. |
+| black key 1 | [CHORD mode](#chord-mode) on or off. **SHIFT +**: next chord form. |
 | black key 2 | [MUTE mode](#mute-mode) on or off. |
 | black key 3 | **held**: [BREAK](#break) on the chosen track. **SHIFT +**: on every track. |
 | black key 4 | [MIDI LEARN](#midi-learn) on or off. |
-| black key 5 | the chosen track's [arpeggiator](#arpeggiator) on or off. **Held** (0.8 s): its page. |
-| black key 9 (3rd from the right) | **STEP**: the [step view](#the-step-view). **SHIFT +**: empty the chosen track's steps. |
-| black key 10 | **EDIT**: the [sound's pages](#the-sounds-pages-edit). |
-| black key 11 (the last) | **SHIFT**. |
-| **SELECT** knob | the chosen track's level. On the SCALE page: the root. |
-| **ALGORITHM** knob | the chosen track's pan. On the SCALE page: the scale. |
-| **KNOB 1–4** | the chosen track's filter FREQ and RESO, delay send, reverb send. On a page: its rows A–D. |
-| **SHIFT + KNOB 3 / KNOB 4** | the chosen track's chorus send / overdrive. |
-| **PLAY** | start or stop the [sequencer](#the-sequencer). **Held** (0.8 s): the [TEMPO](#tempo) page. |
-| **SHIFT + PLAY** | the metronome on or off. |
+| black key 5 | chosen track's [arpeggiator](#arpeggiator) on or off. **Held** (0.8 s): its page. |
+| black key 9 (3rd from right) | **STEP**: [step view](#step-view). **SHIFT +**: empty the chosen track's steps. |
+| black key 10 | **EDIT**: [sound pages](#sound-pages-edit). |
+| black key 11 (last) | **SHIFT**. |
+| **SELECT** knob | chosen track's level. On the SCALE page: root. |
+| **ALGORITHM** knob | chosen track's pan. On the SCALE page: scale. |
+| **KNOB 1–4** | chosen track's filter FREQ and RESO, delay send, reverb send. On a page: its rows A–D. |
+| **SHIFT + KNOB 3 / KNOB 4** | chosen track's chorus send / overdrive. |
+| **PLAY** | start or stop the [sequencer](#sequencer). **Held** (0.8 s): [TEMPO](#tempo) page. |
+| **SHIFT + PLAY** | metronome on or off. |
 | **REC** | [record](#recording) the keys into the chosen track's steps. |
-| **SHIFT + REC** | the [looper](#the-looper): arm a loop. **Held**: the track's loops on the white keys. |
-| **ARP** | the SCALE page ([Scales](#scales)); ARP again leaves it. |
-| **SHIFT + ARP** | a new scale and root, drawn at random; the SCALE page shows them for 1.5 s. |
-| **SEQ** | the [effects' pages](#the-effects-seq), then the chosen track's [LFOs](#lfos), in turn. |
-| **SHIFT + SEQ** | the chosen track's LFOs drawn anew. |
-| **SAVE** | the [PATTERNS](#patterns) grid; SAVE again leaves it. |
+| **SHIFT + REC** | [looper](#looper): arm a loop. **Held**: track's loops on the white keys. |
+| **ARP** | SCALE page ([Scales](#scales)); ARP again leaves it. |
+| **SHIFT + ARP** | new scale and root, drawn at random; the SCALE page shows them for 1.5 s. |
+| **SEQ** | [effects' pages](#effects-seq), then the chosen track's [LFOs](#lfos), in turn. |
+| **SHIFT + SEQ** | chosen track's LFOs drawn anew. |
+| **SAVE** | [PATTERNS](#patterns) grid; SAVE again leaves it. |
 | **SAVE held** (0.8 s) | save the session. On the PATTERNS grid: save the pattern playing into the slot under the cursor. |
-| **SHIFT + SAVE** | the [SESSIONS](#sessions) list; SHIFT + SAVE again leaves it. |
+| **SHIFT + SAVE** | [SESSIONS](#sessions) list; SHIFT + SAVE again leaves it. |
 | **SHIFT + SAVE held** (0.8 s) | [GLOBAL SETUP](#global-setup): START and MIDI. |
-| **MASTER** | the output level. |
+| **MASTER** | output level. |
 | MIDI in (USB and TRS) | notes and CCs for each track ([MIDI](#midi)). |
 
 While a knob turns, the screen shows its value as a large dial for a second.
 
 ## Tracks and sounds
 
-Six tracks, each with its own machine, sound, octave, level, pan, steps and loops. Each track keeps a sound for each
-of the four machines, so turning PRESETS back finds the sound it had. The tracks share twelve voices; when all twelve
+6 tracks, each with its own machine, sound, octave, level, pan, steps and loops. Each track keeps a sound for each
+of the 4 machines, so turning PRESETS back finds the sound it had. The tracks share 12 voices; when all 12
 sound, a new note takes the quietest one. DRUM tracks choke: each hit fades the track's previous one.
 
 The FM-1's second processor core plays half the voices and the effects. If it ever faults, the first core carries on
@@ -86,8 +86,8 @@ alone until the FM-1 is switched off, and the screen says **1 CORE**.
 
 A track on DRUM has subtracks, ST-A to ST-D, and each is a track in its own right: its own sound, steps with their
 locks, length, clock, direction, phrase, octave, transposition, level, pan, sends and MANGLE. All of a track's
-subtracks play through its mute and its sidechain, and on its MIDI channel. So one track can hold a whole kit, and
-the other five are free for other parts. A track not on DRUM has none (ST-A is the track itself).
+subtracks play through its mute and its sidechain, and on its MIDI channel. So 1 track can hold a whole kit, and
+the other 5 are free for other parts. A track not on DRUM has none (ST-A is the track itself).
 
 | To | Do this |
 | --- | --- |
@@ -101,8 +101,8 @@ the other five are free for other parts. A track not on DRUM has none (ST-A is t
 - Everything then acts on the subtrack chosen: the keys and MIDI notes play it, EDIT shows its sound, the step view
   its steps, the TRACK and PHRASE pages are its (TRACK 1B), SELECT and ALGORITHM set its level and pan, OCT its
   octave. The screen shows it under the pattern, at the left: ST-A to ST-D.
-- There are three subtracks past ST-A in all, shared by the tracks: one track with all four (ST-A to ST-D), or
-  several tracks with two or three. When none is left, NO SUBTRACK shows.
+- There are 3 subtracks past ST-A in all, shared by the tracks: 1 track with all 4 (ST-A to ST-D), or
+  several tracks with 2 or 3. When none is left, NO SUBTRACK shows.
 - A track turned off DRUM puts its subtracks away: silent, kept, back as they were when it is on DRUM again.
   Another DRUM track can take one of them when none is free.
 - Patterns keep each subtrack's steps and settings; the session keeps its sound, level and pan. The looper notes
@@ -116,30 +116,30 @@ same family; **SHIFT + PRESETS** moves to the family before or after. The screen
 There are 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE. Drone, pad and texture families come with
 LFOs already set.
 
-## The sound's pages (EDIT)
+## Sound pages (EDIT)
 
 Black key 10 (**EDIT**) shows the sound's pages: SYN 1 to 4 (the machine's), FLTR 1, FLTR 2, AMP, FX and MANGLE. Each
-page has eight parameters: **KNOB 1–4** set A to D; **PRESETS** turned right shows E to H, left goes back. **OCT− /
+page has 8 parameters: **KNOB 1–4** set A to D; **PRESETS** turned right shows E to H, left goes back. **OCT− /
 OCT+** move between the pages. EDIT again leaves.
 
 ### 4-OP
 
-Four-operator FM after the Digitone II's FM TONE: operator C and the modulators A, B1 and B2.
+4-operator FM after the Digitone II's FM TONE: operator C and the modulators A, B1 and B2.
 
 | Page | Parameters |
 | --- | --- |
-| SYN 1 | ALGO (eight algorithms), RATIO C, RATIO A, RATIO B, HARM, DETUNE, FEEDBACK, MIX |
-| SYN 2 | the A and B envelopes: ATK, DEC, END, LEV for each |
+| SYN 1 | ALGO (8 algorithms), RATIO C, RATIO A, RATIO B, HARM, DETUNE, FEEDBACK, MIX |
+| SYN 2 | A and B envelopes: ATK, DEC, END, LEV for each |
 | SYN 3 | DELAY, TRIG and RESET for A and for B, PHASE RST |
 | SYN 4 | OFS C, OFS A, OFS B1, OFS B2 (fine offsets), KEYTRK A, KEYTRK B1, KEYTRK B2 |
 
 ### DRUM
 
-Three-operator FM percussion after FM DRUM.
+3-operator FM percussion after FM DRUM.
 
 | Page | Parameters |
 | --- | --- |
-| SYN 1 | TUNE, SWP TIME, SWP DEPTH (the pitch sweep), ALGO (seven), OP C WAVE, OP AB WAVE, FEEDBACK, FOLD |
+| SYN 1 | TUNE, SWP TIME, SWP DEPTH (the pitch sweep), ALGO (7), OP C WAVE, OP AB WAVE, FEEDBACK, FOLD |
 | SYN 2 | RATIO, DEC, END and MOD for A and for B |
 | SYN 3 | HOLD, DECAY (the body), PHASE C, LEVEL, AB NOISE, NOISE RST, NOISE RM |
 | SYN 4 | NS HOLD, NS DECAY, TRANS (the transient's kind), TRANS LEV, NS BASE, NS WIDTH, NS GRAIN, NS LEVEL |
@@ -149,7 +149,7 @@ noise only. Modulating C, it gives metallic, grainy hits. With **NOISE RST** on,
 
 ### WAVY
 
-Two wavetable oscillators with phase distortion, and a noise generator.
+2 wavetable oscillators with phase distortion, and a noise generator.
 
 | Page | Parameters |
 | --- | --- |
@@ -159,7 +159,7 @@ Two wavetable oscillators with phase distortion, and a noise generator.
 
 ### HIVE
 
-A swarm of six detuned oscillators and a main oscillator.
+A swarm of 6 detuned oscillators and a main oscillator.
 
 | Page | Parameters |
 | --- | --- |
@@ -171,17 +171,17 @@ These pages are the same on every machine.
 
 | Page | Parameters |
 | --- | --- |
-| FLTR 1 | the filter's envelope (ATTACK, DECAY, SUSTAIN, RELEASE), FREQ, RESONANCE, the filter's own parameter, ENV DEPTH |
+| FLTR 1 | filter's envelope (ATTACK, DECAY, SUSTAIN, RELEASE), FREQ, RESONANCE, the filter's own parameter, ENV DEPTH |
 | FLTR 2 | FLT DELAY, KEYTRACK, BASE and WIDTH (a base-width filter), BW ROUTE (before or after), ENV RESET, FILTER |
 | AMP | ATTACK, HOLD, DECAY, SUSTAIN, RELEASE, RESET, MODE (AHD or ADSR), VOLUME |
 | FX | BIT REDUCE, OVERDRIVE, SRR (sample-rate reduction), OD TYPE, the DELAY, REVERB and CHORUS sends, OD ROUTE |
 | MANGLE | DESTROY and DST MODE, SLICE, SLICE RATE, SLC DEPTH, SLC EDGE, SLC SHIFT |
 
 - **FILTER**: MULTI (multimode), LP4 (4-pole low-pass), LEGACY (low- or high-pass), COMB−, COMB+, EQ.
-- **OD TYPE**: VALVE (two valve-style stages), RAT (a RAT-style clipper, darker as it rises), FOLD (a wavefolder,
+- **OD TYPE**: VALVE (2 valve-style stages), RAT (a RAT-style clipper, darker as it rises), FOLD (a wavefolder,
   which bites only once the signal is loud). RAT and FOLD come from the LXR firmware.
 - **DESTROY** breaks the sound digitally; DST MODE chooses how: WRAP, XOR, FLIP, DROP.
-- **SLICE** is a gate in time with the tempo: sixteen patterns at 1/8, 1/16, 1/32 or 1/16 triplets, with its depth,
+- **SLICE** is a gate in time with the tempo: 16 patterns at 1/8, 1/16, 1/32 or 1/16 triplets, with its depth,
   edge and shift.
 
 ## Keys and scales
@@ -195,14 +195,14 @@ that play the root glow dimly. USB and TRS MIDI notes play the chosen track as t
 it. **SHIFT + ARP** draws a scale and a root at random and shows them for 1.5 s over any page. The scale and root
 belong to the session. A new session draws them at random.
 
-The scales: CHROMATIC (the black keys play too, except the first five and the last three), MAJOR, MINOR NATURAL,
+The scales: CHROMATIC (the black keys play too, except the first 5 and the last 3), MAJOR, MINOR NATURAL,
 MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, JAPANESE IN, MINOR MELODIC, ENIGMATIC,
 LYDIAN, MIXOLYDIAN, LOCRIAN, BLUES, HUNGARIAN MINOR, DOUBLE HARMONIC, PHRYGIAN DOMINANT, JAPANESE HIRAJOSHI,
 JAPANESE IWATO, PELOG, OCTATONIC, PROMETHEUS.
 
 ### Transposition
 
-In the step view, **OCT− / OCT+** move the chosen track's steps and loops one step of the scale down or up (in
+In the step view, **OCT− / OCT+** move the chosen track's steps and loops 1 step of the scale down or up (in
 CHROMATIC, a semitone). **SHIFT + OCT− / OCT+**, in the track's view or the step view, move every track's. Notes stay
 in the scale. The transposition shows at the top right, under the octave (T+2, T−1), up to 24 steps each way. It is
 part of the pattern: saved with it, and copied with it. It moves only the loops of the pattern playing; a loop being
@@ -229,8 +229,8 @@ on their own at the tempo while it is stopped. With CHORD mode on, each key give
 | RANGE | 1 to 4 octaves |
 | GATE | each note's length, 0 to 100 |
 | LATCH | on: the notes keep playing with the keys up, until the next chord |
-| DENSITY | the chance that each note plays, 0 to 100 |
-| OCT RND | the chance that a note jumps an octave, 0 to 100 |
+| DENSITY | chance that each note plays, 0 to 100 |
+| OCT RND | chance that a note jumps an octave, 0 to 100 |
 | BASS | OFF, or EVERY 2 to EVERY 8: every so many notes, the lowest an octave down |
 
 REC records the arpeggio into the steps and SHIFT + REC into a loop; with either armed, its first note starts the
@@ -265,12 +265,12 @@ starts on the track's next beat, and what is on a beat stays on a beat:
 
 | Way | What plays |
 | --- | --- |
-| REPEAT 1, 2, 4 or 8 | a window of that many steps, played over and over |
-| HALF TIME | the steps at half speed |
-| DOUBLE | the steps at double speed |
+| REPEAT 1, 2, 4 or 8 | window of that many steps, played over and over |
+| HALF TIME | steps at half speed |
+| DOUBLE | steps at double speed |
 | REVERSE 4 or 8 | each window of 4 or 8 steps backwards, its first step in place |
-| CHOP | the bar's four beats shuffled, the first in place |
-| ROLL | the steps as written, with more ratchets |
+| CHOP | bar's 4 beats shuffled, the first in place |
+| ROLL | steps as written, with more ratchets |
 
 On top of the way, a break may add ratchets (faster the longer the key is held), flams on drums, octave leaps on
 melodic tracks, a gap at the end of each bar, and accents. A kick keeps the bar's first step and takes no leaps; drones
@@ -280,16 +280,16 @@ are left alone; loops play on as recorded.
 a white key 0.8 s: the break, as it plays, is saved into that pattern slot (BREAK SAVED, PATTERN n). The pattern
 playing goes on.
 
-## The effects (SEQ)
+## Effects (SEQ)
 
 **SEQ** shows CHORUS, COMP, DELAY and REVERB, then the chosen track's LFO 1, LFO 2 and LFO 3, in turn, then goes back.
-**OCT− / OCT+** move between them. **KNOB 1–4** set the first four rows; **PRESETS** turned right shows the next four.
+**OCT− / OCT+** move between them. **KNOB 1–4** set the first 4 rows; **PRESETS** turned right shows the next 4.
 A track button goes back to the track; **SHIFT +** a track button chooses another track and stays on the page.
 
 | Page | Rows |
 | --- | --- |
 | CHORUS | DEPTH, SPEED, HPF, WIDTH, DELAY (its send to the delay), REVERB, VOLUME |
-| COMP | the master compressor: THRESHOLD, ATTACK, RELEASE, RATIO, MAKEUP, MIX; then the chosen track's SC SOURCE and SC LEVEL |
+| COMP | master compressor: THRESHOLD, ATTACK, RELEASE, RATIO, MAKEUP, MIX; then the chosen track's SC SOURCE and SC LEVEL |
 | DELAY | TIME (in time with the tempo), PING PONG, WIDTH, FEEDBACK, HPF, LPF, REVERB, VOLUME |
 | REVERB | PRE, DECAY, FREQ, GAIN (the high shelf), HPF, LPF, VOLUME |
 
@@ -306,30 +306,30 @@ chosen is given up, the kick is the source again.
 
 ### LFOs
 
-Each sound has three LFOs, on the pages LFO 1 to 3. They belong to the sound, so each machine's sound on a track has
+Each sound has 3 LFOs, on the pages LFO 1 to 3. They belong to the sound, so each machine's sound on a track has
 its own, and they are saved with the session. All of a track's voices follow the same LFO.
 
 | Row | What it sets |
 | --- | --- |
-| SPEED | −64 to +63; negative runs the wave backwards. SPEED +32 with MULT x4 is one bar |
+| SPEED | −64 to +63; negative runs the wave backwards. SPEED +32 with MULT x4 is 1 bar |
 | MULT | x1 to x2048 follow the tempo; .1 to .2048 run as at 120 BPM whatever the tempo |
 | FADE | 0 none; negative fades the LFO in, positive fades it out, from each note |
 | DEST | NONE, or a parameter of the sound's pages (S1–S4, F1, F2, AMP, FX, MNG). LFO 2 can also move LFO 1's SPEED or DEPTH, and LFO 3 those of LFO 1 or 2 |
 | WAVE | TRI, SINE, SQR, SAW, EXP, RAMP, RND (a new random value each cycle) |
 | START | where the wave starts on a note. For RND: how smoothly it moves to each new value |
-| MODE | FREE runs on; TRIG starts again on each note; HOLD holds its value from each note to the next; ONE runs one cycle from each note; HALF half a cycle |
+| MODE | FREE runs on; TRIG starts again on each note; HOLD holds its value from each note to the next; ONE runs 1 cycle from each note; HALF half a cycle |
 | DEPTH | −64 to +63, how far each way; negative turns the wave upside down; 0 off |
 
-**SHIFT + SEQ** draws the chosen track's three LFOs anew (LFO RANDOM): two or three of them on, each to a different
+**SHIFT + SEQ** draws the chosen track's 3 LFOs anew (LFO RANDOM): 2 or 3 of them on, each to a different
 parameter, with any wave, speed, mode and depth. It takes risks on purpose: press it again for another. LFO settings
 cannot be step-locked.
 
-## The sequencer
+## Sequencer
 
 Each track has 16 steps, with its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X) and direction. **PLAY**
 starts and stops it.
 
-### The step view
+### Step view
 
 Black key 9 (**STEP**) turns the step view on or off. The white keys are then the chosen track's 16 steps: lit, a note;
 dim, empty; the step playing the other way round; past the track's length, dark. Steps are silent while you edit them.
@@ -339,7 +339,7 @@ dim, empty; the step playing the other way round; past the track's length, dark.
 | Put a note in | press an empty step: the track's last note (or chord) goes there |
 | Empty a step | press a step with a note, and let go |
 | Lock a value on a step | hold the step and turn KNOB 1–4 (filter, sends), SELECT (level) or ALGORITHM (pan) |
-| Lock a sound parameter | hold the step with the EDIT pages up and turn a knob; up to eight locks a step |
+| Lock a sound parameter | hold the step with the EDIT pages up and turn a knob; up to 8 locks a step |
 | Copy a step | SHIFT + hold it 0.8 s (COPY blinks) |
 | Paste it | SHIFT + hold another step 0.8 s, on this track or another |
 | Empty the whole track | SHIFT + STEP (with the step view on or off): its steps and locks; the rest of the track is kept |
@@ -348,13 +348,13 @@ The black keys, lit dimly, do this in the step view:
 
 | Key | What it does |
 | --- | --- |
-| black key 1 | a new [phrase](#phrases) for the track. **SHIFT +**: new locks on its steps. **Held** (0.8 s): the PHRASE page |
-| black key 2 | the TRACK page: LENGTH and CLOCK |
+| black key 1 | new [phrase](#phrases) for the track. **SHIFT +**: new locks on its steps. **Held** (0.8 s): PHRASE page |
+| black key 2 | TRACK page: LENGTH and CLOCK |
 | black key 3 | TRIG on or off: a step held shows its own page |
 | black key 4 | MOD on or off: a step held shows its MOD page |
-| black keys 6, 7, 8 | the track's direction: REVERSE, PING-PONG, RANDOM; pressed again, forwards |
+| black keys 6, 7, 8 | track's direction: REVERSE, PING-PONG, RANDOM; pressed again, forwards |
 
-### A step's own pages
+### Step pages
 
 **TRIG**: KNOB 1 the step's note (in the scale), 2 its velocity, 3 its length, 4 its trig condition; with PRESETS turned
 right, KNOB 1 its RATCHET (the step played 2 to 8 times). The conditions are the Digitone II's: PRE and !PRE (as the
@@ -376,15 +376,15 @@ PHRASE page, DENSITY and COMPLEXITY (0 to 100) thin it out or fill it.
 Stopped, REC arms (it flashes, the metronome counts in) and the first note starts the sequencer. **SHIFT + PLAY**
 turns the metronome on or off.
 
-## The looper
+## Looper
 
 **SHIFT + REC** arms a loop on the chosen track; the first note starts it (and the sequencer, if stopped). **REC** ends
-it. Its length is rounded to whole bars (1 to 32), so it stays in time with the steps (LOOP 1  4 BARS shows). Three
+it. Its length is rounded to whole bars (1 to 32), so it stays in time with the steps (LOOP 1  4 BARS shows). 3
 loops a track, up to 256 notes each.
 
 | To | Do this |
 | --- | --- |
-| See the track's loops | hold SHIFT + REC: they show on the first three white keys (lit: playing; dim: muted) |
+| See the track's loops | hold SHIFT + REC: they show on the first 3 white keys (lit: playing; dim: muted) |
 | Mute a loop, or bring it back | with SHIFT + REC held, press its key |
 | Empty one loop | with SHIFT + REC held, hold its key 0.8 s |
 | Empty all the track's loops | hold SHIFT + REC 1.5 s without touching a key |
@@ -494,7 +494,7 @@ track are recorded as the keys are. With SEND NOTES on, every note a track plays
 goes out on its OUT channel; a muted track sends nothing.
 
 **CCs.** Each track answers to, and with SEND CC sends, these CCs on its channel: level 7, pan 10, mute 94 (64 and up
-mutes), and each page's eight parameters (A to H), whatever the machine:
+mutes), and each page's 8 parameters (A to H), whatever the machine:
 
 | Page | A | B | C | D | E | F | G | H |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -552,22 +552,22 @@ through USB-C). A host that works at 48 kHz converts the sound itself.
 - **POCO X7 Pro (HyperOS), over USB-C:** the phone's camera app records video with the FM-1's sound. Switch on OTG
   first (Settings > Additional settings > OTG), with nothing plugged into the phone; HyperOS turns it off again after
   10 minutes with no device.
-- **MacBook Air M5 (macOS), over USB-C:** FM-1 Bigorna, 2 input channels, 44,100 Hz, every packet in order with six
+- **MacBook Air M5 (macOS), over USB-C:** FM-1 Bigorna, 2 input channels, 44,100 Hz, every packet in order with 6
   tracks playing.
 
-## The screen
+## Screen
 
 Few words, very large type, high contrast, and a colour for each track. The track's view shows, from the top: the
 pattern playing (orange with changes not saved) and the chord form (or ARP) at the top left; the battery, the octave
 and the transposition (T+2) at the top right, with REC or LOOP while recording; the track's number, its machine and
 its sound's family.
 
-The battery shows three green bars when full, then two green, one amber, and one red when it runs low. On USB power it
+The battery shows 3 green bars when full, then 2 green, 1 amber, and 1 red when it runs low. On USB power it
 shows a white bolt instead.
 
 ## Rescue
 
-Hold **OCT−** while switching the FM-1 on for the rescue screen, from which the installer can run again; two failed
+Hold **OCT−** while switching the FM-1 on for the rescue screen, from which the installer can run again; 2 failed
 starts in a row also lead there. If the FM-1 starts but no longer answers over USB, hold **OCT−** and **OCT+** for 5
 seconds while it runs: the chip's own update mode, from which a firmware can be restored with
 [Melodee's recovery tool](https://github.com/keremimo/melodee/blob/main/docs/RECOVERY.md).

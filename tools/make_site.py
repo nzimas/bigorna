@@ -243,62 +243,62 @@ FM1_COLOURS = {"body": "#1d1d1f", "tray": "#141415", "part": "#2a2a2d", "edge": 
 
 # the table under the drawings: (numbers, control, what it does under Bigorna); a row of several numbers spans them
 CONTROLS = [
-    ([1], "MASTER", "The output level."),
-    ([2], "SELECT", "The chosen track's level. On the SCALE page: the root. A step held: its level, locked."),
-    ([3], "PRESETS", "The chosen track's machine. <b>SHIFT +</b>: a new sound of the family before or after. On a page: "
+    ([1], "MASTER", "Output level."),
+    ([2], "SELECT", "Chosen track's level. On the SCALE page: root. A step held: its level, locked."),
+    ([3], "PRESETS", "Chosen track's machine. <b>SHIFT +</b>: new sound of the family before or after. On a page: "
                      "its rows, slots or entries; on the EDIT and SEQ pages, turned right, rows E to H."),
-    ([4], "ALGORITHM", "The chosen track's pan. On the SCALE page: the scale. A step held: its pan, locked."),
-    ([5], "OCT−", "The chosen track's octave down. In the step view: its "
+    ([4], "ALGORITHM", "Chosen track's pan. On the SCALE page: scale. A step held: its pan, locked."),
+    ([5], "OCT−", "Chosen track's octave down. In the step view: its "
                   '<a href="#transposition">transposition</a>. <b>SHIFT +</b>: every track\'s transposition. '
                   "On the EDIT and SEQ pages: the page before."),
-    ([6], "OCT+", "The same, up."),
-    ([7], "the screen", 'See <a href="#the-screen">The screen</a>.'),
-    ([8], "KNOB 1", "The chosen track's filter FREQ. On a page: row A."),
-    ([9], "KNOB 2", "The chosen track's filter RESO. On a page: row B."),
-    ([10], "KNOB 3", "The chosen track's delay send. <b>SHIFT +</b>: its chorus send. On a page: row C."),
-    ([11], "KNOB 4", "The chosen track's reverb send. <b>SHIFT +</b>: its overdrive. On a page: row D."),
+    ([6], "OCT+", "Same, up."),
+    ([7], "screen", 'See <a href="#screen">Screen</a>.'),
+    ([8], "KNOB 1", "Chosen track's filter FREQ. On a page: row A."),
+    ([9], "KNOB 2", "Chosen track's filter RESO. On a page: row B."),
+    ([10], "KNOB 3", "Chosen track's delay send. <b>SHIFT +</b>: its chorus send. On a page: row C."),
+    ([11], "KNOB 4", "Chosen track's reverb send. <b>SHIFT +</b>: its overdrive. On a page: row D."),
     ([12, 13, 14, 15, 16, 17], ["FX (T1)", "SEL (T2)", "ENV (T3)", "LFO (T4)", "EDIT (T5)", "GLO (T6)"],
      "<b>T1</b> to <b>T6</b>: choose track 1 to 6. From any page, back to the track. <b>Held + white key 1–4</b>, "
      'on DRUM: its <a href="#subtracks">subtrack</a> ST-A to ST-D (<b>SHIFT +</b>: give one up). In '
      '<a href="#mute-mode">MUTE mode</a>: mute; <b>held</b> (1 s), solo.'),
-    ([18], "HOME", '<a href="#sounds">A new sound</a> for the chosen track. <b>SHIFT +</b>: of the same family. '
+    ([18], "HOME", '<a href="#sounds">New sound</a> for the chosen track. <b>SHIFT +</b>: of the same family. '
                    "<b>Held</b> (0.8 s): save the session."),
-    ([19], "SAVE", 'The <a href="#patterns">PATTERNS</a> grid. <b>Held</b> (0.8 s): save the session (on the grid: the '
-                   'pattern playing, into the slot under the cursor). <b>SHIFT +</b>: the <a href="#sessions">SESSIONS</a> '
+    ([19], "SAVE", '<a href="#patterns">PATTERNS</a> grid. <b>Held</b> (0.8 s): save the session (on the grid: the '
+                   'pattern playing, into the slot under the cursor). <b>SHIFT +</b>: <a href="#sessions">SESSIONS</a> '
                    'list; <b>held</b>: <a href="#global-setup">GLOBAL SETUP</a>.'),
-    ([20], "ARP", 'The <a href="#scales">SCALE</a> page. <b>SHIFT +</b>: a scale and root at random.'),
-    ([21], "SEQ", 'The <a href="#the-effects-seq">effects\' pages</a>, then the chosen track\'s LFOs. '
+    ([20], "ARP", '<a href="#scales">SCALE</a> page. <b>SHIFT +</b>: scale and root at random.'),
+    ([21], "SEQ", '<a href="#effects-seq">Effects\' pages</a>, then the chosen track\'s LFOs. '
                   "<b>SHIFT +</b>: its LFOs drawn anew."),
-    ([22], "PLAY", 'Start or stop the <a href="#the-sequencer">sequencer</a>. <b>Held</b> (0.8 s): the TEMPO page. '
-                   "<b>SHIFT +</b>: the metronome."),
-    ([23], "REC", '<a href="#recording">Record</a> into the steps. <b>SHIFT +</b>: the <a href="#the-looper">looper</a>; '
-                  "<b>held</b>, the track's loops."),
-    ([24], "black key 1", '<a href="#chord-mode">CHORD mode</a>; <b>SHIFT +</b>, the next form. In the step view: '
-                          'a new <a href="#phrases">phrase</a>. With SHIFT held on the PATTERNS grid: empty a pattern.'),
-    ([25], "black key 2", '<a href="#mute-mode">MUTE mode</a>. In the step view: the TRACK page.'),
+    ([22], "PLAY", 'Start or stop the <a href="#sequencer">sequencer</a>. <b>Held</b> (0.8 s): TEMPO page. '
+                   "<b>SHIFT +</b>: metronome."),
+    ([23], "REC", '<a href="#recording">Record</a> into the steps. <b>SHIFT +</b>: <a href="#looper">looper</a>; '
+                  "<b>held</b>, track's loops."),
+    ([24], "black key 1", '<a href="#chord-mode">CHORD mode</a>; <b>SHIFT +</b>, next form. In the step view: '
+                          'new <a href="#phrases">phrase</a>. With SHIFT held on the PATTERNS grid: empty a pattern.'),
+    ([25], "black key 2", '<a href="#mute-mode">MUTE mode</a>. In the step view: TRACK page.'),
     ([26], "black key 3", '<b>Held</b>: <a href="#break">BREAK</a>; <b>SHIFT +</b>, on every track. In the step view: '
                           "TRIG."),
     ([27], "black key 4", '<a href="#midi-learn">MIDI LEARN</a>. In the step view: MOD.'),
-    ([28], "black key 5", 'The <a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page.'),
+    ([28], "black key 5", '<a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page.'),
     ([29, 30, 31], ["black key 6", "black key 7", "black key 8"],
-     "In the step view: the track's direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes."),
-    ([32], "black key 9", '<b>STEP</b>: the <a href="#the-step-view">step view</a>. <b>SHIFT +</b>: empty the '
+     "In the step view: track's direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes."),
+    ([32], "black key 9", '<b>STEP</b>: <a href="#step-view">step view</a>. <b>SHIFT +</b>: empty the '
                           "chosen track's steps."),
-    ([33], "black key 10", '<b>EDIT</b>: the <a href="#the-sounds-pages-edit">sound\'s pages</a> (not the EDIT button, T5).'),
+    ([33], "black key 10", '<b>EDIT</b>: <a href="#sound-pages-edit">sound pages</a> (not the EDIT button, T5).'),
     ([34], "black key 11", "<b>SHIFT</b>."),
-    ([35], "the 16 white keys", "Play the chosen track (its subtrack chosen) in the scale; the root's keys glow. In the "
-                                "step view: the 16 steps. On the PATTERNS grid: the 16 patterns. With a DRUM track's "
+    ([35], "16 white keys", "Play the chosen track (its subtrack chosen) in the scale; the root's keys glow. In the "
+                                "step view: 16 steps. On the PATTERNS grid: 16 patterns. With a DRUM track's "
                                 "button held, 1–4: its subtracks."),
 ]
 
 # KNOB 1-4 on each page
 KNOB_PAGES = [
-    ("the track", "filter FREQ", "filter RESO", "delay send", "reverb send"),
+    ("track view", "filter FREQ", "filter RESO", "delay send", "reverb send"),
     ("SHIFT held", "", "", "chorus send", "overdrive"),
-    ('<a href="#the-sounds-pages-edit">EDIT</a>', "row A (E)", "row B (F)", "row C (G)", "row D (H)"),
-    ('<a href="#the-effects-seq">SEQ</a>', "row A (E)", "row B (F)", "row C (G)", "row D (H)"),
-    ('a step held, <a href="#a-steps-own-pages">TRIG</a> on', "note", "velocity", "length", "condition"),
-    ('a step held, <a href="#a-steps-own-pages">MOD</a> on', "MUTATE", "MUT EVERY", "MIDI FX", "FX EVERY"),
+    ('<a href="#sound-pages-edit">EDIT</a>', "row A (E)", "row B (F)", "row C (G)", "row D (H)"),
+    ('<a href="#effects-seq">SEQ</a>', "row A (E)", "row B (F)", "row C (G)", "row D (H)"),
+    ('a step held, <a href="#step-pages">TRIG</a> on', "note", "velocity", "length", "condition"),
+    ('a step held, <a href="#step-pages">MOD</a> on', "MUTATE", "MUT EVERY", "MIDI FX", "FX EVERY"),
 ]
 
 def _svg_callouts(calls):
