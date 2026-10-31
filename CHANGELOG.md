@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 80
+
+Changed
+- A sidechain's source is one subtrack, not the whole track. SC SOURCE lists a track with subtracks as each of them
+  (T1-A, T1-B, ...), and a track without them as before (T2). By default, and for a session or pattern that names
+  only the track, the source is the track's kick: the first of its subtracks whose sound is a kick (none: ST-A). A
+  source subtrack given up falls back to the kick. Build 79 summed all of a track's subtracks.
+- Sessions keep the source's subtrack. Sessions from build 79 and earlier take the kick.
+
 ## Build 79
 
 Added

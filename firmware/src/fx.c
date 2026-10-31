@@ -28,7 +28,6 @@ enum { CP_THR, CP_ATK, CP_REL, CP_RAT, CP_MUP, CP_SCF, CP_SCS, CP_MIX, NCP };
 #define NCP_SCS 7u
 static const uint8_t CP_RAT10[NCP_RAT] = {15, 20, 30, 40, 60, 80, 160, 200};   /* (x 10) */
 static const char *const CP_RATN[NCP_RAT] = {"1.5", "2", "3", "4", "6", "8", "16", "20"};
-static const char *const SC_SRCN[NCP_SCS] = {"OFF", "T1", "T2", "T3", "T4", "T5", "T6"};   /* (a track's SC SOURCE) */
 
 static volatile int32_t fx_bpm10 = 1200;         /* the tempo, x 10 (the delay's time follows it) */
 

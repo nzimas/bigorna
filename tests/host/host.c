@@ -2569,6 +2569,7 @@ static int cmd_projects(const char *dir)
             fx_cook_all();
             memset((void *)sc_src, 0, sizeof sc_src);
             sc_src[1] = 1;
+            sc_apply();                          /* (its source lane: track 1's, build 80) */
             ev_post(EV_ON, 1, 60, 127);
             ev_post(EV_ON, 2, 64, 127);
             seq_run = 1;
@@ -5235,6 +5236,46 @@ static int cmd_subtrk(const char *dir)
     seq_run = 0;
     for (i = 0; i < 8u; i++)
         mix_block(out);
+    ui.lrec = 0;
+    /* (build 80) the sidechain's source: one lane -- SC SOURCE lists a track's subtracks (T1-A .. T1-C), and by default
+     * takes its kick */
+    {
+        char nm[8];
+        uint32_t lc;
+        st_choose(0, 2, 0);
+        lc = lane_find(0, 2);
+        lb = lane_find(0, 1);
+        gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 0, -1, 11u);   /* (ST-A a kick, B a snare, C a hat) */
+        gen_sound(&ui_lsnd[lb - NTRACK], ENG_FMD, 4, -1, 12u);
+        gen_sound(&ui_lsnd[lc - NTRACK], ENG_FMD, 8, -1, 13u);
+        ui.sel = 1;
+        ui.page = PG_FXP;
+        ui.fx_pg = FXP_CMP;
+        sc_src[1] = 1;
+        sc_sub[1] = 0;
+        sc_apply();
+        SEXPECT(sc_ln[1] == 0u, "SC SOURCE T1, its subtracks: ST-A, the kick");
+        sc_name(1, nm);
+        SEXPECT(str_eq(nm, "T1-A") && fx_list_n(6) == 1u + 3u + 5u, "the list: OFF, T1-A, T1-B, T1-C, T2 .. T6");
+        sc_name(4, nm);
+        SEXPECT(str_eq(nm, "T2"), "a track without subtracks: T2");
+        SEXPECT(fx_get(6) == 1, "shown: T1-A");
+        gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 4, -1, 14u);   /* (ST-A a snare now, ST-C a kick) */
+        gen_sound(&ui_lsnd[lc - NTRACK], ENG_FMD, 0, -1, 15u);
+        sc_apply();
+        SEXPECT(sc_ln[1] == lc && fx_get(6) == 3, "the kick found by its sound: ST-C, shown T1-C");
+        fx_put(6, 2);                            /* (T1-B, chosen) */
+        sc_apply();
+        SEXPECT(sc_src[1] == 1u && sc_sub[1] == 2u && sc_ln[1] == lb, "T1-B chosen: its lane the source");
+        sc_lvl[1] = 127;
+        mix_block(out);
+        SEXPECT(dk_mask == (1u << lb), "only that lane's hits followed");
+        SEXPECT(!prj_save(3) && (sc_sub[1] = 0, !prj_load(3)) && sc_sub[1] == 2u, "kept with the session");
+        lane_free(lb);
+        sc_apply();
+        SEXPECT(sc_ln[1] == lc, "its subtrack given up: the kick again");
+        ui.page = PG_MAIN;
+    }
     printf("subtrk: %d failures\n", fails);
     return fails != 0;
 }

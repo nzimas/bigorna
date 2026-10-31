@@ -42,6 +42,7 @@ static uint32_t phrase_role(const sound_t *s)
     static const uint8_t BY_MACH[NENG] = {RO_LEAD, RO_PERC, RO_STAB, RO_BASS};
     return s->family < NRECIPE ? RO_OF[s->family] : BY_MACH[s->mach % NENG];
 }
+static int snd_kick(const sound_t *s) { return phrase_role(s) == RO_KICK; }   /* (a sidechain's source: ui.c) */
 
 /* BREAK's view of the tracks (tracks.c): the kicks, the drums (a kick, snare, hat, percussion, noise) and the drones,
  * from the sound each plays now */

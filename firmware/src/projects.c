@@ -97,6 +97,7 @@ typedef struct {
     uint8_t sub[NTRACK];         /* .. each track's subtrack chosen .. */
     int8_t loct[NXL], llevel[NXL], lpan[NXL];   /* .. each lane's octave, level and pan .. */
     sound_t lsnd[NXL];           /* .. and its sound */
+    uint8_t sc_sub[NTRACK];      /* (build 80: before, PRJ_LEN79) each track's SC SOURCE's subtrack + 1 (0: its kick) */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body49_t, cp)   /* (the lengths builds 18 .. 49 saved: the sound without LFOs) */
 #define PRJ_LEN28 __builtin_offsetof(prj_body49_t, sc_src)
@@ -106,6 +107,8 @@ typedef struct {
 #define PRJ_LEN50 __builtin_offsetof(prj_body_t, arp_on)   /* (builds 50 and 51: the sounds with LFOs, no arpeggiator) */
 typedef char prj_len50[PRJ_LEN50 % 4u == 0u ? 1 : -1];   /* (their size as saved: no padding after loop_gen) */
 #define PRJ_LEN78 ((__builtin_offsetof(prj_body_t, muq) + 1u + 3u) & ~3u)   /* (builds 52 .. 78: no subtracks) */
+#define PRJ_LEN79 __builtin_offsetof(prj_body_t, sc_sub)   /* (build 79: no SC SOURCE subtrack) */
+typedef char prj_len79[PRJ_LEN79 % 4u == 0u ? 1 : -1];   /* (its size as saved: no padding after lsnd) */
 typedef char prj_len78[PRJ_LEN78 == ((PRJ_LEN50 + NTRACK * (1u + NARP) + 3u) & ~3u) &&
                        __builtin_offsetof(prj_body_t, ln_t) <= PRJ_LEN78 ? 1 : -1];   /* (MUTE QT took a byte of the
                                                   * padding: the size builds 52 .. 78 saved) */
@@ -319,13 +322,13 @@ static void prj_from17(void)
 /* sector s of project k into prj_buf; 0 if it is whole (a session saved by an earlier build: made one of now) */
 static int prj_read(uint32_t k, uint32_t s)
 {
-    static const uint16_t OLD[9] = {sizeof(prj_body17_t), PRJ_LEN23, PRJ_LEN28, PRJ_LEN32, PRJ_LEN34, PRJ_LEN37,
-                                    PRJ_LEN49, PRJ_LEN50, PRJ_LEN78};
+    static const uint16_t OLD[10] = {sizeof(prj_body17_t), PRJ_LEN23, PRJ_LEN28, PRJ_LEN32, PRJ_LEN34, PRJ_LEN37,
+                                     PRJ_LEN49, PRJ_LEN50, PRJ_LEN78, PRJ_LEN79};
     uint32_t magic = s ? PAT_MAGIC : PRJ_MAGIC, len = s ? PAT_PER * sizeof(pat_t) : sizeof(prj_body_t), i;
     const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
     if (!prj_ok || k >= PRJ_SLOTS || prj_flash_read(prj_sector(k, s), prj_buf, sizeof(prj_head_t) + len))
         return -1;
-    for (i = 0; !s && i < 9u; i++)
+    for (i = 0; !s && i < 10u; i++)
         if (prj_head_ok(h, magic, k * 16u, OLD[i]) && h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), OLD[i])) {
             uint8_t *body = prj_buf + sizeof(prj_head_t);
             if (i == 0u)
@@ -333,11 +336,14 @@ static int prj_read(uint32_t k, uint32_t s)
             else if (OLD[i] == PRJ_LEN50) {      /* (builds 50, 51: as now, the arpeggiators added) */
                 prj_ar0((prj_body_t *)(void *)body);
                 prj_head_fill(PRJ_MAGIC, h->what, sizeof(prj_body_t));
-            } else if (OLD[i] == PRJ_LEN78)      /* (builds 52 .. 78: as now, no subtracks) */
+            } else if (OLD[i] == PRJ_LEN78 || OLD[i] == PRJ_LEN79)   /* (builds 52 .. 79: as now, what they lack 0) */
                 prj_head_fill(PRJ_MAGIC, h->what, sizeof(prj_body_t));
             else
                 prj_up(OLD[i]);
-            memset(body + PRJ_LEN78, 0, sizeof(prj_body_t) - PRJ_LEN78);   /* (before build 79: no subtracks) */
+            if (OLD[i] == PRJ_LEN79)             /* (build 79: each SC SOURCE on its track's kick) */
+                memset(body + PRJ_LEN79, 0, sizeof(prj_body_t) - PRJ_LEN79);
+            else                                 /* (before build 79: no subtracks) */
+                memset(body + PRJ_LEN78, 0, sizeof(prj_body_t) - PRJ_LEN78);
             prj_head_fill(PRJ_MAGIC, h->what, sizeof(prj_body_t));
             return 0;
         }
@@ -712,10 +718,12 @@ static void prj_scan(int flash_ok)
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN37) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN50) ||
-                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN78));
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN78) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN79));
             if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)) ||
                 prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN50) ||
-                prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN78))   /* (its loops' generation: builds 50 on, here) */
+                prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN78) ||
+                prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN79))   /* (its loops' generation: builds 50 on, here) */
                 prj_flash_read(prj_sector(k, 0) + sizeof h + __builtin_offsetof(prj_body_t, loop_gen), &prj_lgen[k], 4u);
             else if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49))   /* (builds 38 .. 49: at their place -- else their
                                                   * loops' sectors would count as free; build 50) */
@@ -824,6 +832,8 @@ static void px_give(const uint8_t *x)
             ui.pan[t] = (int8_t)pn;
             level_pan_apply(t);
         }
+        if (sc != sc_src[t])                     /* (another source track: its kick, build 80) */
+            sc_sub[t] = 0;
         sc_src[t] = (uint8_t)(sc < NCP_SCS ? sc : 0u);
         sc_lvl[t] = (uint8_t)(x[4] & 127u);
         if (arp_on[t] != (x[0] >> 2 & 1u) || memcmp((const void *)arp_p[t], x + 5, NARP))
@@ -1492,6 +1502,7 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
         b->lsnd[t] = ui_lsnd[t];
     }
     memcpy(b->sub, ui.sub, NTRACK);
+    memcpy(b->sc_sub, sc_sub, NTRACK);
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
 {
@@ -1548,6 +1559,7 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     }
     for (t = 0; t < NTRACK; t++) {
         ui.sub[t] = (uint8_t)(b->sub[t] < NSUB ? b->sub[t] : 0u);
+        sc_sub[t] = (uint8_t)(b->sc_sub[t] <= NSUB ? b->sc_sub[t] : 0u);
         lanes_apply(t);
     }
     sel_sync();

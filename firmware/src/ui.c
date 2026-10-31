@@ -285,6 +285,7 @@ static int8_t pat_clip_from;                     /* (projects.c: the pattern cop
 static void pat_clear(uint32_t k);
 static void phrase_new(uint32_t t);              /* (phrase.c) */
 static void phrase_relock(uint32_t t);
+static int snd_kick(const sound_t *s);          /* (phrase.c: a kick's sound) */
 static int pg_any(void) { return ui.page >= PG_PRJ; }   /* a projects' or patterns' page */
 
 static void say(const char *s, uint32_t ms)
@@ -316,6 +317,101 @@ static void sel_sync(void)                       /* (the lane chosen: the chosen
         }
     }
     ui.sl = (uint8_t)l;
+}
+/* (build 80) a sidechain's source: one lane -- SC SOURCE's track, its subtrack chosen (T1-B), or by default its kick
+ * (the first of its subtracks whose sound is a kick; none: ST-A) */
+static uint32_t sc_kick(uint32_t u)
+{
+    uint32_t s;
+    for (s = 0; trk_lanes(u) && s < NSUB; s++) {
+        uint32_t l = lane_find(u, s);
+        if (l < NLANE && ln_on[l] && snd_kick(lane_snd(l)))
+            return l;
+    }
+    return u;
+}
+static uint32_t sc_lane(uint32_t t)              /* (track t's source lane; 0xFF none) */
+{
+    uint32_t src = sc_src[t], l;
+    if (!src || src > NTRACK)
+        return 0xFFu;
+    if (sc_sub[t] && trk_lanes(src - 1u) && (l = lane_find(src - 1u, sc_sub[t] - 1u)) < NLANE && ln_on[l])
+        return l;
+    return sc_kick(src - 1u);
+}
+static int trk_has_subs(uint32_t u)              /* (a DRUM track with a subtrack past ST-A taken) */
+{
+    uint32_t s;
+    for (s = 1; trk_lanes(u) && s < NSUB; s++)
+        if (lane_find(u, s) < NLANE)
+            return 1;
+    return 0;
+}
+/* SC SOURCE's list: OFF, then each track -- one with subtracks as each of them, T1-A .. T1-D; entry i: its track + 1
+ * (0 OFF) and subtrack + 1 (0: a track without them) */
+static uint32_t sc_entries(uint8_t *src, uint8_t *sb)
+{
+    uint32_t n = 0, u, s;
+    src[n] = 0;
+    sb[n++] = 0;
+    for (u = 0; u < NTRACK; u++) {
+        if (!trk_has_subs(u)) {
+            src[n] = (uint8_t)(u + 1u);
+            sb[n++] = 0;
+            continue;
+        }
+        for (s = 0; s < NSUB; s++)
+            if (lane_find(u, s) < NLANE) {
+                src[n] = (uint8_t)(u + 1u);
+                sb[n++] = (uint8_t)(s + 1u);
+            }
+    }
+    return n;
+}
+static uint32_t sc_get(uint32_t t)               /* (track t's SC SOURCE: its entry -- a kick found: its subtrack's) */
+{
+    uint8_t src[NTRACK * NSUB + 1u], sb[NTRACK * NSUB + 1u];
+    uint32_t n = sc_entries(src, sb), i, l = sc_lane(t), want;
+    if (!sc_src[t])
+        return 0;
+    want = trk_has_subs(sc_src[t] - 1u) && l < NLANE ? LANE_S(l) + 1u : 0u;
+    for (i = 1; i < n; i++)
+        if (src[i] == sc_src[t] && sb[i] == want)
+            return i;
+    return 0;
+}
+static void sc_put(uint32_t t, uint32_t i)
+{
+    uint8_t src[NTRACK * NSUB + 1u], sb[NTRACK * NSUB + 1u];
+    uint32_t n = sc_entries(src, sb);
+    if (i >= n)
+        i = n - 1u;
+    sc_src[t] = src[i];
+    sc_sub[t] = sb[i];
+}
+static void sc_name(uint32_t i, char *b)         /* (entry i's name: OFF, T3, T1-B) */
+{
+    uint8_t src[NTRACK * NSUB + 1u], sb[NTRACK * NSUB + 1u];
+    uint32_t n = sc_entries(src, sb);
+    if (i >= n || !src[i]) {
+        str_cpy(b, "OFF", 4);
+        return;
+    }
+    b[0] = 'T';
+    b[1] = (char)('0' + src[i]);
+    b[2] = 0;
+    if (sb[i]) {
+        b[2] = '-';
+        b[3] = (char)('A' + sb[i] - 1u);
+        b[4] = 0;
+    }
+}
+static void sc_apply(void)                       /* (each sidechain's source lane for the audio, as the subtracks are now:
+                                                  * each pass) */
+{
+    uint32_t t;
+    for (t = 0; t < NTRACK; t++)
+        sc_ln[t] = (uint8_t)sc_lane(t);
 }
 static sound_t *cur(void)                        /* (the chosen sound: the chosen track's subtrack's) */
 {
@@ -685,13 +781,13 @@ static uint8_t *fx_vals(void)
 static int32_t fx_get(uint32_t k)                /* an effect's parameter k (COMP: its row, CMP_SLOT) */
 {
     if (ui.fx_pg == FXP_CMP)
-        return CMP_SLOT[k] == CMP_SRC ? sc_src[ui.sel] : CMP_SLOT[k] == CMP_LVL ? sc_lvl[ui.sel] : fx_cp[CMP_SLOT[k]];
+        return CMP_SLOT[k] == CMP_SRC ? (int32_t)sc_get(ui.sel) : CMP_SLOT[k] == CMP_LVL ? sc_lvl[ui.sel] : fx_cp[CMP_SLOT[k]];
     return fx_vals()[k];
 }
 static void fx_put(uint32_t k, int32_t v)
 {
     if (ui.fx_pg == FXP_CMP && CMP_SLOT[k] == CMP_SRC)
-        sc_src[ui.sel] = (uint8_t)v;
+        sc_put(ui.sel, (uint32_t)v);
     else if (ui.fx_pg == FXP_CMP && CMP_SLOT[k] == CMP_LVL)
         sc_lvl[ui.sel] = (uint8_t)v;
     else if (ui.fx_pg == FXP_CMP)
@@ -721,7 +817,12 @@ static uint32_t fx_list_n(uint32_t j)
         return j == AR_MODE ? NAM : j == AR_RATE ? NAR_RATE : j == AR_RNG ? NAR_RNG : j == AR_BASS ? NAR_BASS : 2u;
     if (fx_lfo())
         return j == LF_MULT ? NLMULT : j == LF_WAVE ? NLW : NLM;
-    return CMP_SLOT[j] == CP_RAT ? NCP_RAT : NCP_SCS;
+    if (CMP_SLOT[j] == CP_RAT)
+        return NCP_RAT;
+    {
+        uint8_t src[NTRACK * NSUB + 1u], sb[NTRACK * NSUB + 1u];
+        return sc_entries(src, sb);
+    }
 }
 static void fx_changed(void)                     /* (an effect: all cooked again; an LFO: its track's sound) */
 {
@@ -1641,6 +1742,7 @@ static void ui_input(void)
     int32_t s, e_pre, e_sel, e_alg;
     int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u);
     sel_sync();                                      /* (the lane chosen, as the track chosen is now) */
+    sc_apply();
     (void)rel;
     pat_poll();                                      /* (a pattern switched as the sequencer took it in) */
     arp_take();                                      /* (the arpeggiator's notes recorded: build 52) */
@@ -2898,7 +3000,10 @@ static void fx_text(uint32_t k, int32_t x, char *b)   /* an effect's parameter k
             fmt_int(b + str_len(b), x - 64);
         }
     } else if (ui.fx_pg == FXP_CMP && fx_kind(k) == 3u)
-        str_cpy(b, CMP_SLOT[k] == CP_RAT ? CP_RATN[x % NCP_RAT] : SC_SRCN[x % NCP_SCS], 8);
+        if (CMP_SLOT[k] == CP_RAT)
+            str_cpy(b, CP_RATN[x % NCP_RAT], 8);
+        else
+            sc_name((uint32_t)x, b);
     else if (ui.fx_pg == FXP_DEL && k == DL_TIME)
         dl_time_text(b, x);
     else if (ui.fx_pg == FXP_DEL && k == DL_X)

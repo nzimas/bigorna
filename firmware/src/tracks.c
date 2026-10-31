@@ -82,13 +82,15 @@ AINL int32_t send_q15(int32_t v) { return v * v * Q15 / 16129; }
  * under another's hits (fx.c's dk_*), by SC LEVEL, 0 .. 100 (raw 0 .. 127): up to 45 dB on the hit, near a gate.
  * SC SOURCE 0: off */
 static volatile uint8_t sc_src[NTRACK], sc_lvl[NTRACK] = {64, 64, 64, 64, 64, 64};
-static dk_t dk[NTRACK];                          /* (the ISR's: each source's hits) */
+static uint8_t sc_sub[NTRACK];                   /* (the main loop's, build 80: the source's subtrack + 1, ST-A .. ST-D;
+                                                  * 0: its kick, found by its sound) */
+static dk_t dk[NLANE];                           /* (the ISR's: each source lane's hits; build 80) */
+static volatile uint8_t sc_ln[NTRACK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};   /* (the main loop's: each track's
+                                                  * source lane -- its SC SOURCE's subtrack, by default the kick; 0xFF none) */
 static int32_t dk_att[NLANE];                    /* (a ducked lane's: the duck now, dB Q16) */
 static int32_t dk_gp[NLANE] = {Q16, Q16, Q16, Q16, Q16, Q16, Q16, Q16, Q16};   /* (its gain as the last block ended) */
-static int32_t dk_acc[CTL];                      /* (the source track being mixed: its lanes summed, for its dk_feed --
-                                                  * one at a time; build 79) */
-static uint8_t dk_mask;                          /* (the tracks some track ducks under) */
-static uint8_t dk_struck[NTRACK];                /* (a note began on the track this block: a hit) */
+static uint16_t dk_mask;                         /* (the lanes some track ducks under) */
+static uint8_t dk_struck[NLANE];                 /* (a note began on the lane this block: a hit) */
 /* a ducked track's effects ducked with it: each return (chorus, delay, reverb) brought down by the tracks in it, as
  * much as each is in it -- what each sent, followed over ~0.7 s (its tail) */
 static uint32_t dk_sent[NLANE][3];               /* (this block's sends, |x| summed: chorus, delay, reverb; a lane's) */
@@ -328,7 +330,7 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
             }
         }
     }
-    dk_struck[LANE_T(t)] = 1;                    /* (a hit, for the tracks it ducks) */
+    dk_struck[t] = 1;                            /* (a hit, for the tracks it ducks) */
     best = voice_pick(t, y->xfade != 0);
     if (best == NVOICE) {
 #if TELEMETRY
@@ -2259,7 +2261,16 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
             pr1 = trk_pr[t];
         }
     }
-    if (!any) {                                  /* (a source, silent: nothing to its track's sum) */
+    if (!any) {
+        if (dk_mask >> t & 1u) {                 /* (a source, silent: its level falls) */
+            for (i = 0; i < CTL;) {
+                REP4({
+                    buf[i] = 0;
+                })
+            }
+            dk_feed(&dk[t], buf, dk_struck[t]);
+        }
+        dk_struck[t] = 0;
         dk_sent[t][0] = dk_sent[t][1] = dk_sent[t][2] = 0;
         y->mg = trk_mute[tr] ? 0 : Q15;          /* (silent: muted or not at once) */
         y->meter -= y->meter >> 4;
@@ -2283,18 +2294,14 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
         y->dc = dc;
     }
     lim_block(&y->lim_env, &y->lim_g, buf);
-    if ((dk_mask >> tr & 1u) && !trk_mute[tr])   /* (a source: its lanes summed, its hits followed after them;
-                                                  * muted, it ducks nothing) */
-        for (i = 0; i < CTL;) {
-            REP4({
-                dk_acc[i] += buf[i];
-            })
-        }
+    if (dk_mask >> t & 1u)                       /* (a source: its hits followed; muted, it ducks nothing) */
+        dk_feed(&dk[t], trk_mute[tr] ? zero_blk : buf, dk_struck[t] && !trk_mute[tr]);
+    dk_struck[t] = 0;
     {   /* this track ducked under its source's hits: by SC LEVEL (0 .. 100: up to 45 dB, near a gate) as the source's
          * level stands against its hit, coming down at ATTACK, back as the source's level falls (RELEASE) */
-        uint32_t src = sc_src[tr];
-        if (src && src - 1u != tr && src <= NTRACK && sc_lvl[tr]) {
-            int32_t e = dk_e(&dk[src - 1u]), d = (sc_lvl[tr] * 100 + 63) / 127, att = e * d / 10 * 9;   /* (dB,
+        uint32_t sl = sc_ln[tr];                 /* (its source: one lane -- a subtrack, the kick by default) */
+        if (sl < NLANE && LANE_T(sl) != tr && sc_lvl[tr]) {
+            int32_t e = dk_e(&dk[sl]), d = (sc_lvl[tr] * 100 + 63) / 127, att = e * d / 10 * 9;   /* (dB,
                                                                                          * Q16: 0.45 dB a step of 100) */
             int32_t g1;
             dk_att[t] = att > dk_att[t] ? dk_att[t] + (int32_t)(((int64_t)(att - dk_att[t]) * cpc.ka) >> 16) : att;
@@ -2442,12 +2449,12 @@ static void mix_block(int32_t *out)
     ce = COST_NOW() - c0;
     tl_evmax = ce > tl_evmax ? ce : tl_evmax;
 #endif
-    {   /* the tracks some track ducks under (their hits followed: dk_feed) */
+    {   /* the lanes some track ducks under (their hits followed: dk_feed) */
         uint32_t m = 0, q;
         for (q = 0; q < NTRACK; q++)
-            if (sc_src[q] && sc_src[q] - 1u != q && sc_src[q] <= NTRACK && sc_lvl[q])
-                m |= 1u << (sc_src[q] - 1u);
-        dk_mask = (uint8_t)m;
+            if (sc_ln[q] < NLANE && LANE_T(sc_ln[q]) != q && sc_lvl[q])
+                m |= 1u << sc_ln[q];
+        dk_mask = (uint16_t)m;
         dk_on = m != 0u;
     }
     seq_block();
@@ -2485,11 +2492,8 @@ static void mix_block(int32_t *out)
 #else
     vr_block();
 #endif
-    for (t = 0; t < NTRACK; t++) {               /* each track: its lanes (its own, then its subtracks), then its hits
-                                                  * followed for the tracks it ducks, the lanes summed (build 79) */
+    for (t = 0; t < NTRACK; t++) {               /* each track: its lanes, its own then its subtracks (build 79) */
         uint32_t l;
-        if (dk_mask >> t & 1u)
-            memset(dk_acc, 0, sizeof dk_acc);
         for (l = t; l < NLANE; l = l < NTRACK ? NTRACK : l + 1u) {
             if (l >= NTRACK && (!ln_s[l] || LANE_T(l) != t))
                 continue;
@@ -2501,9 +2505,6 @@ static void mix_block(int32_t *out)
             FAR(track_block)(l, l_, r_, dlin, rvin, chin);
 #endif
         }
-        if (dk_mask >> t & 1u)
-            FAR(dk_feed)(&dk[t], dk_acc, dk_struck[t] && !trk_mute[t]);   /* (RAM code: through a pointer) */
-        dk_struck[t] = 0;
     }
     {   /* the returns (last block's sends): each ducked by its tracks' share in it (a ducked pad's reverb with it) */
         uint32_t f;

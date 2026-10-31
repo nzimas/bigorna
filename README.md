@@ -295,9 +295,14 @@ A track button goes back to the track; **SHIFT +** a track button chooses anothe
 
 ### Sidechain
 
-On the COMP page, **SC SOURCE** chooses the track whose hits duck the chosen track (OFF: none) and **SC LEVEL** how
-deep, 0 to 100; at 100 the track is all but silenced on each hit. The duck lets go at the compressor's RELEASE, and the
-track's effect sends duck with it.
+On the COMP page, **SC SOURCE** chooses whose hits duck the chosen track (OFF: none) and **SC LEVEL** how deep, 0 to
+100; at 100 the track is all but silenced on each hit. The duck lets go at the compressor's RELEASE, and the track's
+effect sends duck with it. The chosen track ducks as a whole, all its subtracks with it.
+
+The source is one sound, not a whole track. A track with [subtracks](#subtracks) is listed as each of them: T1-A, T1-B,
+T1-C, T1-D (those it has); a track without them as T2. Chosen as a track, or from a session or pattern that names only
+the track, the source is its kick: the first of its subtracks whose sound is a kick (none: ST-A). If the subtrack
+chosen is given up, the kick is the source again.
 
 ### LFOs
 
