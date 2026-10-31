@@ -452,8 +452,9 @@ static void fm1_main(void)
 #endif
     tracks_init();
     ui_init();                                       /* (a sound of each machine for every track) */
-    if (!bootguard.failed)                           /* (after a boot that failed: not, in case it was the session) */
-        prj_boot();                                  /* the last session used, loaded again */
+    if (!bootguard.failed && set_boot)               /* (after a boot that failed: not, in case it was the session) */
+        prj_boot();                                  /* START LAST: the last session used, loaded again; NEW (build 77):
+                                                      * none, the start's sounds, scale and root drawn, as Tonitor's */
     /* CPU1: after a supply setup that held, on a boot after no failed one, and not barred since power-on. It starts
      * through the mask ROM before it reaches our RAM loop: the PC limit only after (Melodee) */
     if (fm1_core1_boot_allowed(fm1_power_ready, bootguard.failed))

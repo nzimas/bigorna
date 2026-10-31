@@ -53,7 +53,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | ALGORITHM (knob) | The track's pan |
 | PLAY | The sequencer plays or stops; held 0.8 s, the TEMPO page; SHIFT + PLAY: the metronome on or off |
 | REC | Records the keys into the track's steps; SHIFT + REC: the looper |
-| ARP | The SCALE page: SELECT the root, ALGORITHM the scale; ARP again goes back |
+| ARP | The SCALE page: SELECT the root, ALGORITHM the scale; ARP again goes back. SHIFT + ARP: a scale and root drawn at random, the SCALE page shown for 1.5 s |
 | SEQ | The effects' pages, then the track's LFOs; SHIFT + SEQ: the track's LFOs thrown anew (LFO RANDOM) |
 | SAVE | The PATTERNS grid (SAVE again goes back); held 0.8 s, the session saved (on the grid: the pattern playing saved into the slot under the cursor). SHIFT + SAVE: the sessions (SHIFT + SAVE again goes back); held 0.8 s, GLOBAL SETUP (MIDI) |
 | MASTER | The output level |
@@ -157,7 +157,7 @@ Per track, on the track's sound before its level:
 
 The white keys play the track in the scale chosen: the first key is the root, each the next degree. The keys that play
 the root are lit dimly, so the root can be found in any scale (in CHROMATIC, the key whose note is the root, in each
-octave). The scale and root are set on the SCALE page (ARP) or on the session's page (SHIFT + SAVE): CHROMATIC (the black keys play too, but for the
+octave). The scale and root are set on the SCALE page (ARP) or on the session's page (SHIFT + SAVE); SHIFT + ARP draws both at random and shows them on the SCALE page for 1.5 s, over any page. A new session, and the start with START set to NEW, draw them too. The scales: CHROMATIC (the black keys play too, but for the
 first five), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, JAPANESE
 IN, MINOR MELODIC, ENIGMATIC, LYDIAN, MIXOLYDIAN, LOCRIAN, BLUES, HUNGARIAN MINOR, DOUBLE HARMONIC, PHRYGIAN DOMINANT,
 JAPANESE HIRAJOSHI, JAPANESE IWATO, PELOG, OCTATONIC, PROMETHEUS (the list from Tonitor's). OCT− and OCT+ move the
@@ -446,8 +446,8 @@ changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not save
 copying over one and deleting ask first (NO / YES on PRESETS).
 
 SAVE on an empty slot's page, while a saved session is playing, starts a new session there: blank, as the FM-1
-starts with none loaded — each track's machine as at the start with new sounds drawn, the start's levels, pans,
-octaves, effects, tempo (120), root and scale; no patterns, loops, chords, mutes, transposition or arpeggiator; the
+starts with none loaded — each track's machine as at the start with new sounds drawn, a scale and root drawn at
+random, the start's levels, pans, octaves, effects and tempo (120); no patterns, loops, chords, mutes, transposition or arpeggiator; the
 sequencer stopped. It is saved into the slot at once (NEW, SESSION n shows). If the session playing has changes
 not saved, NEW SESSION? is asked first (they would be lost: save them first). With nothing saved yet — the state
 the FM-1 starts in, or a session just deleted — SAVE on an empty slot saves what is playing there instead. To start
@@ -470,8 +470,10 @@ The loops are kept in a loop store shared by the 16 sessions (31 sectors of flas
 its loops need: up to 7 sectors with the loop memory full (4608 notes). If the store has no room left, nothing is
 saved and NO ROOM FOR LOOPS shows; deleting a session, or saving one with fewer loops, frees room.
 
-The FM-1 starts with the last session loaded or saved (SESSION n shows for a moment). Changes not saved before it
-was switched off are not kept.
+How the FM-1 starts is set in GLOBAL SETUP, START. NEW (at first, as Tonitor starts): with no session loaded, as a
+new session is made — new sounds on every track, a scale and root drawn at random, the tempo 120 — so there is new
+material to play at once; SAVE held offers the first empty slot to save it in (SAVE NEW?). LAST: with the last session loaded or saved
+(SESSION n shows for a moment). Changes not saved before it was switched off are not kept.
 
 ### Backup
 
@@ -490,7 +492,10 @@ They are kept in the FM-1's flash and read at every start. PRESETS moves through
 chosen; on a setting, SAVE moves the focus to its value, PRESETS changes it and SAVE sets it. SHIFT + SAVE leaves a
 value as it was, or goes back a level; from the top it leaves GLOBAL SETUP, as a track's button does. Every level
 below the top begins with BACK: SAVE on it goes back a level (a level opens on the entry below BACK). Changes are
-written to the flash as it is left.
+written to the flash as it is left. The top level has MIDI (below) and START, a setting of its own: SAVE moves the
+focus to its value, PRESETS chooses NEW or LAST and SAVE sets it. NEW (at first): the FM-1 starts with a new session,
+its sounds, scale and root drawn at random, as Tonitor starts. LAST: with the last session loaded or saved (see
+Sessions). A setup saved by build 76 or earlier reads as NEW.
 
 ### MIDI
 

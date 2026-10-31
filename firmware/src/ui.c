@@ -75,7 +75,8 @@
  *   the black key before it   EDIT: the parameter pages of the track's sound -- SYN 1 .. 4, FLTR 1, FLTR 2, AMP,
  *                             FX -- eight parameters a page: KNOB 1 .. 4 its A .. D, or (PRESETS turned right; left
  *                             back) its E .. H; OCT- / OCT+ the page before / after
- *   ARP                       the SCALE page: SELECT the root, ALGORITHM the scale; ARP again, back (Tonitor's)
+ *   ARP                       the SCALE page: SELECT the root, ALGORITHM the scale; ARP again, back (Tonitor's).
+ *                             SHIFT + ARP: a scale and root at random, the SCALE page shown 1.5 s
  *   SEQ                       the effects' pages: CHORUS, COMP (the master compressor), DELAY, REVERB in turn, then
  *                             back (OCT- / OCT+ too; a track's button: back to its view; SHIFT and it, the track
  *                             chosen, the page kept -- COMP's SC SOURCE and SC LEVEL are the chosen track's);
@@ -197,6 +198,7 @@ static struct {
     int8_t level[NTRACK], pan[NTRACK];
     int8_t touched;              /* the row just turned (-1 none), until touch_until */
     uint32_t touch_until;
+    uint32_t sc_peek_until;      /* the SCALE page shown over any page until then (SHIFT + ARP) */
     uint8_t dial_pg, dial_j;     /* the dial: the parameter it shows (page id, index) */
     uint8_t dial_lk, dial_step;  /* .. or a step's lock (its id + 1, 0 none) and the step */
     uint32_t dial_until, dial_drawn_at;
@@ -508,6 +510,12 @@ static uint32_t next_seed(void)
 {
     ui.seed = ui.seed * 1664525u + 1013904223u + fm1_ticks();
     return ui.seed;
+}
+/* (build 77) a scale and a root drawn at random: the start, a new session, SHIFT + ARP (Tonitor's) */
+static void scale_draw(void)
+{
+    ui.scale = (uint8_t)((next_seed() >> 8) % NSCALE);
+    ui.root = (uint8_t)((next_seed() >> 8) % 12u);
 }
 static void mark(uint32_t t)
 {
@@ -1646,7 +1654,14 @@ static void ui_input(void)
             prj_quick_save();
         }
     }
-    if (btn_bit(press, B_ARP)) {                     /* ARP: the SCALE page, or back (Tonitor's; build 76) */
+    if (btn_bit(press, B_ARP) && sh) {               /* SHIFT + ARP: a scale and root at random, the SCALE page shown
+                                                      * a moment over any page (Tonitor's; build 77) */
+        scale_draw();
+        prj_dirty = 1;
+        ui.touch_until = fm1_ms;
+        ui.sc_peek_until = fm1_ms + 1500u;
+        ui.force = 1;
+    } else if (btn_bit(press, B_ARP)) {              /* ARP: the SCALE page, or back (Tonitor's; build 76) */
         ui.page = ui.page == PG_SCALE ? PG_MAIN : PG_SCALE;
         ui.touch_until = fm1_ms;
         ui.force = 1;
@@ -3101,6 +3116,12 @@ static void ui_draw(void)
         ui.shown_page = SHOWN_DIAL;
         return;
     }
+    if ((int32_t)(ui.sc_peek_until - fm1_ms) > 0) {  /* (SHIFT + ARP: the scale drawn, shown a moment) */
+        draw_scale_page();
+        ui.shown_page = PG_SCALE;
+        ui.force = 0;
+        return;
+    }
     if (step_page()) {                               /* a step held, the step view's knobs on it */
         draw_step_page();
         ui.shown_page = SHOWN_STEP;
@@ -3212,7 +3233,7 @@ static void ui_init(void)
     memset(ui.gen_cx, 50, sizeof ui.gen_cx);
     ui.click = 1;
     ui.seed = fm1_ticks() ^ 0x5EEDu;
-    ui.scale = 6;                                    /* minor pentatonic, from C */
+    scale_draw();                                    /* (a scale and root at random, as Tonitor's start; build 77) */
     ui.tempo = 120;
     for (t = 0; t < NTRACK; t++) {
         ui.eng[t] = ENG0[t];

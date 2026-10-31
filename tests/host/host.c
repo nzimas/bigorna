@@ -642,6 +642,8 @@ static int cmd_projects(const char *dir)
     prj_scan(1);
     tracks_init();
     ui_init();
+    ui.scale = 6;                                /* (the start's scale before build 77, these tests' ground) */
+    ui.root = 0;
     fm1_ms = 5000;
     EXPECT(prj_cur == -1 && !prj_has[6], "a slot with another firmware's data reads empty");
     shot(dir, "prj_main_none");
@@ -1721,6 +1723,7 @@ static int cmd_projects(const char *dir)
         brk_keep = 0;                            /* (both tracks: drums, no kick -- no leaps, the same rules) */
         brk_kick = 0;
         brk_drum = 0x3F;
+        brk_seed = 0x2468ACE1u;                    /* (the plan pinned: one that moves steps, whatever was drawn before) */
         for (phase = 0; phase < 2u; phase++) {
             if (phase)
                 key(KEY_TRIG, 0);
@@ -2639,6 +2642,21 @@ static int cmd_projects(const char *dir)
         shot(dir, "scale_page");
         btn(B_ARP, 0);
         EXPECT(ui.page == PG_MAIN, "ARP again: back");
+        {   /* SHIFT + ARP (build 77): a scale and root at random, the SCALE page a moment over the page up */
+            uint32_t i, seen = 0;
+            prj_dirty = 0;
+            for (i = 0; i < 24u; i++) {
+                btn(B_ARP, 1);
+                seen |= 1u << (ui.scale % 32u);
+                fm1_ms -= 2000;                  /* (btn's wait taken back: still within the moment) */
+            }
+            EXPECT(ui.page == PG_MAIN && prj_dirty && __builtin_popcount(seen) > 4, "SHIFT + ARP: scales drawn at random");
+            ui_draw();
+            EXPECT(ui.shown_page == PG_SCALE, "the SCALE page shown over the track's view");
+            fm1_ms += 1600;
+            ui_draw();
+            EXPECT(ui.shown_page == PG_MAIN, "1.5 s later, the track's view again");
+        }
         ui.root = r0;
         ui.scale = s0;
     }
@@ -3043,6 +3061,40 @@ static int cmd_projects(const char *dir)
             mcfg = D;
             setup_load();
             EXPECT(!mcfg.rcv_cc && mcfg.usb_in && mcfg.trs_in, "build 46's settings read, both inputs on");
+            EXPECT(!set_boot, "START: NEW when the record has none");
+            /* START (build 77): at the top level, set as a row is; kept after the bindings, read back */
+            ui.page = PG_MAIN;
+            save_held(1);
+            turn(EN_PRESET, 1);                  /* (START) */
+            btn(B_SAVE, 0);
+            EXPECT(set.edit && !set_boot, "START: SAVE moves the focus to its value");
+            turn(EN_PRESET, 1);
+            ui_draw();
+            shot(dir, "setup_start");
+            btn(B_SAVE, 0);
+            EXPECT(!set.edit && set_boot == 1u && set.dirty, "START: LAST set");
+            mlearn[0].kind = LK_SND;
+            mlearn[0].ch = 3;
+            mlearn[0].cc = 20;
+            mlearn[0].track = 1;
+            mlearn[0].id = 4;
+            setup_write();
+            set_boot = 0;
+            setup_load();
+            EXPECT(set_boot == 1u && mlearn[0].kind == LK_SND && mlearn[0].cc == 20u, "START LAST kept in the flash, the bindings too");
+            {   /* (a record as builds 48 .. 76 wrote it: no START -- NEW, the bindings kept) */
+                const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
+                prj_flash_read(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN);
+                prj_head_fill(SET_MAGIC, 0, SET_LEN48);
+                (void)h;
+                prj_flash_erase(SET_SECT);
+                prj_flash_prog(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN48);
+                setup_load();
+                EXPECT(!set_boot && mlearn[0].kind == LK_SND && mlearn[0].cc == 20u, "build 76's record: START NEW, the bindings kept");
+            }
+            btn(B_GLO, 0);
+            memset(mlearn, 0, sizeof mlearn);
+            set_boot = 0;
         }
         {   /* BACK at the top of GLOBAL SETUP's levels (build 48) */
             ui.page = PG_MAIN;

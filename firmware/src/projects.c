@@ -1448,7 +1448,7 @@ static int prj_save(uint32_t k)              /* the loops into the store, the pa
     return 0;
 }
 /* a new session (build 57), as the FM-1 starts with none: each track's machine the start's, its sounds drawn anew,
- * the start's levels, pans, octaves, effects, compressor and scale; no sidechain, chords, mutes, arpeggiators,
+ * the start's levels, pans, octaves, effects and compressor, a scale and root drawn; no sidechain, chords, mutes, arpeggiators,
  * patterns or loops; the sequencer stopped. Not saved anywhere yet */
 static void prj_fresh(void)
 {
@@ -1456,7 +1456,9 @@ static void prj_fresh(void)
     uint32_t t, e;
     memset(&b, 0, sizeof b);
     b.tempo = 120;
-    b.scale = 6;
+    scale_draw();                                /* (a scale and root at random, as at the start: build 77) */
+    b.scale = ui.scale;
+    b.root = ui.root;
     for (t = 0; t < NTRACK; t++) {
         b.eng[t] = ENG0[t];
         b.oct[t] = (int8_t)(t ? 0 : -1);

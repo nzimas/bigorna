@@ -1,5 +1,21 @@
 # Changelog
 
+## Build 77
+
+Added
+- SHIFT + ARP draws a scale and a root at random and shows them on the SCALE page for 1.5 s, over any page, as
+  SHIFT + the 1st black key does in Tonitor (the 1st black key is CHORD mode here).
+- GLOBAL SETUP > START: how the FM-1 starts. NEW (the default): with no session loaded and a new one made, as Tonitor
+  starts — new sounds on every track, a scale and root drawn at random, the tempo 120. LAST: with the last session
+  loaded or saved, as before. A setup saved by build 76 or earlier reads as NEW, so after this update the FM-1 starts
+  with a new session until START is set to LAST; the MIDI settings and MIDI LEARN bindings are kept.
+
+Changed
+- The start and a new session (SAVE on an empty slot) draw a scale and root at random. Before, both were MINOR
+  PENTA from C.
+- GLOBAL SETUP opens on its first entry, MIDI.
+- A value being set in GLOBAL SETUP has a white field as wide as the value.
+
 ## Build 76
 
 Changed

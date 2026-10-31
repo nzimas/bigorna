@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * GLOBAL SETUP (build 46): the settings of the machine, not of a session, kept in the flash (SET_SECT). SHIFT + SAVE
- * opens it (outside the sessions' pages); a track's button leaves it. Its sections -- MIDI, for now -- then each
+ * held opens it (outside the sessions' pages); a track's button leaves it. Its sections -- MIDI, for now -- then each
  * one's parts, then their rows, as the sessions' pages go: PRESETS through them, SAVE into one; on a row SAVE moves
  * the focus to its value, PRESETS changes it, SAVE sets it; SHIFT + SAVE leaves a value as it was, or goes back a
  * level (from the top, out). Each level below the top begins with BACK (build 48): SAVE on it goes back a level; a
@@ -12,11 +12,14 @@
  *          RECEIVE    NOTES, CC                                                                ON / OFF
  *          SEND       NOTES, CC                                                                ON / OFF
  *          PORTS      USB IN, TRS IN (the 3.5 mm MIDI IN jack; build 47)                       ON / OFF
- * (the Model:Cycles' names, short enough for the pages' type; midi.c does what they say) */
+ * (the Model:Cycles' names, short enough for the pages' type; midi.c does what they say)
+ *   START  NEW (a new session, its sounds, scale and root drawn at random, as Tonitor starts) / LAST (the last session
+ *          loaded or saved); a value at the top level, set as a row is (build 77) */
 
 #define SET_SECT 0x000FD000u                     /* (its record: the MIDI settings, then MIDI LEARN's bindings -- from
                                                   * build 48; builds 46 and 47 wrote the settings alone) */
-#define SET_LEN (sizeof(midi_cfg_t) + sizeof mlearn)
+#define SET_LEN48 (sizeof(midi_cfg_t) + sizeof mlearn)
+#define SET_LEN (SET_LEN48 + 1u)                 /* (then START: build 77; before, a record ends at SET_LEN48) */
 #define SET_MAGIC 0x31434742u   /* "BGC1" */
 enum { SK_ONOFF, SK_CHAN, SK_CHAN1 };            /* (a value: ON / OFF; OFF, 1 .. 16; 1 .. 16) */
 typedef struct { const char *name; uint8_t off, kind; } set_row_t;
@@ -38,7 +41,9 @@ static const set_row_t SET_PORT[] = {SR("USB IN", usb_in, SK_ONOFF), SR("TRS IN"
 static const struct { const char *name; const set_row_t *rows; uint8_t n; } SET_PART[SET_NPART] = {
     {"SYNC", SET_SYNC, NELEM(SET_SYNC)}, {"IN CHAN", SET_IN, NELEM(SET_IN)}, {"OUT CHAN", SET_OUT, NELEM(SET_OUT)},
     {"RECEIVE", SET_RCV, NELEM(SET_RCV)}, {"SEND", SET_SND, NELEM(SET_SND)}, {"PORTS", SET_PORT, NELEM(SET_PORT)}};
-static const char *const SET_SECTION[1] = {"MIDI"};
+static const char *const SET_SECTION[2] = {"MIDI", "START"};   /* (START: a value, not a section) */
+#define SET_START 1u
+static uint8_t set_boot;                         /* START: 0 NEW (the default), 1 LAST */
 #define C_SET RGB(150, 200, 255)
 
 static struct {
@@ -60,6 +65,7 @@ static void setup_write(void)
     memset(prj_buf, 0, sizeof(prj_head_t) + SET_LEN);
     memcpy(prj_buf + sizeof(prj_head_t), &mcfg, sizeof mcfg);
     memcpy(prj_buf + sizeof(prj_head_t) + sizeof mcfg, mlearn, sizeof mlearn);
+    prj_buf[sizeof(prj_head_t) + SET_LEN48] = set_boot;
     prj_head_fill(SET_MAGIC, 0, SET_LEN);
     if (!prj_flash_erase(SET_SECT) && !prj_flash_prog(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN))
         set.dirty = 0;
@@ -72,15 +78,19 @@ static void setup_load(void)                     /* (the start: the settings as 
     uint32_t i, len;
     mcfg = D;
     memset(mlearn, 0, sizeof mlearn);
+    set_boot = 0;
     if (!prj_ok || prj_flash_read(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN))
         return;
     len = prj_head_ok(h, SET_MAGIC, 0, SET_LEN) ? SET_LEN
+          : prj_head_ok(h, SET_MAGIC, 0, SET_LEN48) ? SET_LEN48   /* (builds 48 .. 76's: no START -- NEW) */
           : prj_head_ok(h, SET_MAGIC, 0, sizeof(midi_cfg_t)) ? sizeof(midi_cfg_t)   /* (build 47's: no bindings) */
           : prj_head_ok(h, SET_MAGIC, 0, MIDI_CFG46) ? MIDI_CFG46 : 0u;   /* (build 46's: no PORTS -- both on) */
     if (!len || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
         return;
     memcpy(&c, prj_buf + sizeof(prj_head_t), len < sizeof c ? len : sizeof c);
-    if (len == SET_LEN) {                        /* (the bindings: each whole, or none) */
+    if (len == SET_LEN)
+        set_boot = (uint8_t)(prj_buf[sizeof(prj_head_t) + SET_LEN48] == 1u);
+    if (len >= SET_LEN48) {                      /* (the bindings: each whole, or none) */
         memcpy(mlearn, prj_buf + sizeof(prj_head_t) + sizeof c, sizeof mlearn);
         for (i = 0; i < NLEARN; i++) {
             learn_t *l = &mlearn[i];
@@ -118,6 +128,7 @@ static void setup_open(void)
 {
     ui.page = PG_SET;
     set.lvl = 0;
+    set.sec = 0;                                 /* (it opens on MIDI, the first entry) */
     set.edit = 0;
     ui.force = 1;
 }
@@ -139,7 +150,18 @@ static void setup_press(int sh)
             setup_leave();
         return;
     }
-    if (set.lvl == 0u) {
+    if (set.lvl == 0u && set.sec == SET_START) { /* START: the focus on its value, or the value set */
+        if (!set.edit) {
+            set.edit = 1;
+            set.val = set_boot;
+        } else {
+            set.edit = 0;
+            if (set_boot != (uint8_t)set.val) {
+                set_boot = (uint8_t)set.val;
+                set.dirty = 1;
+            }
+        }
+    } else if (set.lvl == 0u) {
         set.lvl = 1;
         set.pc = 1;
     } else if (set.lvl == 1u && !set.pc)         /* (BACK) */
@@ -165,7 +187,9 @@ static void setup_press(int sh)
 }
 static void setup_preset(int32_t s)
 {
-    if (set.lvl == 0u)
+    if (set.lvl == 0u && set.edit)
+        set.val = (int16_t)(s > 0);
+    else if (set.lvl == 0u)
         set.sec = (uint8_t)clampi((int32_t)set.sec + s, 0, (int32_t)NELEM(SET_SECTION) - 1);
     else if (set.lvl == 1u)
         set.pc = (uint8_t)clampi((int32_t)set.pc + s, 0, (int32_t)SET_NPART);
@@ -200,8 +224,10 @@ static void set_line(uint32_t r, const char *name, const char *val, int chosen, 
 {
     int32_t y = (37 - (int32_t)FONT_S.h) / 2;
     cv_begin(240, 37, chosen && !focus ? C_WHITE : C_BLACK);
-    if (focus)
-        cv_rect(160, 1, 80, 35, C_WHITE);
+    if (focus) {                                 /* (the field as wide as its value takes) */
+        int32_t x = val ? clampi(224 - text_w(&FONT_S, val), 0, 160) : 160;
+        cv_rect((uint32_t)x, 1, 240u - (uint32_t)x, 35, C_WHITE);
+    }
     if (name)
         cv_text(8, y, &FONT_S, name, chosen && !focus ? C_BLACK : C_WHITE);
     if (val && val[0])
@@ -241,7 +267,9 @@ static void setup_draw(void)
             set_line(r, 0, 0, 0, 0);
             continue;
         }
-        if (set.lvl == 0u)
+        if (set.lvl == 0u && i == SET_START)
+            set_line(r, SET_SECTION[i], (set.edit ? set.val : set_boot) ? "LAST" : "NEW", i == sel, set.edit);
+        else if (set.lvl == 0u)
             set_line(r, SET_SECTION[i], 0, i == sel, 0);
         else if (!i)
             set_line(r, "BACK", 0, i == sel, 0);
