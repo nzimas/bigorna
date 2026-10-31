@@ -44,6 +44,49 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-74">Build 74</h2>
+<p>Fixed</p>
+<ul>
+<li>A session saved by builds 38 to 72, loaded by build 73, had its loops only in the pattern it was saved playing, so a pattern that was a copy of it played no loops. Now each of its loops goes to every saved pattern, as they played before; empty patterns get none. If the loop memory runs out, LOADED, LOOPS LOST shows and the remaining patterns get none.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>A session already saved again by build 73 keeps the loops as build 73 placed them: to give a copied pattern the loops back, load the pattern that has them and hold the copy's white key on the PATTERNS grid.</li>
+</ul>
+<h2 id="build-73">Build 73</h2>
+<p>Changed</p>
+<ul>
+<li>Loops belong to a pattern, as its steps do. Before, the loops belonged to the session and played in every pattern, an empty one too. Now another pattern does not play them; an empty pattern plays nothing. When a pattern comes in, its loops start from their first step with its steps, and the loops of the pattern it replaces stop.</li>
+<li>Saving the pattern playing into another slot, pasting a pattern and saving a break copy its loops with it. Emptying a pattern removes its loops.</li>
+<li>All the patterns' loops share one memory: 40 loops and 4608 notes in all (the 18 loops of 256 notes there were before still fit). When it is full, arming a loop shows NO ROOM; saving a pattern into another slot saves its steps and shows LOOPS LOST for the loops that did not fit.</li>
+<li>The transposition moves the pattern playing's loops only.</li>
+</ul>
+<p>Removed</p>
+<ul>
+<li>A pattern that unmutes a track no longer keeps that track's loops silent until their first step: every loop of the pattern starts with it.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>A session's loops are saved with their pattern. A session saved by builds 38 to 72 loads with its loops in the pattern it was saved playing. Loaded by build 72 or earlier, a session saved by this build puts the loops of every pattern together, and loops in the same place on a track in different patterns overwrite each other.</li>
+</ul>
+<h2 id="build-72">Build 72</h2>
+<p>Fixed</p>
+<ul>
+<li>A pattern saved with one track locked on many steps lost the steps of the tracks after it. The steps were written track by track, each with all its locks, and once the pattern's room was full the remaining tracks got nothing. Now every step with a note on every track is always saved (all 96 fit); the room left goes to chords, then MOD settings, then locks, shared one per step in turn across all six tracks.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>The PATTERNS grid: a white key held 0.8 s saves the pattern playing into that slot, empty or not, as Tonitor saves its snapshots. Copy and paste moved to SHIFT + a white key held. With the 3rd black key held and the sequencer stopped, a white key held saves nothing.</li>
+<li>The PATTERNS grid no longer draws a green frame around the pattern playing. The cursor (the white square) is the only highlight; the pattern playing still has its number in green (orange with changes not saved).</li>
+</ul>
+<p>Added</p>
+<ul>
+<li>Out of the step view, the keys that play the root of the scale are lit dimly.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Nothing saved changes. Patterns saved by earlier builds load as before.</li>
+</ul>
 <h2 id="build-71">Build 71</h2>
 <p>Fixed</p>
 <ul>
