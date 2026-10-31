@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Big+Shoulders+Display:wght@700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/site.css?v=426632170b">
+<link rel="stylesheet" href="css/site.css?v=aab4cce4a7">
 </head>
 <body>
 <div class="layout">
@@ -44,6 +44,44 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-77">Build 77</h2>
+<p>Added</p>
+<ul>
+<li>SHIFT + ARP draws a scale and a root at random and shows them on the SCALE page for 1.5 s, over any page, as SHIFT + the 1st black key does in Tonitor (the 1st black key is CHORD mode here).</li>
+<li>GLOBAL SETUP &gt; START: how the FM-1 starts. NEW (the default): with no session loaded and a new one made, as Tonitor starts — new sounds on every track, a scale and root drawn at random, the tempo 120. LAST: with the last session loaded or saved, as before. A setup saved by build 76 or earlier reads as NEW, so after this update the FM-1 starts with a new session until START is set to LAST; the MIDI settings and MIDI LEARN bindings are kept.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>The start and a new session (SAVE on an empty slot) draw a scale and root at random. Before, both were MINOR PENTA from C.</li>
+<li>GLOBAL SETUP opens on its first entry, MIDI.</li>
+<li>A value being set in GLOBAL SETUP has a white field as wide as the value.</li>
+</ul>
+<h2 id="build-76">Build 76</h2>
+<p>Changed</p>
+<ul>
+<li>The patterns, the sessions and GLOBAL SETUP are reached as in Tonitor, with Bigorna's patterns in place of Tonitor's snapshots:
+<ul>
+<li>SAVE opens the PATTERNS grid; SAVE again takes it down. Before, ARP opened it.</li>
+<li>SAVE held 0.8 s saves the session, as before. On the PATTERNS grid it saves the pattern playing into the slot under the cursor, as a white key held does.</li>
+<li>SHIFT + SAVE opens the sessions' list; SHIFT + SAVE again takes it down. Before, SAVE opened it.</li>
+<li>SHIFT + SAVE held 0.8 s opens GLOBAL SETUP. Before, SHIFT + SAVE opened it at once.</li>
+<li>On the sessions' pages and in GLOBAL SETUP, SAVE and SHIFT + SAVE work as before.</li>
+</ul></li>
+<li>ARP opens the SCALE page, as in Tonitor: SELECT sets the root, ALGORITHM the scale, and ARP again goes back. The root and scale can still be set on the session's page.</li>
+</ul>
+<p>Removed</p>
+<ul>
+<li>ARP held no longer saves the pattern playing, and ARP on the grid no longer loads the pattern under the cursor. On the grid, SAVE held saves the pattern playing into the slot under the cursor, and a white key loads its pattern.</li>
+</ul>
+<p>Fixed</p>
+<ul>
+<li>The manual's text for builds 72 to 74 (patterns, loops, sessions, the dimmed root keys) was written into the website's manual page only, so publishing build 74 put the older text back. It is now in the README, which the page is made from.</li>
+</ul>
+<h2 id="build-75">Build 75</h2>
+<p>Changed</p>
+<ul>
+<li>The splash screen shows the Bigorna logo: the anvil over the lettering, in steel on black, with the build under them. It is drawn from the website logo's shapes (the anvil's outline, BIGORNA in Michroma), made into bitmaps when the firmware is built (tools/gen_logo.py); they take 9.5 KB of flash and no RAM.</li>
+</ul>
 <h2 id="build-74">Build 74</h2>
 <p>Fixed</p>
 <ul>
@@ -960,6 +998,6 @@
     </footer>
   </div>
 </div>
-<script src="js/menu.js?v=426632170b"></script>
+<script src="js/menu.js?v=aab4cce4a7"></script>
 </body>
 </html>

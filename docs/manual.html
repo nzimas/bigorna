@@ -10,7 +10,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Big+Shoulders+Display:wght@700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/site.css?v=426632170b">
+<link rel="stylesheet" href="css/site.css?v=aab4cce4a7">
+<script src="js/manual.js?v=8f4eccd464" defer></script>
 </head>
 <body>
 <div class="layout">
@@ -43,21 +44,26 @@
   </aside>
   <div class="content">
     <main>
-<h1>Manual</h1>
-<p>Everything the FM-1 does under Bigorna. New here? Start with <a href="#the-panel">The panel</a>; to install, see <a href="install.html">Install</a>.</p>
-<nav class="toc" aria-label="Contents">
-<a href="#the-panel">The panel</a>
-<a href="#tracks-machines-and-voices">Tracks, machines and voices</a>
-<a href="#sounds">Sounds</a>
+<div class="manual">
+<h1 id="top">Manual</h1>
+<div class="mbar" role="search">
+<input type="search" id="msearch" placeholder="Search the manual" aria-label="Search the manual" autocomplete="off" aria-controls="mresults" aria-expanded="false">
+<div id="mresults" class="mresults" role="listbox" hidden></div>
+</div>
+<p>Everything the FM-1 does under Bigorna. New here? Start with <a href="#controls">Controls</a> and <a href="#playing-it">Playing it</a>; to install, see <a href="install.html">Install</a>. Press <kbd>/</kbd> to search.</p>
+<nav class="toc" id="contents" aria-label="Contents">
+<a href="#controls">Controls</a>
+<a href="#playing-it">Playing it</a>
+<a href="#tracks-and-sounds">Tracks and sounds</a>
+<a href="#sounds" class="sub">Sounds</a>
 <a href="#the-sounds-pages-edit">The sound&#x27;s pages (EDIT)</a>
 <a href="#4-op" class="sub">4-OP</a>
 <a href="#drum" class="sub">DRUM</a>
 <a href="#wavy" class="sub">WAVY</a>
 <a href="#hive" class="sub">HIVE</a>
-<a href="#fltr-1-fltr-2" class="sub">FLTR 1, FLTR 2</a>
-<a href="#amp-and-fx" class="sub">AMP and FX</a>
-<a href="#mangle" class="sub">MANGLE</a>
-<a href="#playing">Playing</a>
+<a href="#fltr-amp-fx-and-mangle" class="sub">FLTR, AMP, FX and MANGLE</a>
+<a href="#keys-and-scales">Keys and scales</a>
+<a href="#scales" class="sub">Scales</a>
 <a href="#transposition" class="sub">Transposition</a>
 <a href="#chord-mode" class="sub">CHORD mode</a>
 <a href="#arpeggiator" class="sub">Arpeggiator</a>
@@ -73,246 +79,428 @@
 <a href="#recording">Recording</a>
 <a href="#the-looper">The looper</a>
 <a href="#tempo">Tempo</a>
-<a href="#patterns-arp">Patterns (ARP)</a>
-<a href="#sessions-save">Sessions (SAVE)</a>
+<a href="#patterns">Patterns</a>
+<a href="#sessions">Sessions</a>
 <a href="#backup" class="sub">Backup</a>
-<a href="#global-setup-shift-save">GLOBAL SETUP (SHIFT + SAVE)</a>
+<a href="#global-setup">GLOBAL SETUP</a>
 <a href="#midi" class="sub">MIDI</a>
-<a href="#tested-with" class="sub">Tested with</a>
 <a href="#midi-learn" class="sub">MIDI LEARN</a>
 <a href="#usb-audio">USB audio</a>
-<a href="#tested-with" class="sub">Tested with</a>
 <a href="#the-screen">The screen</a>
 <a href="#rescue">Rescue</a>
 </nav>
-<h2 id="the-panel">The panel</h2>
+<h2 id="controls">Controls</h2>
+<p>The numbers on the drawings are in the table below them; a number links to its row, and a row's number back to its drawing. The names are those printed on the FM-1. Black keys are counted from the left.</p>
+<figure class="fm1-fig" id="fig-panel">
+<div class="fm1-scroll"><svg class="fm1" viewBox="-70 -170 1085 565" role="img" aria-labelledby="fig-panel">
+<path d="M4,318 V44 A40,40 0 0 1 44,4 H956 A40,40 0 0 1 996,44 V318 Z" fill="#1d1d1f"/>
+<line x1="4" y1="318" x2="996" y2="318" class="cut"/>
+<rect x="50" y="250" width="220" height="50" rx="14" fill="#141415"/>
+<rect x="568" y="160" width="400" height="140" rx="14" fill="#141415"/>
+<rect x="292" y="44" width="256" height="256" rx="18" fill="#0b0b0c"/>
+<rect x="300" y="52" width="240" height="240" rx="4" fill="#141418" stroke="#45454a"/>
+<circle cx="105" cy="100" r="29" fill="#141415"/><circle cx="105" cy="100" r="24" fill="#2a2a2d" stroke="#45454a" stroke-width="2"/><line x1="105" y1="81" x2="105" y2="89" stroke="#d6d6d8" stroke-width="3" stroke-linecap="round"/>
+<circle cx="215" cy="100" r="29" fill="#141415"/><circle cx="215" cy="100" r="24" fill="#2a2a2d" stroke="#45454a" stroke-width="2"/><line x1="215" y1="81" x2="215" y2="89" stroke="#d6d6d8" stroke-width="3" stroke-linecap="round"/>
+<circle cx="105" cy="205" r="29" fill="#141415"/><circle cx="105" cy="205" r="24" fill="#2a2a2d" stroke="#45454a" stroke-width="2"/><line x1="105" y1="186" x2="105" y2="194" stroke="#d6d6d8" stroke-width="3" stroke-linecap="round"/>
+<circle cx="215" cy="205" r="29" fill="#141415"/><circle cx="215" cy="205" r="24" fill="#2a2a2d" stroke="#45454a" stroke-width="2"/><line x1="215" y1="186" x2="215" y2="194" stroke="#d6d6d8" stroke-width="3" stroke-linecap="round"/>
+<circle cx="610" cy="100" r="27" fill="#141415"/><circle cx="610" cy="100" r="22" fill="#2a2a2d" stroke="#45454a" stroke-width="2"/><line x1="610" y1="83" x2="610" y2="91" stroke="#d6d6d8" stroke-width="3" stroke-linecap="round"/>
+<circle cx="714" cy="100" r="27" fill="#141415"/><circle cx="714" cy="100" r="22" fill="#2a2a2d" stroke="#45454a" stroke-width="2"/><line x1="714" y1="83" x2="714" y2="91" stroke="#d6d6d8" stroke-width="3" stroke-linecap="round"/>
+<circle cx="818" cy="100" r="27" fill="#141415"/><circle cx="818" cy="100" r="22" fill="#2a2a2d" stroke="#45454a" stroke-width="2"/><line x1="818" y1="83" x2="818" y2="91" stroke="#d6d6d8" stroke-width="3" stroke-linecap="round"/>
+<circle cx="922" cy="100" r="27" fill="#141415"/><circle cx="922" cy="100" r="22" fill="#2a2a2d" stroke="#45454a" stroke-width="2"/><line x1="922" y1="83" x2="922" y2="91" stroke="#d6d6d8" stroke-width="3" stroke-linecap="round"/>
+<rect x="60" y="258" width="90" height="34" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="170" y="258" width="90" height="34" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="582" y="174" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="645" y="174" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="708" y="174" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="771" y="174" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="834" y="174" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="897" y="174" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="582" y="236" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="645" y="236" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="708" y="236" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="771" y="236" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="834" y="236" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="897" y="236" width="54" height="48" rx="8" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<a href="#ctl-1" class="callout" data-n="1" aria-label="1"><polyline points="76,100 -40,100" class="lead"/><circle cx="76" cy="100" r="4.5" class="tip"/><circle cx="-40" cy="100" r="17" class="num"/><text x="-40" y="106.5">1</text></a>
+<a href="#ctl-2" class="callout" data-n="2" aria-label="2"><polyline points="215,71 215,-40" class="lead"/><circle cx="215" cy="71" r="4.5" class="tip"/><circle cx="215" cy="-40" r="17" class="num"/><text x="215" y="-33.5">2</text></a>
+<a href="#ctl-3" class="callout" data-n="3" aria-label="3"><polyline points="76,205 -40,205" class="lead"/><circle cx="76" cy="205" r="4.5" class="tip"/><circle cx="-40" cy="205" r="17" class="num"/><text x="-40" y="211.5">3</text></a>
+<a href="#ctl-4" class="callout" data-n="4" aria-label="4"><polyline points="194,185 160,152 -40,152" class="lead"/><circle cx="194" cy="185" r="4.5" class="tip"/><circle cx="-40" cy="152" r="17" class="num"/><text x="-40" y="158.5">4</text></a>
+<a href="#ctl-5" class="callout" data-n="5" aria-label="5"><polyline points="105,292 105,372" class="lead"/><circle cx="105" cy="292" r="4.5" class="tip"/><circle cx="105" cy="372" r="17" class="num"/><text x="105" y="378.5">5</text></a>
+<a href="#ctl-6" class="callout" data-n="6" aria-label="6"><polyline points="215,292 215,372" class="lead"/><circle cx="215" cy="292" r="4.5" class="tip"/><circle cx="215" cy="372" r="17" class="num"/><text x="215" y="378.5">6</text></a>
+<a href="#ctl-7" class="callout" data-n="7" aria-label="7"><polyline points="420,44 420,-40" class="lead"/><circle cx="420" cy="44" r="4.5" class="tip"/><circle cx="420" cy="-40" r="17" class="num"/><text x="420" y="-33.5">7</text></a>
+<a href="#ctl-8" class="callout" data-n="8" aria-label="8"><polyline points="610,73 610,-40" class="lead"/><circle cx="610" cy="73" r="4.5" class="tip"/><circle cx="610" cy="-40" r="17" class="num"/><text x="610" y="-33.5">8</text></a>
+<a href="#ctl-9" class="callout" data-n="9" aria-label="9"><polyline points="714,73 714,-40" class="lead"/><circle cx="714" cy="73" r="4.5" class="tip"/><circle cx="714" cy="-40" r="17" class="num"/><text x="714" y="-33.5">9</text></a>
+<a href="#ctl-10" class="callout" data-n="10" aria-label="10"><polyline points="818,73 818,-40" class="lead"/><circle cx="818" cy="73" r="4.5" class="tip"/><circle cx="818" cy="-40" r="17" class="num"/><text x="818" y="-33.5">10</text></a>
+<a href="#ctl-11" class="callout" data-n="11" aria-label="11"><polyline points="922,73 922,-40" class="lead"/><circle cx="922" cy="73" r="4.5" class="tip"/><circle cx="922" cy="-40" r="17" class="num"/><text x="922" y="-33.5">11</text></a>
+<a href="#ctl-12" class="callout" data-n="12" aria-label="12"><polyline points="609,174 609,150 566,150 566,-95" class="lead"/><circle cx="609" cy="174" r="4.5" class="tip"/><circle cx="566" cy="-95" r="17" class="num"/><text x="566" y="-88.5">12</text></a>
+<a href="#ctl-13" class="callout" data-n="13" aria-label="13"><polyline points="672,174 672,-95" class="lead"/><circle cx="672" cy="174" r="4.5" class="tip"/><circle cx="672" cy="-95" r="17" class="num"/><text x="672" y="-88.5">13</text></a>
+<a href="#ctl-14" class="callout" data-n="14" aria-label="14"><polyline points="735,174 735,150 750,150 750,-95" class="lead"/><circle cx="735" cy="174" r="4.5" class="tip"/><circle cx="750" cy="-95" r="17" class="num"/><text x="750" y="-88.5">14</text></a>
+<a href="#ctl-15" class="callout" data-n="15" aria-label="15"><polyline points="798,174 798,150 782,150 782,-140" class="lead"/><circle cx="798" cy="174" r="4.5" class="tip"/><circle cx="782" cy="-140" r="17" class="num"/><text x="782" y="-133.5">15</text></a>
+<a href="#ctl-16" class="callout" data-n="16" aria-label="16"><polyline points="861,174 861,-95" class="lead"/><circle cx="861" cy="174" r="4.5" class="tip"/><circle cx="861" cy="-95" r="17" class="num"/><text x="861" y="-88.5">16</text></a>
+<a href="#ctl-17" class="callout" data-n="17" aria-label="17"><polyline points="924,174 924,150 968,150 968,-95" class="lead"/><circle cx="924" cy="174" r="4.5" class="tip"/><circle cx="968" cy="-95" r="17" class="num"/><text x="968" y="-88.5">17</text></a>
+<a href="#ctl-18" class="callout" data-n="18" aria-label="18"><polyline points="609,284 609,372" class="lead"/><circle cx="609" cy="284" r="4.5" class="tip"/><circle cx="609" cy="372" r="17" class="num"/><text x="609" y="378.5">18</text></a>
+<a href="#ctl-19" class="callout" data-n="19" aria-label="19"><polyline points="672,284 672,372" class="lead"/><circle cx="672" cy="284" r="4.5" class="tip"/><circle cx="672" cy="372" r="17" class="num"/><text x="672" y="378.5">19</text></a>
+<a href="#ctl-20" class="callout" data-n="20" aria-label="20"><polyline points="735,284 735,372" class="lead"/><circle cx="735" cy="284" r="4.5" class="tip"/><circle cx="735" cy="372" r="17" class="num"/><text x="735" y="378.5">20</text></a>
+<a href="#ctl-21" class="callout" data-n="21" aria-label="21"><polyline points="798,284 798,372" class="lead"/><circle cx="798" cy="284" r="4.5" class="tip"/><circle cx="798" cy="372" r="17" class="num"/><text x="798" y="378.5">21</text></a>
+<a href="#ctl-22" class="callout" data-n="22" aria-label="22"><polyline points="861,284 861,372" class="lead"/><circle cx="861" cy="284" r="4.5" class="tip"/><circle cx="861" cy="372" r="17" class="num"/><text x="861" y="378.5">22</text></a>
+<a href="#ctl-23" class="callout" data-n="23" aria-label="23"><polyline points="924,284 924,372" class="lead"/><circle cx="924" cy="284" r="4.5" class="tip"/><circle cx="924" cy="372" r="17" class="num"/><text x="924" y="378.5">23</text></a>
+</svg></div>
+<figcaption>The panel (1–23).<span class="narrow"> Swipe sideways to see all of it.</span></figcaption>
+</figure>
+<figure class="fm1-fig" id="fig-keys">
+<div class="fm1-scroll"><svg class="fm1" viewBox="-20 255 1040 430" role="img" aria-labelledby="fig-keys">
+<path d="M4,318 V580 A40,40 0 0 0 44,620 H956 A40,40 0 0 0 996,580 V318 Z" fill="#1d1d1f"/>
+<line x1="4" y1="318" x2="996" y2="318" class="cut"/>
+<rect x="36" y="332" width="928" height="256" rx="18" fill="#141415"/>
+<rect x="54.2" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="110.7" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="167.2" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="223.7" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="280.2" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="336.7" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="393.2" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="449.7" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="506.2" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="562.7" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="619.2" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="675.7" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="732.2" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="788.7" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="845.2" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="901.7" y="469.6" width="44.1" height="108.8" rx="22.0" fill="#d9d6d0" stroke="#45454a" stroke-width="1.5"/>
+<rect x="82.5" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="139.0" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="195.5" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="308.5" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="365.0" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="478.0" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="534.5" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="591.0" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="704.0" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="760.5" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<rect x="873.5" y="341.6" width="44.1" height="108.8" rx="22.0" fill="#2a2a2d" stroke="#45454a" stroke-width="1.5"/>
+<polyline points="54.2,592 54.2,600 945.8,600 945.8,592" class="lead"/>
+<a href="#ctl-24" class="callout" data-n="24" aria-label="24"><polyline points="104.5,341.6 104.5,282" class="lead"/><circle cx="104.5" cy="341.6" r="4.5" class="tip"/><circle cx="104.5" cy="282" r="17" class="num"/><text x="104.5" y="288.5">24</text></a>
+<a href="#ctl-25" class="callout" data-n="25" aria-label="25"><polyline points="161,341.6 161,282" class="lead"/><circle cx="161" cy="341.6" r="4.5" class="tip"/><circle cx="161" cy="282" r="17" class="num"/><text x="161" y="288.5">25</text></a>
+<a href="#ctl-26" class="callout" data-n="26" aria-label="26"><polyline points="217.5,341.6 217.5,282" class="lead"/><circle cx="217.5" cy="341.6" r="4.5" class="tip"/><circle cx="217.5" cy="282" r="17" class="num"/><text x="217.5" y="288.5">26</text></a>
+<a href="#ctl-27" class="callout" data-n="27" aria-label="27"><polyline points="330.5,341.6 330.5,282" class="lead"/><circle cx="330.5" cy="341.6" r="4.5" class="tip"/><circle cx="330.5" cy="282" r="17" class="num"/><text x="330.5" y="288.5">27</text></a>
+<a href="#ctl-28" class="callout" data-n="28" aria-label="28"><polyline points="387,341.6 387,282" class="lead"/><circle cx="387" cy="341.6" r="4.5" class="tip"/><circle cx="387" cy="282" r="17" class="num"/><text x="387" y="288.5">28</text></a>
+<a href="#ctl-29" class="callout" data-n="29" aria-label="29"><polyline points="500,341.6 500,282" class="lead"/><circle cx="500" cy="341.6" r="4.5" class="tip"/><circle cx="500" cy="282" r="17" class="num"/><text x="500" y="288.5">29</text></a>
+<a href="#ctl-30" class="callout" data-n="30" aria-label="30"><polyline points="556.5,341.6 556.5,282" class="lead"/><circle cx="556.5" cy="341.6" r="4.5" class="tip"/><circle cx="556.5" cy="282" r="17" class="num"/><text x="556.5" y="288.5">30</text></a>
+<a href="#ctl-31" class="callout" data-n="31" aria-label="31"><polyline points="613,341.6 613,282" class="lead"/><circle cx="613" cy="341.6" r="4.5" class="tip"/><circle cx="613" cy="282" r="17" class="num"/><text x="613" y="288.5">31</text></a>
+<a href="#ctl-32" class="callout" data-n="32" aria-label="32"><polyline points="726,341.6 726,282" class="lead"/><circle cx="726" cy="341.6" r="4.5" class="tip"/><circle cx="726" cy="282" r="17" class="num"/><text x="726" y="288.5">32</text></a>
+<a href="#ctl-33" class="callout" data-n="33" aria-label="33"><polyline points="782.5,341.6 782.5,282" class="lead"/><circle cx="782.5" cy="341.6" r="4.5" class="tip"/><circle cx="782.5" cy="282" r="17" class="num"/><text x="782.5" y="288.5">33</text></a>
+<a href="#ctl-34" class="callout" data-n="34" aria-label="34"><polyline points="895.5,341.6 895.5,282" class="lead"/><circle cx="895.5" cy="341.6" r="4.5" class="tip"/><circle cx="895.5" cy="282" r="17" class="num"/><text x="895.5" y="288.5">34</text></a>
+<a href="#ctl-35" class="callout" data-n="35" aria-label="35"><polyline points="500,600 500,662" class="lead"/><circle cx="500" cy="600" r="4.5" class="tip"/><circle cx="500" cy="662" r="17" class="num"/><text x="500" y="668.5">35</text></a>
+</svg></div>
+<figcaption>The keys (24–35).<span class="narrow"> Swipe sideways to see all of it.</span></figcaption>
+</figure>
+<table class="controls">
+<tr><th>No.</th><th>Control</th><th>Under Bigorna</th></tr>
+<tr id="ctl-1" data-n="1"><td class="n"><a href="#fig-panel">1</a></td><td><b>MASTER</b></td><td rowspan="1">The output level.</td></tr>
+<tr id="ctl-2" data-n="2"><td class="n"><a href="#fig-panel">2</a></td><td><b>SELECT</b></td><td rowspan="1">The chosen track's level. On the SCALE page: the root. A step held: its level, locked.</td></tr>
+<tr id="ctl-3" data-n="3"><td class="n"><a href="#fig-panel">3</a></td><td><b>PRESETS</b></td><td rowspan="1">The chosen track's machine. <b>SHIFT +</b>: a new sound of the family before or after. On a page: its rows, slots or entries; on the EDIT and SEQ pages, turned right, rows E to H.</td></tr>
+<tr id="ctl-4" data-n="4"><td class="n"><a href="#fig-panel">4</a></td><td><b>ALGORITHM</b></td><td rowspan="1">The chosen track's pan. On the SCALE page: the scale. A step held: its pan, locked.</td></tr>
+<tr id="ctl-5" data-n="5"><td class="n"><a href="#fig-panel">5</a></td><td><b>OCT−</b></td><td rowspan="1">The chosen track's octave down. In the step view: its <a href="#transposition">transposition</a>. <b>SHIFT +</b>: every track's transposition. On the EDIT and SEQ pages: the page before.</td></tr>
+<tr id="ctl-6" data-n="6"><td class="n"><a href="#fig-panel">6</a></td><td><b>OCT+</b></td><td rowspan="1">The same, up.</td></tr>
+<tr id="ctl-7" data-n="7"><td class="n"><a href="#fig-panel">7</a></td><td><b>the screen</b></td><td rowspan="1">See <a href="#the-screen">The screen</a>.</td></tr>
+<tr id="ctl-8" data-n="8"><td class="n"><a href="#fig-panel">8</a></td><td><b>KNOB 1</b></td><td rowspan="1">The chosen track's filter FREQ. On a page: row A.</td></tr>
+<tr id="ctl-9" data-n="9"><td class="n"><a href="#fig-panel">9</a></td><td><b>KNOB 2</b></td><td rowspan="1">The chosen track's filter RESO. On a page: row B.</td></tr>
+<tr id="ctl-10" data-n="10"><td class="n"><a href="#fig-panel">10</a></td><td><b>KNOB 3</b></td><td rowspan="1">The chosen track's delay send. <b>SHIFT +</b>: its chorus send. On a page: row C.</td></tr>
+<tr id="ctl-11" data-n="11"><td class="n"><a href="#fig-panel">11</a></td><td><b>KNOB 4</b></td><td rowspan="1">The chosen track's reverb send. <b>SHIFT +</b>: its overdrive. On a page: row D.</td></tr>
+<tr id="ctl-12" data-n="12"><td class="n"><a href="#fig-panel">12</a></td><td><b>FX (T1)</b></td><td rowspan="6"><b>T1</b> to <b>T6</b>: choose track 1 to 6. From any page, back to the track. In <a href="#mute-mode">MUTE mode</a>: mute; <b>held</b> (1 s), solo.</td></tr>
+<tr id="ctl-13" data-n="13"><td class="n"><a href="#fig-panel">13</a></td><td><b>SEL (T2)</b></td></tr>
+<tr id="ctl-14" data-n="14"><td class="n"><a href="#fig-panel">14</a></td><td><b>ENV (T3)</b></td></tr>
+<tr id="ctl-15" data-n="15"><td class="n"><a href="#fig-panel">15</a></td><td><b>LFO (T4)</b></td></tr>
+<tr id="ctl-16" data-n="16"><td class="n"><a href="#fig-panel">16</a></td><td><b>EDIT (T5)</b></td></tr>
+<tr id="ctl-17" data-n="17"><td class="n"><a href="#fig-panel">17</a></td><td><b>GLO (T6)</b></td></tr>
+<tr id="ctl-18" data-n="18"><td class="n"><a href="#fig-panel">18</a></td><td><b>HOME</b></td><td rowspan="1"><a href="#sounds">A new sound</a> for the chosen track. <b>SHIFT +</b>: of the same family. <b>Held</b> (0.8 s): save the session.</td></tr>
+<tr id="ctl-19" data-n="19"><td class="n"><a href="#fig-panel">19</a></td><td><b>SAVE</b></td><td rowspan="1">The <a href="#patterns">PATTERNS</a> grid. <b>Held</b> (0.8 s): save the session (on the grid: the pattern playing, into the slot under the cursor). <b>SHIFT +</b>: the <a href="#sessions">SESSIONS</a> list; <b>held</b>: <a href="#global-setup">GLOBAL SETUP</a>.</td></tr>
+<tr id="ctl-20" data-n="20"><td class="n"><a href="#fig-panel">20</a></td><td><b>ARP</b></td><td rowspan="1">The <a href="#scales">SCALE</a> page. <b>SHIFT +</b>: a scale and root at random.</td></tr>
+<tr id="ctl-21" data-n="21"><td class="n"><a href="#fig-panel">21</a></td><td><b>SEQ</b></td><td rowspan="1">The <a href="#the-effects-seq">effects' pages</a>, then the chosen track's LFOs. <b>SHIFT +</b>: its LFOs drawn anew.</td></tr>
+<tr id="ctl-22" data-n="22"><td class="n"><a href="#fig-panel">22</a></td><td><b>PLAY</b></td><td rowspan="1">Start or stop the <a href="#the-sequencer">sequencer</a>. <b>Held</b> (0.8 s): the TEMPO page. <b>SHIFT +</b>: the metronome.</td></tr>
+<tr id="ctl-23" data-n="23"><td class="n"><a href="#fig-panel">23</a></td><td><b>REC</b></td><td rowspan="1"><a href="#recording">Record</a> into the steps. <b>SHIFT +</b>: the <a href="#the-looper">looper</a>; <b>held</b>, the track's loops.</td></tr>
+<tr id="ctl-24" data-n="24"><td class="n"><a href="#fig-keys">24</a></td><td><b>black key 1</b></td><td rowspan="1"><a href="#chord-mode">CHORD mode</a>; <b>SHIFT +</b>, the next form. In the step view: a new <a href="#phrases">phrase</a>. With SHIFT held on the PATTERNS grid: empty a pattern.</td></tr>
+<tr id="ctl-25" data-n="25"><td class="n"><a href="#fig-keys">25</a></td><td><b>black key 2</b></td><td rowspan="1"><a href="#mute-mode">MUTE mode</a>. In the step view: the TRACK page.</td></tr>
+<tr id="ctl-26" data-n="26"><td class="n"><a href="#fig-keys">26</a></td><td><b>black key 3</b></td><td rowspan="1"><b>Held</b>: <a href="#break">BREAK</a>; <b>SHIFT +</b>, on every track. In the step view: TRIG.</td></tr>
+<tr id="ctl-27" data-n="27"><td class="n"><a href="#fig-keys">27</a></td><td><b>black key 4</b></td><td rowspan="1"><a href="#midi-learn">MIDI LEARN</a>. In the step view: MOD.</td></tr>
+<tr id="ctl-28" data-n="28"><td class="n"><a href="#fig-keys">28</a></td><td><b>black key 5</b></td><td rowspan="1">The <a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page.</td></tr>
+<tr id="ctl-29" data-n="29"><td class="n"><a href="#fig-keys">29</a></td><td><b>black key 6</b></td><td rowspan="3">In the step view: the track's direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes.</td></tr>
+<tr id="ctl-30" data-n="30"><td class="n"><a href="#fig-keys">30</a></td><td><b>black key 7</b></td></tr>
+<tr id="ctl-31" data-n="31"><td class="n"><a href="#fig-keys">31</a></td><td><b>black key 8</b></td></tr>
+<tr id="ctl-32" data-n="32"><td class="n"><a href="#fig-keys">32</a></td><td><b>black key 9</b></td><td rowspan="1"><b>STEP</b>: the <a href="#the-step-view">step view</a>. <b>SHIFT +</b>: empty the chosen track's steps.</td></tr>
+<tr id="ctl-33" data-n="33"><td class="n"><a href="#fig-keys">33</a></td><td><b>black key 10</b></td><td rowspan="1"><b>EDIT</b>: the <a href="#the-sounds-pages-edit">sound's pages</a> (not the EDIT button, T5).</td></tr>
+<tr id="ctl-34" data-n="34"><td class="n"><a href="#fig-keys">34</a></td><td><b>black key 11</b></td><td rowspan="1"><b>SHIFT</b>.</td></tr>
+<tr id="ctl-35" data-n="35"><td class="n"><a href="#fig-keys">35</a></td><td><b>the 16 white keys</b></td><td rowspan="1">Play the chosen track in the scale; the root's keys glow. In the step view: the 16 steps. On the PATTERNS grid: the 16 patterns.</td></tr>
+</table>
+<p>KNOB 1–4:</p>
+<table class="knob-pages">
+<tr><th>Where</th><th>KNOB 1</th><th>KNOB 2</th><th>KNOB 3</th><th>KNOB 4</th></tr>
+<tr><td>the track</td><td>filter FREQ</td><td>filter RESO</td><td>delay send</td><td>reverb send</td></tr>
+<tr><td>SHIFT held</td><td></td><td></td><td>chorus send</td><td>overdrive</td></tr>
+<tr><td><a href="#the-sounds-pages-edit">EDIT</a></td><td>row A (E)</td><td>row B (F)</td><td>row C (G)</td><td>row D (H)</td></tr>
+<tr><td><a href="#the-effects-seq">SEQ</a></td><td>row A (E)</td><td>row B (F)</td><td>row C (G)</td><td>row D (H)</td></tr>
+<tr><td>a step held, <a href="#a-steps-own-pages">TRIG</a> on</td><td>note</td><td>velocity</td><td>length</td><td>condition</td></tr>
+<tr><td>a step held, <a href="#a-steps-own-pages">MOD</a> on</td><td>MUTATE</td><td>MUT EVERY</td><td>MIDI FX</td><td>FX EVERY</td></tr>
+</table>
+<p>Every gesture in full: <a href="#playing-it">Playing it</a>.</p>
+<h2 id="playing-it">Playing it</h2>
 <table>
-<tr><th>Control</th><th>In the track's view</th></tr>
-<tr><td>The six top buttons</td><td>Tracks 1 to 6: the lit one is chosen; the others glow dimly while they sound</td></tr>
-<tr><td>PRESETS (knob)</td><td>The track's machine: 4-OP, DRUM, WAVY, HIVE</td></tr>
-<tr><td>SHIFT + PRESETS</td><td>A new sound of the family before / after</td></tr>
-<tr><td>HOME</td><td>A new sound for the track, on its machine; SHIFT + HOME: of the same family. Held: the session saved, as SAVE held</td></tr>
-<tr><td>OCT− / OCT+</td><td>The track's octave, −3 to +3 (shown at the top right); in the step view, the track's transposition; SHIFT + OCT− / OCT+: every track's transposition</td></tr>
-<tr><td>White keys</td><td>Play the track in the scale chosen</td></tr>
-<tr><td>1st black key</td><td>CHORD mode on or off</td></tr>
-<tr><td>2nd black key</td><td>MUTE mode on or off</td></tr>
-<tr><td>3rd black key</td><td>BREAK, while held; SHIFT + it: on every track</td></tr>
-<tr><td>4th black key</td><td>MIDI LEARN on or off</td></tr>
-<tr><td>5th black key</td><td>The track's arpeggiator on or off; held 0.8 s: the ARP page</td></tr>
-<tr><td>Black key before the last</td><td>EDIT: the sound's pages</td></tr>
-<tr><td>3rd black key from the right</td><td>STEP: the step view; SHIFT + STEP: the chosen track's steps emptied</td></tr>
-<tr><td>Last black key</td><td>SHIFT</td></tr>
-<tr><td>KNOB 1 to 4</td><td>The filter's FREQ and RESO, the delay and reverb sends; with SHIFT, KNOB 3 the chorus send, KNOB 4 the overdrive</td></tr>
-<tr><td>SELECT (knob)</td><td>The track's level</td></tr>
-<tr><td>ALGORITHM (knob)</td><td>The track's pan</td></tr>
-<tr><td>PLAY</td><td>The sequencer plays or stops; held 0.8 s, the TEMPO page; SHIFT + PLAY: the metronome on or off</td></tr>
-<tr><td>REC</td><td>Records the keys into the track's steps; SHIFT + REC: the looper</td></tr>
-<tr><td>ARP</td><td>The patterns</td></tr>
-<tr><td>SEQ</td><td>The effects' pages, then the track's LFOs; SHIFT + SEQ: the track's LFOs thrown anew (LFO RANDOM)</td></tr>
-<tr><td>SAVE</td><td>The sessions; held 0.8 s, the session saved; SHIFT + SAVE: GLOBAL SETUP (MIDI)</td></tr>
-<tr><td>MASTER</td><td>The output level</td></tr>
+<tr><th>Control</th><th>What it does</th></tr>
+<tr><td><b>The six top buttons</b></td><td>choose track <b>1–6</b> (lit: chosen; glowing dimly: sounding). From any page, back to the track. In <a href="#mute-mode">MUTE mode</a>: mute and solo.</td></tr>
+<tr><td><b>PRESETS</b> knob</td><td>the chosen track's machine: <b>4-OP</b>, <b>DRUM</b>, <b>WAVY</b>, <b>HIVE</b>. Each track keeps one sound per machine.</td></tr>
+<tr><td><b>SHIFT + PRESETS</b></td><td>a new sound of the family before or after.</td></tr>
+<tr><td><b>HOME</b></td><td>a new sound for the chosen track (<a href="#sounds">Sounds</a>).</td></tr>
+<tr><td><b>SHIFT + HOME</b></td><td>a new sound of the same family.</td></tr>
+<tr><td><b>HOME held</b> (0.8 s)</td><td>save the session, as SAVE held.</td></tr>
+<tr><td><b>OCT− / OCT+</b></td><td>the chosen track's octave, −3 to +3. In the step view: the track's <a href="#transposition">transposition</a>.</td></tr>
+<tr><td><b>SHIFT + OCT− / OCT+</b></td><td>every track's transposition.</td></tr>
+<tr><td>the white keys</td><td>play the chosen track in the scale; the keys that play the root glow dimly. In the step view: the track's 16 steps. On the PATTERNS grid: the 16 patterns.</td></tr>
+<tr><td>black key 1</td><td><a href="#chord-mode">CHORD mode</a> on or off. <b>SHIFT +</b>: the next chord form.</td></tr>
+<tr><td>black key 2</td><td><a href="#mute-mode">MUTE mode</a> on or off.</td></tr>
+<tr><td>black key 3</td><td><b>held</b>: <a href="#break">BREAK</a> on the chosen track. <b>SHIFT +</b>: on every track.</td></tr>
+<tr><td>black key 4</td><td><a href="#midi-learn">MIDI LEARN</a> on or off.</td></tr>
+<tr><td>black key 5</td><td>the chosen track's <a href="#arpeggiator">arpeggiator</a> on or off. <b>Held</b> (0.8 s): its page.</td></tr>
+<tr><td>black key 9 (3rd from the right)</td><td><b>STEP</b>: the <a href="#the-step-view">step view</a>. <b>SHIFT +</b>: empty the chosen track's steps.</td></tr>
+<tr><td>black key 10</td><td><b>EDIT</b>: the <a href="#the-sounds-pages-edit">sound's pages</a>.</td></tr>
+<tr><td>black key 11 (the last)</td><td><b>SHIFT</b>.</td></tr>
+<tr><td><b>SELECT</b> knob</td><td>the chosen track's level. On the SCALE page: the root.</td></tr>
+<tr><td><b>ALGORITHM</b> knob</td><td>the chosen track's pan. On the SCALE page: the scale.</td></tr>
+<tr><td><b>KNOB 1–4</b></td><td>the chosen track's filter FREQ and RESO, delay send, reverb send. On a page: its rows A–D.</td></tr>
+<tr><td><b>SHIFT + KNOB 3 / KNOB 4</b></td><td>the chosen track's chorus send / overdrive.</td></tr>
+<tr><td><b>PLAY</b></td><td>start or stop the <a href="#the-sequencer">sequencer</a>. <b>Held</b> (0.8 s): the <a href="#tempo">TEMPO</a> page.</td></tr>
+<tr><td><b>SHIFT + PLAY</b></td><td>the metronome on or off.</td></tr>
+<tr><td><b>REC</b></td><td><a href="#recording">record</a> the keys into the chosen track's steps.</td></tr>
+<tr><td><b>SHIFT + REC</b></td><td>the <a href="#the-looper">looper</a>: arm a loop. <b>Held</b>: the track's loops on the white keys.</td></tr>
+<tr><td><b>ARP</b></td><td>the SCALE page (<a href="#scales">Scales</a>); ARP again leaves it.</td></tr>
+<tr><td><b>SHIFT + ARP</b></td><td>a new scale and root, drawn at random; the SCALE page shows them for 1.5 s.</td></tr>
+<tr><td><b>SEQ</b></td><td>the <a href="#the-effects-seq">effects' pages</a>, then the chosen track's <a href="#lfos">LFOs</a>, in turn.</td></tr>
+<tr><td><b>SHIFT + SEQ</b></td><td>the chosen track's LFOs drawn anew.</td></tr>
+<tr><td><b>SAVE</b></td><td>the <a href="#patterns">PATTERNS</a> grid; SAVE again leaves it.</td></tr>
+<tr><td><b>SAVE held</b> (0.8 s)</td><td>save the session. On the PATTERNS grid: save the pattern playing into the slot under the cursor.</td></tr>
+<tr><td><b>SHIFT + SAVE</b></td><td>the <a href="#sessions">SESSIONS</a> list; SHIFT + SAVE again leaves it.</td></tr>
+<tr><td><b>SHIFT + SAVE held</b> (0.8 s)</td><td><a href="#global-setup">GLOBAL SETUP</a>: START and MIDI.</td></tr>
+<tr><td><b>MASTER</b></td><td>the output level.</td></tr>
+<tr><td>MIDI in (USB and TRS)</td><td>notes and CCs for each track (<a href="#midi">MIDI</a>).</td></tr>
 </table>
 <p>While a knob turns, the screen shows its value as a large dial for a second.</p>
-<h2 id="tracks-machines-and-voices">Tracks, machines and voices</h2>
-<p>Six tracks, each with its own machine, sound, octave, level, pan, steps and loops. Each track keeps a sound for each of the four machines, so turning PRESETS back finds the sound it had.</p>
-<p>Twelve voices are shared by the tracks: a track takes as many as its notes need. When all twelve sound, a new note takes the quietest one fading out. The FM-1's second processor core renders half the voices and the send effects; should it ever fault, it is stopped and the first core carries on alone until the FM-1 is switched off (the screen says <b>1 CORE</b>).</p>
-<p>DRUM tracks choke: each hit fades the track's previous one, as on a drum machine.</p>
-<h2 id="sounds">Sounds</h2>
-<p>HOME draws a new sound for the track from a recipe of its machine — a family such as TIGHT KICK, METAL HAT, FM BASS or SWARM DRONE — its values drawn within the recipe's ranges, leaning each time towards industrial, IDM or abstract. SHIFT + HOME draws again from the same family. SHIFT + PRESETS moves to the family before or after. The screen shows the machine and the family. 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE. The drone, pad and texture families and FM LEAD set LFOs as SynthSeeder's recipes do (those on PAN left out); the other families, kicks aside, may get a sample-and-hold LFO on the filter's FREQ.</p>
+<h2 id="tracks-and-sounds">Tracks and sounds</h2>
+<p>Six tracks, each with its own machine, sound, octave, level, pan, steps and loops. Each track keeps a sound for each of the four machines, so turning PRESETS back finds the sound it had. The tracks share twelve voices; when all twelve sound, a new note takes the quietest one. DRUM tracks choke: each hit fades the track's previous one.</p>
+<p>The FM-1's second processor core plays half the voices and the effects. If it ever faults, the first core carries on alone until the FM-1 is switched off, and the screen says <b>1 CORE</b>.</p>
+<h3 id="sounds">Sounds</h3>
+<p><b>HOME</b> draws a new sound for the chosen track from a recipe of its machine: a family such as TIGHT KICK, METAL HAT, FM BASS or SWARM DRONE, leaning each time towards industrial, IDM or abstract. <b>SHIFT + HOME</b> draws another from the same family; <b>SHIFT + PRESETS</b> moves to the family before or after. The screen shows the machine and the family. There are 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE. Drone, pad and texture families come with LFOs already set.</p>
 <h2 id="the-sounds-pages-edit">The sound's pages (EDIT)</h2>
-<p>EDIT shows the sound's pages: SYN 1 to 4 (the machine's), FLTR 1, FLTR 2, AMP, FX and MANGLE. Each page has eight parameters: KNOB 1 to 4 set A to D; PRESETS turned right shows E to H (left: back). OCT− and OCT+ move between the pages. EDIT again leaves.</p>
+<p>Black key 10 (<b>EDIT</b>) shows the sound's pages: SYN 1 to 4 (the machine's), FLTR 1, FLTR 2, AMP, FX and MANGLE. Each page has eight parameters: <b>KNOB 1–4</b> set A to D; <b>PRESETS</b> turned right shows E to H, left goes back. <b>OCT− / OCT+</b> move between the pages. EDIT again leaves.</p>
 <h3 id="4-op">4-OP</h3>
 <p>Four-operator FM after the Digitone II's FM TONE: operator C and the modulators A, B1 and B2.</p>
-<ul>
-<li>SYN 1: ALGO (eight algorithms), RATIO C, RATIO A, RATIO B, HARM, DETUNE, FEEDBACK, MIX</li>
-<li>SYN 2: the A and B envelopes — ATK, DEC, END, LEV for each</li>
-<li>SYN 3: DELAY, TRIG and RESET for A and for B, PHASE RST</li>
-<li>SYN 4: OFS C, OFS A, OFS B1, OFS B2 (fine offsets), KEYTRK A, KEYTRK B1, KEYTRK B2</li>
-</ul>
+<table>
+<tr><th>Page</th><th>Parameters</th></tr>
+<tr><td>SYN 1</td><td>ALGO (eight algorithms), RATIO C, RATIO A, RATIO B, HARM, DETUNE, FEEDBACK, MIX</td></tr>
+<tr><td>SYN 2</td><td>the A and B envelopes: ATK, DEC, END, LEV for each</td></tr>
+<tr><td>SYN 3</td><td>DELAY, TRIG and RESET for A and for B, PHASE RST</td></tr>
+<tr><td>SYN 4</td><td>OFS C, OFS A, OFS B1, OFS B2 (fine offsets), KEYTRK A, KEYTRK B1, KEYTRK B2</td></tr>
+</table>
 <h3 id="drum">DRUM</h3>
 <p>Three-operator FM percussion after FM DRUM.</p>
-<ul>
-<li>SYN 1: TUNE, SWP TIME, SWP DEPTH (the pitch sweep), ALGO (seven), OP C WAVE, OP AB WAVE, FEEDBACK, FOLD</li>
-<li>SYN 2: RATIO, DEC, END and MOD for A and for B</li>
-<li>SYN 3: HOLD, DECAY (the body), PHASE C, LEVEL, AB NOISE, NOISE RST, NOISE RM
-<ul>
-<li>AB NOISE: operators A and B's waveforms mixed towards a sample-and-hold noise, a new random value at the start of each cycle of the operator (0: the waveform only; 127: the noise only). The noise steps at the operator's own frequency (the note, the sweep and RATIO A or B), so it follows the pitch; modulating C, it gives metallic, grainy hits; in algorithms 5 to 7 B's noise is also heard. With NOISE RST on, every note gets the same values. After the LXR firmware's noise oscillator as its hihat uses it.</li>
-</ul></li>
-<li>SYN 4: NS HOLD, NS DECAY, TRANS (the transient's kind), TRANS LEV, NS BASE, NS WIDTH, NS GRAIN, NS LEVEL</li>
-</ul>
+<table>
+<tr><th>Page</th><th>Parameters</th></tr>
+<tr><td>SYN 1</td><td>TUNE, SWP TIME, SWP DEPTH (the pitch sweep), ALGO (seven), OP C WAVE, OP AB WAVE, FEEDBACK, FOLD</td></tr>
+<tr><td>SYN 2</td><td>RATIO, DEC, END and MOD for A and for B</td></tr>
+<tr><td>SYN 3</td><td>HOLD, DECAY (the body), PHASE C, LEVEL, AB NOISE, NOISE RST, NOISE RM</td></tr>
+<tr><td>SYN 4</td><td>NS HOLD, NS DECAY, TRANS (the transient's kind), TRANS LEV, NS BASE, NS WIDTH, NS GRAIN, NS LEVEL</td></tr>
+</table>
+<p><b>AB NOISE</b> mixes operators A and B towards a noise that follows their pitch: at 0 the waveform only, at 127 the noise only. Modulating C, it gives metallic, grainy hits. With <b>NOISE RST</b> on, every hit gets the same noise.</p>
 <h3 id="wavy">WAVY</h3>
 <p>Two wavetable oscillators with phase distortion, and a noise generator.</p>
-<ul>
-<li>SYN 1: TUNE, WAVE, PD and LEVEL for each oscillator</li>
-<li>SYN 2: OFS 1, TABLE 1, MOD (OFF, RING, RING FIX, SYNC), RESET, OFS 2, TABLE 2, DRIFT</li>
-<li>SYN 3: NS ATK, NS HOLD, NS DECAY, NS LEVEL, NS BASE, NS WIDTH, NS TYPE (GRAIN, TUNED, S+H), NS CHAR</li>
-</ul>
+<table>
+<tr><th>Page</th><th>Parameters</th></tr>
+<tr><td>SYN 1</td><td>TUNE, WAVE, PD and LEVEL for each oscillator</td></tr>
+<tr><td>SYN 2</td><td>OFS 1, TABLE 1, MOD (OFF, RING, RING FIX, SYNC), RESET, OFS 2, TABLE 2, DRIFT</td></tr>
+<tr><td>SYN 3</td><td>NS ATK, NS HOLD, NS DECAY, NS LEVEL, NS BASE, NS WIDTH, NS TYPE (GRAIN, TUNED, S+H), NS CHAR</td></tr>
+</table>
 <h3 id="hive">HIVE</h3>
 <p>A swarm of six detuned oscillators and a main oscillator.</p>
+<table>
+<tr><th>Page</th><th>Parameters</th></tr>
+<tr><td>SYN 1</td><td>TUNE, SWRM WAVE, DETUNE, MIX, MAIN OCT (−2, −1, 0), MAIN WAVE, ANIMATION, NOISE MOD</td></tr>
+</table>
+<h3 id="fltr-amp-fx-and-mangle">FLTR, AMP, FX and MANGLE</h3>
+<p>These pages are the same on every machine.</p>
+<table>
+<tr><th>Page</th><th>Parameters</th></tr>
+<tr><td>FLTR 1</td><td>the filter's envelope (ATTACK, DECAY, SUSTAIN, RELEASE), FREQ, RESONANCE, the filter's own parameter, ENV DEPTH</td></tr>
+<tr><td>FLTR 2</td><td>FLT DELAY, KEYTRACK, BASE and WIDTH (a base-width filter), BW ROUTE (before or after), ENV RESET, FILTER</td></tr>
+<tr><td>AMP</td><td>ATTACK, HOLD, DECAY, SUSTAIN, RELEASE, RESET, MODE (AHD or ADSR), VOLUME</td></tr>
+<tr><td>FX</td><td>BIT REDUCE, OVERDRIVE, SRR (sample-rate reduction), OD TYPE, the DELAY, REVERB and CHORUS sends, OD ROUTE</td></tr>
+<tr><td>MANGLE</td><td>DESTROY and DST MODE, SLICE, SLICE RATE, SLC DEPTH, SLC EDGE, SLC SHIFT</td></tr>
+</table>
 <ul>
-<li>SYN 1: TUNE, SWRM WAVE, DETUNE, MIX, MAIN OCT (−2, −1, 0), MAIN WAVE, ANIMATION, NOISE MOD</li>
+<li><b>FILTER</b>: MULTI (multimode), LP4 (4-pole low-pass), LEGACY (low- or high-pass), COMB−, COMB+, EQ.</li>
+<li><b>OD TYPE</b>: VALVE (two valve-style stages), RAT (a RAT-style clipper, darker as it rises), FOLD (a wavefolder, which bites only once the signal is loud). RAT and FOLD come from the LXR firmware.</li>
+<li><b>DESTROY</b> breaks the sound digitally; DST MODE chooses how: WRAP, XOR, FLIP, DROP.</li>
+<li><b>SLICE</b> is a gate in time with the tempo: sixteen patterns at 1/8, 1/16, 1/32 or 1/16 triplets, with its depth, edge and shift.</li>
 </ul>
-<h3 id="fltr-1-fltr-2">FLTR 1, FLTR 2</h3>
-<ul>
-<li>FLTR 1: the filter's envelope (ATTACK, DECAY, SUSTAIN, RELEASE), FREQ, RESONANCE, the filter's own parameter, ENV DEPTH</li>
-<li>FLTR 2: FLT DELAY, KEYTRACK, BASE and WIDTH (the base-width filter), BW ROUTE (before or after), ENV RESET, FILTER: MULTI (multimode), LP4 (4-pole low-pass), LEGACY (low- or high-pass), COMB−, COMB+, EQ</li>
-</ul>
-<h3 id="amp-and-fx">AMP and FX</h3>
-<ul>
-<li>AMP: ATTACK, HOLD, DECAY, SUSTAIN, RELEASE, RESET, MODE (AHD or ADSR), VOLUME</li>
-<li>FX: BIT REDUCE, OVERDRIVE, SRR (sample-rate reduction), OD TYPE, the DELAY, REVERB and CHORUS sends, OD ROUTE
-<ul>
-<li>OD TYPE, the kind of OVERDRIVE (OVERDRIVE sets the amount for each):</li>
-<li>VALVE: two valve-style gain stages, the second clipping sooner on one side (as in earlier builds)</li>
-<li>RAT: a RAT-style clipper: an op-amp's gain of x 1 to x 2305, its bandwidth narrowing as the gain rises (16 kHz down to about 480 Hz), into a 1N914 diode pair. Hard, fuzzy, darker as the amount goes up</li>
-<li>FOLD: a wavefolder: the signal raised up to x 8 with a bias of up to 0.3, folded back each time it passes full scale; the bias makes the folds uneven. Folds only once the signal passes full scale, so it bites late on quiet sounds</li>
-<li>RAT and FOLD come from the LXR firmware's master distortion</li>
-</ul></li>
-</ul>
-<h3 id="mangle">MANGLE</h3>
-<p>Per track, on the track's sound before its level:</p>
-<ul>
-<li>DESTROY and DST MODE: digital destruction — WRAP (the sample wraps round), XOR, FLIP (a bit flipped), DROP (samples dropped)</li>
-<li>SLICE, SLICE RATE, SLC DEPTH, SLC EDGE, SLC SHIFT: a slicer gate synced to the tempo — sixteen patterns at 1/8, 1/16, 1/32 or 1/16 triplets, how deep, how soft its edges, shifted in steps</li>
-</ul>
-<h2 id="playing">Playing</h2>
-<p>The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first five), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, JAPANESE IN, MINOR MELODIC, ENIGMATIC, LYDIAN, MIXOLYDIAN, LOCRIAN, BLUES, HUNGARIAN MINOR, DOUBLE HARMONIC, PHRYGIAN DOMINANT, JAPANESE HIRAJOSHI, JAPANESE IWATO, PELOG, OCTATONIC, PROMETHEUS (the list from Tonitor's). OCT− and OCT+ move the track's octave. USB MIDI notes play the chosen track as the keys do.</p>
+<h2 id="keys-and-scales">Keys and scales</h2>
+<p>The white keys play the chosen track in the scale: the first key is the root, each key the next degree. The keys that play the root glow dimly. USB and TRS MIDI notes play the chosen track as the keys do (<a href="#midi">MIDI</a>).</p>
+<h3 id="scales">Scales</h3>
+<p><b>ARP</b> opens the SCALE page: <b>SELECT</b> sets the root, <b>ALGORITHM</b> the scale. ARP again, or a track button, leaves it. <b>SHIFT + ARP</b> draws a scale and a root at random and shows them for 1.5 s over any page. The scale and root belong to the session; they can also be set on the session's page. A new session draws them at random.</p>
+<p>The scales: CHROMATIC (the black keys play too, except the first five and the last three), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, JAPANESE IN, MINOR MELODIC, ENIGMATIC, LYDIAN, MIXOLYDIAN, LOCRIAN, BLUES, HUNGARIAN MINOR, DOUBLE HARMONIC, PHRYGIAN DOMINANT, JAPANESE HIRAJOSHI, JAPANESE IWATO, PELOG, OCTATONIC, PROMETHEUS.</p>
 <h3 id="transposition">Transposition</h3>
-<p>In the step view, OCT− and OCT+ transpose the chosen track's steps and its loops; SHIFT + OCT− or OCT+ (in the track's view or the step view) transposes every track's steps and loops at once. Steps and loops move by the same amount, each from the notes it plays. Each press moves every note one step of the scale and root chosen, down or up (in CHROMATIC, a semitone), so the notes stay in the scale; a note that is not in it moves to the scale's next. The transposition shows at the top right, under the octave, in the track's colour (T+2, T−1), up to 24 steps each way, and TRN with its value on the screen as it changes. It is part of the pattern: the moved notes and the count are saved with it and with the session, and a copied pattern takes them along. A loop's notes are moved in place and saved with the session (loops belong to the session, not to a pattern; a loop being recorded is left as it is). The loops follow the transposition of the pattern playing: when another pattern comes in, each track's loops play moved by the difference between its transposition and the one their notes were recorded at, from the step the pattern comes in on, so a pattern saved without transposition plays its loops as they were before the transposition. (In RAM a loop keeps its notes as recorded and is moved as it plays; a saved session holds its loops as they play in the pattern it was saved playing.) The keys' octave is left as it is.</p>
+<p>In the step view, <b>OCT− / OCT+</b> move the chosen track's steps and loops one step of the scale down or up (in CHROMATIC, a semitone). <b>SHIFT + OCT− / OCT+</b>, in the track's view or the step view, move every track's. Notes stay in the scale. The transposition shows at the top right, under the octave (T+2, T−1), up to 24 steps each way. It is part of the pattern: saved with it, and copied with it. It moves only the loops of the pattern playing; a loop being recorded is left as it is. The keys' octave does not change.</p>
 <h3 id="chord-mode">CHORD mode</h3>
-<p>In the track's view, the step view off, the 1st black key turns CHORD mode on or off for the track (lit while on, dim off). Each white key then plays a triad from its note, in the scale: TRIAD, INV 1, INV 2, SUS2, SUS4, OPEN or FOURTHS (in CHROMATIC, the same shapes in semitones). SHIFT and the key choose the next form. The form shows at the top left. A step put in takes the chord last played; REC records chords into the steps; the looper records their notes. DRUM tracks play no chords.</p>
+<p>Black key 1 turns CHORD mode on or off for the chosen track (lit while on). Each white key then plays a chord from its note, in the scale. <b>SHIFT +</b> black key 1 chooses the next form: TRIAD, INV 1, INV 2, SUS2, SUS4, OPEN, FOURTHS. The form shows at the top left. Steps, recording and the looper take the chords. DRUM tracks play no chords.</p>
 <h3 id="arpeggiator">Arpeggiator</h3>
-<p>In the track's view, the step view off, a short press of the 5th black key turns the track's arpeggiator on or off (lit while on; ARP shows at the top left). While it is on, the keys held (and USB or TRS MIDI notes for the track) are not played directly: the arpeggiator plays them one at a time, on the tempo's grid. While the sequencer plays it follows the sequencer's 16ths; stopped, it runs on its own at the tempo, and the first note of a chord plays at once. With CHORD mode on, each key gives it the chord's three notes.</p>
-<p>Holding the 5th black key for 0.8 s opens the ARP page of the chosen track, or closes it (KNOB 1 to 4 the rows A to D, PRESETS turned right E to H; a track's button also goes back). The arpeggiator turns on or off as the key is let go after a short press.</p>
-<ul>
-<li>MODE: UP, DOWN, UP DOWN, DOWN UP (the end notes once), ORDER (as played), RANDOM, CONVERGE (from the ends in), DIVERGE (from the middle out), PINKY (the top note between each of the others), THUMB (the lowest between each).</li>
-<li>RATE: 1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4.</li>
-<li>RANGE: 1 to 4 octaves.</li>
-<li>GATE: each note's length, 0 to 100 of the rate's.</li>
-<li>LATCH: on, the notes keep playing with the keys up; the next chord played replaces them. Turning it off lets them go.</li>
-<li>DENSITY: 0 to 100, the chance that each note plays (otherwise a rest).</li>
-<li>OCT RND: 0 to 100, the chance that a note jumps an octave up or down.</li>
-<li>BASS: OFF, or EVERY 2 to EVERY 8: every so many notes, the lowest note held an octave down.</li>
-</ul>
-<p>The arpeggio is recorded as played notes are: REC puts each note into the step it falls on, with its velocity and its length; SHIFT + REC records it into a loop. With REC or the looper armed, the arpeggiator's first note starts the sequencer. Each track's arpeggiator, on or off, and its settings are saved with the session; sessions from earlier builds load with it off.</p>
+<p>Black key 5 turns the chosen track's arpeggiator on or off (lit while on; ARP shows at the top left). The keys held, and MIDI notes for the track, then play one at a time on the tempo's grid: with the sequencer's 16ths while it plays, on their own at the tempo while it is stopped. With CHORD mode on, each key gives it the chord's notes.</p>
+<p><b>Hold black key 5</b> (0.8 s) to open or close the ARP page (KNOB 1–4 rows A to D; PRESETS right, E to H):</p>
+<table>
+<tr><th>Row</th><th>What it sets</th></tr>
+<tr><td>MODE</td><td>UP, DOWN, UP DOWN, DOWN UP, ORDER (as played), RANDOM, CONVERGE (from the ends in), DIVERGE (from the middle out), PINKY (the top note between each of the others), THUMB (the lowest between each)</td></tr>
+<tr><td>RATE</td><td>1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4</td></tr>
+<tr><td>RANGE</td><td>1 to 4 octaves</td></tr>
+<tr><td>GATE</td><td>each note's length, 0 to 100</td></tr>
+<tr><td>LATCH</td><td>on: the notes keep playing with the keys up, until the next chord</td></tr>
+<tr><td>DENSITY</td><td>the chance that each note plays, 0 to 100</td></tr>
+<tr><td>OCT RND</td><td>the chance that a note jumps an octave, 0 to 100</td></tr>
+<tr><td>BASS</td><td>OFF, or EVERY 2 to EVERY 8: every so many notes, the lowest an octave down</td></tr>
+</table>
+<p>REC records the arpeggio into the steps and SHIFT + REC into a loop; with either armed, its first note starts the sequencer. The arpeggiator and its settings are saved with the session and the pattern.</p>
 <h3 id="mute-mode">MUTE mode</h3>
-<p>In the track's view, the step view off, the 2nd black key turns MUTE mode on or off (lit while on; the name band reads MUTE MODE). The track buttons then mute instead of choosing: lit, a track plays; dim, it is muted. A button let go soon mutes its track or plays it again. Held 1 s, its track is soloed, every other muted; held 1 s again, the mutes come back as they were. MUTE mode off, the mutes stay, and the buttons choose tracks again. A muted track fades out over ~9 ms, its sends with it; its steps keep playing silently. The chosen track's number is dark grey while it is muted. Mutes are kept with the pattern (and with the session): saving a pattern saves them, and loading a pattern gives them back (see Patterns).</p>
-<p>MUTE mode also works on the PATTERNS grid (ARP). It stays on when the grid opens, and the 2nd black key turns it on or off there, with the step view on or off. While it is on, the grid's title shows the six tracks (in their colour playing, dark grey muted), the track buttons mute and solo as above, and the grid stays up; the white keys still load, copy and empty patterns. With MUTE mode off, a track button goes back to the track as before.</p>
+<p>Black key 2 turns MUTE mode on or off (lit while on; the screen reads MUTE MODE). The track buttons then mute instead of choosing:</p>
+<table>
+<tr><th>To</th><th>Do this</th></tr>
+<tr><td>Mute a track, or bring it back</td><td>press its button (lit: playing; dim: muted)</td></tr>
+<tr><td>Solo a track</td><td>hold its button 1 s</td></tr>
+<tr><td>End the solo</td><td>hold it 1 s again: the mutes come back as they were</td></tr>
+</table>
+<p>A muted track fades out, its sends with it; its steps keep running silently. The mutes stay when MUTE mode is turned off. They are saved with the pattern. MUTE mode also works on the PATTERNS grid.</p>
 <h3 id="break">BREAK</h3>
-<p>While the sequencer plays, holding the 3rd black key (the step view off) breaks up the chosen track's pattern; SHIFT and the key, every track at once. Nothing is written into the steps: each track's position keeps running underneath, and when the key is let go the pattern carries on from where it would have been; ratchets and echoes the break had started stop at once. The key is lit while held.</p>
-<p>The break stays on the pattern's beat. A track goes into it on its next beat (its next half bar for REPEAT 8) and plays as written until then. Each press draws one way of playing the steps, shown in the name band, and keeps it for as long as the key is held; the next press draws another (never the same twice running). Every way keeps what is on a beat on a beat:</p>
+<p>While the sequencer plays, <b>hold black key 3</b> to break up the chosen track's pattern; <b>SHIFT +</b> it, every track's. Nothing is written into the steps: when the key is let go, the pattern carries on from where it would have been.</p>
+<p>Each press draws one way of playing the steps, shown on the screen, and keeps it while the key is held. The break starts on the track's next beat, and what is on a beat stays on a beat:</p>
 <table>
 <tr><th>Way</th><th>What plays</th></tr>
-<tr><td>REPEAT 1, 2, 4 or 8</td><td>A window of that many steps, from the beat the break began on, played over and over</td></tr>
-<tr><td>HALF TIME</td><td>The steps from that beat at half speed</td></tr>
-<tr><td>DOUBLE</td><td>The steps from that beat at double speed, wrapping round the track</td></tr>
-<tr><td>REVERSE 4 or 8</td><td>Each window of 4 or 8 steps backwards after its first step, which stays in place (0 3 2 1)</td></tr>
-<tr><td>CHOP</td><td>The bar's four beats shuffled; the first beat stays in place</td></tr>
-<tr><td>ROLL</td><td>The steps as written, with more ratchets</td></tr>
+<tr><td>REPEAT 1, 2, 4 or 8</td><td>a window of that many steps, played over and over</td></tr>
+<tr><td>HALF TIME</td><td>the steps at half speed</td></tr>
+<tr><td>DOUBLE</td><td>the steps at double speed</td></tr>
+<tr><td>REVERSE 4 or 8</td><td>each window of 4 or 8 steps backwards, its first step in place</td></tr>
+<tr><td>CHOP</td><td>the bar's four beats shuffled, the first in place</td></tr>
+<tr><td>ROLL</td><td>the steps as written, with more ratchets</td></tr>
 </table>
-<p>Over the way, some of these are drawn too:</p>
-<ul>
-<li>ratchets (2 to 6 hits a step), faster the longer the key is held; not on a step that has its own ratchet;</li>
-<li>flams on the drums;</li>
-<li>octave leaps, up or down, on the melodic tracks;</li>
-<li>a gap: every track but the kick silent for the last 2 or 4 steps of each bar;</li>
-<li>accents: the steps on the beat full, the ones between softer.</li>
-</ul>
-<p>BREAK also works on the PATTERNS grid (ARP), with the step view on or off: the 3rd black key breaks up the chosen track, SHIFT and it every track, and the grid's title shows the way playing.</p>
-<p><b>Saving a break as a pattern.</b> On the grid, with the 3rd black key held (with SHIFT or without) and the sequencer playing, hold a white key for 0.8 s: the break is saved into that pattern slot, empty or not (BREAK SAVED, PATTERN n). Each track under the break gets, at each of its steps, the step the break plays there, with one draw of its ratchets, octave leaps, flams (as the MIDI FX FLAM), accents and gap. The other tracks, and the drones the break leaves alone, are saved as written. The pattern also takes the tracks' state as it plays (mutes and the rest, as ARP held saves it) and is written to the flash if the session has a slot. The pattern playing goes on. Saving over the pattern playing replaces its steps at the end of the chosen track's time through. With the sequencer stopped there is no break, and NOT PLAYING shows. While the 3rd black key is held, a white key held saves the break instead of copying a pattern or saving the pattern playing. A track saves the break's plan from the step it went into the break on; if it has not gone in yet (the break starts on the next beat), from its first step.</p>
-<p>The role of each track's sound (as the phrase generator reads it) keeps the result coherent: a kick keeps the bar's first step and takes no leaps, no gap and few ratchets; a drone (HIVE's pads and drones, dark washes) is left alone. The looper's loops are not broken up: they play on as recorded, and the pattern falls back in with them when the key is let go.</p>
+<p>On top of the way, a break may add ratchets (faster the longer the key is held), flams on drums, octave leaps on melodic tracks, a gap at the end of each bar, and accents. A kick keeps the bar's first step and takes no leaps; drones are left alone; loops play on as recorded.</p>
+<p><b>Saving a break.</b> BREAK also works on the PATTERNS grid. There, with black key 3 held and the sequencer playing, hold a white key 0.8 s: the break, as it plays, is saved into that pattern slot (BREAK SAVED, PATTERN n). The pattern playing goes on.</p>
 <h2 id="the-effects-seq">The effects (SEQ)</h2>
-<p>SEQ shows CHORUS, COMP, DELAY, REVERB, then the chosen track's LFO 1, LFO 2 and LFO 3 in turn, then goes back (OCT− and OCT+ move between them; a track's button goes back to the track's view). KNOB 1 to 4 set the first four rows; PRESETS turned right shows the next four.</p>
-<ul>
-<li>CHORUS: DEPTH, SPEED, HPF, WIDTH, DELAY (its send to the delay), REVERB, VOLUME</li>
-<li>DELAY: TIME (synced to the tempo), PING PONG, WIDTH, FEEDBACK, HPF, LPF, REVERB, VOLUME</li>
-<li>REVERB: PRE, DECAY, FREQ, GAIN (the high shelf), HPF, LPF, VOLUME</li>
-<li>COMP: the master compressor — THRESHOLD, ATTACK, RELEASE, RATIO, MAKEUP, MIX — then the chosen track's SC SOURCE and SC LEVEL</li>
-</ul>
+<p><b>SEQ</b> shows CHORUS, COMP, DELAY and REVERB, then the chosen track's LFO 1, LFO 2 and LFO 3, in turn, then goes back. <b>OCT− / OCT+</b> move between them. <b>KNOB 1–4</b> set the first four rows; <b>PRESETS</b> turned right shows the next four. A track button goes back to the track; <b>SHIFT +</b> a track button chooses another track and stays on the page.</p>
+<table>
+<tr><th>Page</th><th>Rows</th></tr>
+<tr><td>CHORUS</td><td>DEPTH, SPEED, HPF, WIDTH, DELAY (its send to the delay), REVERB, VOLUME</td></tr>
+<tr><td>COMP</td><td>the master compressor: THRESHOLD, ATTACK, RELEASE, RATIO, MAKEUP, MIX; then the chosen track's SC SOURCE and SC LEVEL</td></tr>
+<tr><td>DELAY</td><td>TIME (in time with the tempo), PING PONG, WIDTH, FEEDBACK, HPF, LPF, REVERB, VOLUME</td></tr>
+<tr><td>REVERB</td><td>PRE, DECAY, FREQ, GAIN (the high shelf), HPF, LPF, VOLUME</td></tr>
+</table>
 <h3 id="sidechain">Sidechain</h3>
-<p>Any track can be ducked under another's hits: SC SOURCE chooses the track whose notes duck it (OFF: none), SC LEVEL how deep, 0 to 100 — at 100 the track is all but gated on each hit. The duck follows the source's level and lets go at the compressor's RELEASE; the track's delay, reverb and chorus returns duck with it. The two rows show in the chosen track's colour; SHIFT and a track's button choose another track while staying on the page.</p>
+<p>On the COMP page, <b>SC SOURCE</b> chooses the track whose hits duck the chosen track (OFF: none) and <b>SC LEVEL</b> how deep, 0 to 100; at 100 the track is all but silenced on each hit. The duck lets go at the compressor's RELEASE, and the track's effect sends duck with it.</p>
 <h3 id="lfos">LFOs</h3>
-<p>Each track's sound has three LFOs, on the pages LFO 1, LFO 2 and LFO 3 after REVERB, shown in the track's colour (SHIFT and a track's button choose another track while staying on the page). They are part of the sound: each machine's sound on a track has its own, saved with the session. An LFO runs once for the track, and all the track's voices follow it (the Digitone II runs one per voice).</p>
-<ul>
-<li>SPEED: −64 to +63; negative runs the wave backwards. One cycle takes 2048 / (|SPEED| × MULT) 16ths: SPEED +32 with MULT x4 is one bar.</li>
-<li>MULT: x1 to x2048 follow the tempo; .1 to .2048 run as at 120 BPM whatever the tempo.</li>
-<li>FADE: 0 none; negative fades the LFO in, positive fades it out, over |FADE| 16ths from each note.</li>
-<li>DEST: NONE, or a parameter of the sound's pages, named with its page (S1 to S4 the machine's SYN pages, F1, F2, AMP, FX, MNG; the page left out where the name would not fit). LFO 2 can also move LFO 1's SPEED or DEPTH, and LFO 3 those of LFO 1 or LFO 2. Parameters the machine does not have are skipped.</li>
-<li>WAVE: TRI, SINE, SQR, SAW, EXP, RAMP, RND (a new random value each cycle).</li>
-<li>START: where the wave starts on a note (TRIG, ONE, HALF), 0 to 127 a whole cycle. For RND: how slowly it moves to each new value (below 48 it jumps).</li>
-<li>MODE: FREE runs on; TRIG starts again at START on each note; HOLD runs on, but its value is held from each note to the next; ONE runs one cycle from each note and stops; HALF half a cycle.</li>
-<li>DEPTH: −64 to +63, the swing each way as a share of the destination's range (+32: half the range); negative turns the wave upside down; 0 off.</li>
-</ul>
-<p>SHIFT + SEQ throws the chosen track's three LFOs anew (LFO RANDOM shows): two or three of them on, each to a parameter of the machine's pages that moves smoothly (not a switch, a list or an FM ratio), none to the same one twice, LFO 2 or 3 now and then on an earlier LFO's SPEED or DEPTH instead; any wave, a speed from slow to fast (with the tempo, mostly), a mode, now and then a fade, a start and a depth that may go far either way. It takes risks on purpose: press it again for another, or set what you like on the LFO pages. The other tracks are left as they are. It works from the track's view and from the effects' and LFO pages.</p>
-<p>The LFOs are worked out every 2.9 ms. The track's sound is then made anew with the LFOs' values, one sound at a time in turn: with LFOs on several tracks (and voices with step locks), each moves in steps of 2.9 ms times their number. The LFOs' parameters cannot be step-locked.</p>
+<p>Each sound has three LFOs, on the pages LFO 1 to 3. They belong to the sound, so each machine's sound on a track has its own, and they are saved with the session. All of a track's voices follow the same LFO.</p>
+<table>
+<tr><th>Row</th><th>What it sets</th></tr>
+<tr><td>SPEED</td><td>−64 to +63; negative runs the wave backwards. SPEED +32 with MULT x4 is one bar</td></tr>
+<tr><td>MULT</td><td>x1 to x2048 follow the tempo; .1 to .2048 run as at 120 BPM whatever the tempo</td></tr>
+<tr><td>FADE</td><td>0 none; negative fades the LFO in, positive fades it out, from each note</td></tr>
+<tr><td>DEST</td><td>NONE, or a parameter of the sound's pages (S1–S4, F1, F2, AMP, FX, MNG). LFO 2 can also move LFO 1's SPEED or DEPTH, and LFO 3 those of LFO 1 or 2</td></tr>
+<tr><td>WAVE</td><td>TRI, SINE, SQR, SAW, EXP, RAMP, RND (a new random value each cycle)</td></tr>
+<tr><td>START</td><td>where the wave starts on a note. For RND: how smoothly it moves to each new value</td></tr>
+<tr><td>MODE</td><td>FREE runs on; TRIG starts again on each note; HOLD holds its value from each note to the next; ONE runs one cycle from each note; HALF half a cycle</td></tr>
+<tr><td>DEPTH</td><td>−64 to +63, how far each way; negative turns the wave upside down; 0 off</td></tr>
+</table>
+<p><b>SHIFT + SEQ</b> draws the chosen track's three LFOs anew (LFO RANDOM): two or three of them on, each to a different parameter, with any wave, speed, mode and depth. It takes risks on purpose: press it again for another. LFO settings cannot be step-locked.</p>
 <h2 id="the-sequencer">The sequencer</h2>
-<p>Each track has 16 steps, its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X the tempo's sixteenths) and direction. PLAY starts and stops it.</p>
+<p>Each track has 16 steps, with its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X) and direction. <b>PLAY</b> starts and stops it.</p>
 <h3 id="the-step-view">The step view</h3>
-<p>STEP turns the step view on or off. The white keys are the track's 16 steps (lit: a note; dim: empty; the step playing shows the other way round; past the track's length, dark). The steps are silent: pressing or holding one, or turning its note, plays nothing; to hear the notes, play them from the keys with the step view off:</p>
-<ul>
-<li>a key on an empty step puts the track's last note (or chord) there</li>
-<li>a key on a step with a note, let go soon and nothing changed, empties it</li>
-<li>a step held: the knobs lock what they set in the track's view (FREQ, RESO, the sends; SHIFT: chorus, overdrive), SELECT locks the level, ALGORITHM the pan</li>
-<li>a step held with the EDIT pages up: the knobs lock any parameter of the sound on the page; up to eight locks a step, shown in the track's colour</li>
-<li>SHIFT + STEP: the chosen track's 16 steps emptied, with their velocities, lengths, conditions, ratchets, MOD settings and locks (STEPS CLEARED shows). The track's length, clock, direction and transposition, its loops and the other tracks are kept; the view stays as it was. This works with the step view on or off</li>
-<li>SHIFT and a step held 0.8 s: copied (COPY and its number blink); SHIFT and another held 0.8 s: pasted there, on this track or another</li>
-</ul>
+<p>Black key 9 (<b>STEP</b>) turns the step view on or off. The white keys are then the chosen track's 16 steps: lit, a note; dim, empty; the step playing the other way round; past the track's length, dark. Steps are silent while you edit them.</p>
+<table>
+<tr><th>To</th><th>Do this</th></tr>
+<tr><td>Put a note in</td><td>press an empty step: the track's last note (or chord) goes there</td></tr>
+<tr><td>Empty a step</td><td>press a step with a note, and let go</td></tr>
+<tr><td>Lock a value on a step</td><td>hold the step and turn KNOB 1–4 (filter, sends), SELECT (level) or ALGORITHM (pan)</td></tr>
+<tr><td>Lock a sound parameter</td><td>hold the step with the EDIT pages up and turn a knob; up to eight locks a step</td></tr>
+<tr><td>Copy a step</td><td>SHIFT + hold it 0.8 s (COPY blinks)</td></tr>
+<tr><td>Paste it</td><td>SHIFT + hold another step 0.8 s, on this track or another</td></tr>
+<tr><td>Empty the whole track</td><td>SHIFT + STEP (with the step view on or off): its steps and locks; the rest of the track is kept</td></tr>
+</table>
 <p>The black keys, lit dimly, do this in the step view:</p>
 <table>
 <tr><th>Key</th><th>What it does</th></tr>
-<tr><td>1st</td><td>A new phrase for the track; SHIFT and it: new locks on its steps. Held 0.8 s: the PHRASE page (DENSITY, COMPLEXITY)</td></tr>
-<tr><td>2nd</td><td>The TRACK page: LENGTH and CLOCK</td></tr>
-<tr><td>3rd</td><td>TRIG on or off: a step held shows its own page</td></tr>
-<tr><td>4th</td><td>MOD on or off: a step held shows its MOD page</td></tr>
-<tr><td>6th, 7th, 8th</td><td>The track's direction: REVERSE, PING-PONG, RANDOM (again: forward)</td></tr>
+<tr><td>black key 1</td><td>a new <a href="#phrases">phrase</a> for the track. <b>SHIFT +</b>: new locks on its steps. <b>Held</b> (0.8 s): the PHRASE page</td></tr>
+<tr><td>black key 2</td><td>the TRACK page: LENGTH and CLOCK</td></tr>
+<tr><td>black key 3</td><td>TRIG on or off: a step held shows its own page</td></tr>
+<tr><td>black key 4</td><td>MOD on or off: a step held shows its MOD page</td></tr>
+<tr><td>black keys 6, 7, 8</td><td>the track's direction: REVERSE, PING-PONG, RANDOM; pressed again, forwards</td></tr>
 </table>
 <h3 id="a-steps-own-pages">A step's own pages</h3>
-<p>TRIG: KNOB 1 the step's note (in the scale), 2 its velocity, 3 its length, 4 its trig condition; PRESETS right, KNOB 1 its RATCHET (the step played 2 to 8 times). The conditions, as the Digitone II's: PRE and !PRE (as the last condition was met or not), NEI and !NEI (as the track before met its condition), 1ST and !1ST (the first time through), probabilities, and A:B (the A-th time of every B).</p>
-<p>MOD: KNOB 1 MUTATE (the note moved −N to +N steps of the scale, or RND), 2 MUT EVERY (every so many times the step plays), 3 MIDI FX — ECHO, ECHO UP, ECHO DN, STUTTER, FLAM, LATE, GRACE, FIFTH, TRIAD, OCT UP, OCT DN, DROP — 4 FX EVERY.</p>
+<p><b>TRIG</b>: KNOB 1 the step's note (in the scale), 2 its velocity, 3 its length, 4 its trig condition; with PRESETS turned right, KNOB 1 its RATCHET (the step played 2 to 8 times). The conditions are the Digitone II's: PRE and !PRE (as the last condition was met or not), NEI and !NEI (as the track before met its condition), 1ST and !1ST (the first time through), probabilities, and A:B (the A-th time of every B).</p>
+<p><b>MOD</b>: KNOB 1 MUTATE (the note moved by up to N steps of the scale, or RND), 2 MUT EVERY (how often), 3 MIDI FX (ECHO, ECHO UP, ECHO DN, STUTTER, FLAM, LATE, GRACE, FIFTH, TRIAD, OCT UP, OCT DN, DROP), 4 FX EVERY.</p>
 <h3 id="phrases">Phrases</h3>
-<p>The 1st black key in the step view writes a new phrase for the track: steps, notes, velocities, lengths, conditions, ratchets and locks, from the role of the sound the track plays (KICK, SNARE, HAT, PERC, NOISE, BASS, LEAD, STAB, DRONE), with displaced accents, ghosts on probabilities and A:B variations. DENSITY and COMPLEXITY (the PHRASE page, 0 to 100) thin it out or fill it, and take locks away or add more.</p>
+<p>In the step view, black key 1 writes a new phrase for the chosen track: steps, notes, velocities, lengths, conditions, ratchets and locks, made for the role of its sound (KICK, SNARE, HAT, PERC, NOISE, BASS, LEAD, STAB, DRONE). On the PHRASE page, DENSITY and COMPLEXITY (0 to 100) thin it out or fill it.</p>
 <h2 id="recording">Recording</h2>
-<p>REC records the keys into the chosen track's steps. Stopped: REC arms (it flashes, the metronome counts) and the first note played starts the sequencer on step 1. Playing: recording starts at once. Each note goes to the nearest step with its velocity and its length as held, until REC again. SHIFT + PLAY turns the metronome on or off.</p>
+<p><b>REC</b> records the keys into the chosen track's steps, each note with its velocity and length, until REC again. Stopped, REC arms (it flashes, the metronome counts in) and the first note starts the sequencer. <b>SHIFT + PLAY</b> turns the metronome on or off.</p>
 <h2 id="the-looper">The looper</h2>
-<p>SHIFT + REC arms a new loop on the chosen track; the first note played starts it (and the sequencer, if stopped). Every note played after goes into it, at the nearest step, with its velocity and length, until REC ends it. Its length is then the nearest whole number of bars (16 steps a bar; 1 bar at least, 32 at most), so it never drifts from the patterns: it plays round in that length over the track's steps, its first step where its first note was, carrying on from where it is (LOOP 1  4 BARS shows). Three loops a track, up to 256 notes each (a chord counts its three notes). A note can be held for the whole loop.</p>
-<p>SHIFT + REC held shows the track's loops on the first three white keys (lit: playing; dim: muted): a key let go soon mutes its loop or plays it again; held 0.8 s, empties it. SHIFT + REC held 1.5 s with no key touched empties every loop of the track.</p>
-<h2 id="tempo">Tempo</h2>
-<p>PLAY held 0.8 s shows the TEMPO page: PRESETS sets the session's tempo (10 to 300 BPM). A track's button or another page takes it down.</p>
-<h2 id="patterns-arp">Patterns (ARP)</h2>
-<p>A session has 16 patterns: every track's steps, lengths, clocks and directions, and (from build 62) each track's state when the pattern was saved: muted or not, machine, octave, level, pan, sidechain (SC SOURCE and amount), CHORD mode and form, and the arpeggiator (on or off and its settings). Loading a pattern gives that state back with its steps; while the sequencer plays, at the moment the pattern starts. Changing any of these marks the pattern as changed (its number orange), like editing a step. A pattern saved by build 61 or earlier, or an empty one, has no state: loading it leaves the state as it is. The sounds, the send effects, the compressor, the tempo, root and scale, and the loops belong to the session, not to a pattern. The state takes 54 bytes of the pattern's 644 for steps (590 are left: a step with a note takes 6 bytes, 3 more for each lock and 3 for its MOD settings, so all 96 steps can hold a note). ARP shows the PATTERNS grid; the white keys are the 16 patterns (dim; the one playing brighter). On the screen the white square is the cursor: it opens on the pattern playing (or the one waiting to play), follows the pattern playing when that changes (a session loaded, a switch, a program change), and PRESETS moves it; ARP loads the pattern under it. The pattern playing has a green frame (orange with changes not saved); saved patterns are white, empty ones grey. A key let go soon loads its pattern — while the sequencer plays, at the end of the chosen track's steps. Held 0.8 s, copies it; another held 0.8 s pastes it there; SHIFT and held 0.8 s saves the pattern playing there (its changes and its state, as ARP held saves it), whether the slot is empty or not; SAVED, PATTERN n shows and the pattern playing plays on (SHIFT and its own key held saves it in its own slot). With SHIFT and the 1st black key held, pressing a white key empties its pattern (EMPTY, PATTERN n; emptying the pattern playing empties its steps too). ARP held saves the pattern playing. A pattern keeps its edits when another is loaded, until the session is saved or loaded.</p>
-<p><b>A pattern that unmutes a track with loops.</b> While the sequencer plays, a pattern's mutes take effect at the moment it comes in. A track muted before and unmuted by the new pattern has its notes from the muted time cut, so nothing left over is heard as it opens. Its sequencer steps play at once, but each of its loops stays silent until it comes round to its first step, and from there plays on in its place: the loop starts at its beginning, in time with the sequencer, however many bars away that is. A loop at its first step just as the pattern comes in plays it at once. Loading such a pattern while stopped does the same from the moment the sequencer starts. Only pattern changes do this: a track unmuted by hand (MUTE mode) or by MIDI plays its loops from where they are.</p>
-<h2 id="sessions-save">Sessions (SAVE)</h2>
-<p>16 sessions are kept in the FM-1's flash. SAVE shows the list; PRESETS moves through it, SAVE opens a session's page: BACK, LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE (it opens on LOAD; SAVE on BACK goes back to the list). SAVE runs the row chosen, or moves the focus to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not saved, saving over another session, copying over one and deleting ask first (NO / YES on PRESETS).</p>
-<p>SAVE on an empty slot's page, while a saved session is playing, starts a new session there: blank, as the FM-1 starts with none loaded — each track's machine as at the start with new sounds drawn, the start's levels, pans, octaves, effects, tempo (120), root and scale; no patterns, loops, chords, mutes, transposition or arpeggiator; the sequencer stopped. It is saved into the slot at once (NEW, SESSION n shows). If the session playing has changes not saved, NEW SESSION? is asked first (they would be lost: save them first). With nothing saved yet — the state the FM-1 starts in, or a session just deleted — SAVE on an empty slot saves what is playing there instead. To start a new session from a copy of another, use COPY.</p>
-<p>SAVE held 0.8 s (or HOME held), outside the sessions' pages, saves the session playing into its slot at once. If it has never been saved, the first empty slot's page shows SAVE NEW? with YES chosen: SAVE saves it there and goes back to the track (PRESETS left: NO). With all 16 slots taken, NO FREE SLOT shows.</p>
-<p>A session holds the whole state of the machine: every track's machine, sounds, octave, level, pan, chord mode and mutes (as they were when it was saved; the pattern playing's own state is applied after it), the track chosen, the effects, the tempo, the root and scale, its 16 patterns and the pattern playing, and every loop on every track (notes, length, mute). Loading a session gives all of it back; its loops start at the next bar if the sequencer is playing. A session saved by build 37 or earlier has no loops: loading it empties them.</p>
-<p>The loops are kept in a loop store shared by the 16 sessions (31 sectors of flash, about 125 KB). A session takes what its loops need: up to 7 sectors with all 18 loops full (256 notes each). If the store has no room left, nothing is saved and NO ROOM FOR LOOPS shows; deleting a session, or saving one with fewer loops, frees room.</p>
-<p>The FM-1 starts with the last session loaded or saved (SESSION n shows for a moment). Changes not saved before it was switched off are not kept.</p>
-<h3 id="backup">Backup</h3>
-<p>The website's <a href="https://nzimas.github.io/bigorna/backup.html">Backup page</a> copies the sessions on the FM-1 — each with its patterns and loops — and GLOBAL SETUP to a file on the computer, over USB MIDI (desktop Chrome, Edge or Opera), and restores them from it. Use it before installing another firmware: Bigorna keeps its sessions where Tonitor keeps its own, so either may overwrite the other's. A restore writes each session back into the slot it came from (the others on the FM-1 are kept), each part checked before it is written; RESTORED S3 (or SETUP) shows on the screen as each lands. The session playing is not changed: load it to hear what was restored. Build 55 or later.</p>
-<h2 id="global-setup-shift-save">GLOBAL SETUP (SHIFT + SAVE)</h2>
-<p>SHIFT + SAVE (outside the sessions' pages) opens GLOBAL SETUP: the settings of the machine rather than of a session. They are kept in the FM-1's flash and read at every start. PRESETS moves through a list and SAVE goes into the entry chosen; on a setting, SAVE moves the focus to its value, PRESETS changes it and SAVE sets it. SHIFT + SAVE leaves a value as it was, or goes back a level; from the top it leaves GLOBAL SETUP, as a track's button does. Every level below the top begins with BACK: SAVE on it goes back a level (a level opens on the entry below BACK). Changes are written to the flash as it is left.</p>
-<h3 id="midi">MIDI</h3>
-<p>MIDI goes over the USB cable, both ways (the FM-1 shows up as FM-1 Bigorna), and comes in through the FM-1's 3.5 mm MIDI IN jack (TRS Type A: a Type A cable or adapter from the other device's 5-pin MIDI OUT; tested with a Roland TRS-to-DIN cable from a Digitone II). The settings follow the Model:Cycles' MIDI CONFIG:</p>
+<p><b>SHIFT + REC</b> arms a loop on the chosen track; the first note starts it (and the sequencer, if stopped). <b>REC</b> ends it. Its length is rounded to whole bars (1 to 32), so it stays in time with the steps (LOOP 1  4 BARS shows). Three loops a track, up to 256 notes each.</p>
 <table>
-<tr><th>Part</th><th>Setting</th><th>Values</th><th>Start value</th></tr>
-<tr><td>SYNC</td><td>CLK IN: follow a MIDI clock, and its START, CONTINUE and STOP</td><td>ON / OFF</td><td>OFF</td></tr>
-<tr><td>SYNC</td><td>CLK OUT: send a MIDI clock, and START and STOP</td><td>ON / OFF</td><td>OFF</td></tr>
-<tr><td>SYNC</td><td>PCH IN: a program change chooses the pattern</td><td>ON / OFF</td><td>OFF</td></tr>
-<tr><td>SYNC</td><td>PCH OUT: send a program change when a pattern is chosen</td><td>ON / OFF</td><td>OFF</td></tr>
-<tr><td>IN CHAN</td><td>TRACK 1 to 6: the channel each track listens on</td><td>OFF, 1 to 16</td><td>1 to 6</td></tr>
-<tr><td>IN CHAN</td><td>AUTO: the channel that plays the track chosen</td><td>OFF, 1 to 16</td><td>16</td></tr>
-<tr><td>IN CHAN</td><td>PCH: the channel program changes are taken on</td><td>1 to 16</td><td>16</td></tr>
-<tr><td>OUT CHAN</td><td>TRACK 1 to 6: the channel each track sends on</td><td>OFF, 1 to 16</td><td>1 to 6</td></tr>
-<tr><td>OUT CHAN</td><td>PCH: the channel program changes are sent on</td><td>1 to 16</td><td>16</td></tr>
-<tr><td>RECEIVE</td><td>NOTES, CC: take notes and CCs in</td><td>ON / OFF</td><td>ON</td></tr>
-<tr><td>SEND</td><td>NOTES, CC: send notes and CCs out</td><td>ON / OFF</td><td>OFF</td></tr>
-<tr><td>PORTS</td><td>USB IN, TRS IN: take MIDI from USB, from the jack</td><td>ON / OFF</td><td>ON</td></tr>
+<tr><th>To</th><th>Do this</th></tr>
+<tr><td>See the track's loops</td><td>hold SHIFT + REC: they show on the first three white keys (lit: playing; dim: muted)</td></tr>
+<tr><td>Mute a loop, or bring it back</td><td>with SHIFT + REC held, press its key</td></tr>
+<tr><td>Empty one loop</td><td>with SHIFT + REC held, hold its key 0.8 s</td></tr>
+<tr><td>Empty all the track's loops</td><td>hold SHIFT + REC 1.5 s without touching a key</td></tr>
 </table>
-<p>Clock in. The sending device has to send its transport (start and stop) as well as its clock; on Elektron machines these are two settings, CLOCK SEND and TRANSPORT SEND. With CLK IN on and a clock arriving, the FM-1 follows it: the tempo is the average of the last 24 pulses (one beat), and the sequencer is held to the pulses themselves, so it never drifts from the master and the jitter of the cable does not add up. START starts the sequencer from step 1 on the next pulse; CONTINUE starts it from the song position last received (each track where it would be by then on its clock and length, the loops too); STOP stops it. PLAY on the FM-1 starts on the master's next pulse. The TEMPO page (PLAY held) shows EXT TEMPO and the master's. If no pulse comes for half a second, the FM-1 goes back to its own tempo.</p>
-<p>Clock out. With CLK OUT on, the FM-1 sends 24 pulses a beat from its sequencer, stopped too, so a slave can lock to the tempo before it starts. PLAY sends a song position of 0, START and the first pulse together, as step 1 plays; stopping sends STOP. A pulse is placed to within one audio block (0.73 ms); USB then delivers it in its own 1 ms frames.</p>
-<p>Notes. A note received on a track's IN channel plays that track; on the AUTO channel, the track chosen. Notes on the chosen track are recorded (REC, the looper) as the keys are. With SEND NOTES on, every note a track plays (its steps, ratchets and MIDI FX, its loops, the keys, notes received) is sent on its OUT channel with its velocity, and its note off when it ends. A muted track sends nothing; stopping the sequencer sends the note offs still due.</p>
-<p>CCs. Received on a track's channel (or AUTO), and sent on its OUT channel with SEND CC as its knobs turn: the level is CC 7, the pan CC 10, the mute CC 94 (0 to 63 plays, 64 to 127 mutes), and each page's eight parameters (A to H, as the knobs show them) these CCs, whichever machine the track plays:</p>
+<p>A loop belongs to the pattern it was recorded in. Another pattern does not play it, and an empty pattern plays nothing. When a pattern comes in, its loops start with its steps. Saving, copying or pasting a pattern takes its loops along; emptying it removes them. All patterns share room for 40 loops and 4608 notes: when it is full, arming a loop shows NO ROOM, and a pattern saved into another slot shows LOOPS LOST for the loops that did not fit.</p>
+<h2 id="tempo">Tempo</h2>
+<p><b>Hold PLAY</b> (0.8 s) for the TEMPO page: <b>PRESETS</b> sets the session's tempo, 10 to 300 BPM. A track button leaves it.</p>
+<h2 id="patterns">Patterns</h2>
+<p>A session has 16 patterns. A pattern holds every track's steps (with their length, clock, direction and transposition), its loops, and each track's mute, machine, octave, level, pan, sidechain, CHORD mode and arpeggiator. The sounds, the effects, the tempo, the scale and the root belong to the session.</p>
+<p><b>SAVE</b> opens the PATTERNS grid; SAVE again leaves it. The white keys are the 16 patterns, the one playing brighter. On the screen the pattern playing is green (orange with changes not saved), saved patterns white, empty ones grey, and the white square is the cursor: it opens on the pattern playing, and <b>PRESETS</b> moves it.</p>
+<table>
+<tr><th>To</th><th>Do this</th></tr>
+<tr><td>Play a pattern</td><td>press and release its white key. While the sequencer plays, it starts at the end of the chosen track's steps</td></tr>
+<tr><td>Save the pattern playing into a slot</td><td>hold the slot's white key 0.8 s, or move the cursor there and hold SAVE; the slot may be empty or not, and the pattern playing goes on</td></tr>
+<tr><td>Save its changes in its own slot</td><td>hold its own white key 0.8 s</td></tr>
+<tr><td>Copy a pattern</td><td>SHIFT + hold its key 0.8 s</td></tr>
+<tr><td>Paste it</td><td>SHIFT + hold another key 0.8 s</td></tr>
+<tr><td>Empty a pattern</td><td>hold SHIFT and black key 1, and press its key</td></tr>
+<tr><td>Leave the grid</td><td>SAVE, or a track button</td></tr>
+</table>
+<p>A changed pattern keeps its changes when you switch away, until the session is saved or loaded. A pattern that unmutes a track starts that track cleanly, without notes left over from the muted time. Every note is always saved; on a pattern crowded with locks, the last locks may be left out. MUTE mode and BREAK work on the grid too, and MIDI program changes 0 to 15 choose patterns 1 to 16 (<a href="#midi">MIDI</a>).</p>
+<h2 id="sessions">Sessions</h2>
+<p>16 sessions are kept in the FM-1's flash. A session holds everything: every track's sounds and settings, the effects, the tempo, the scale and root, the 16 patterns with their loops, and the pattern playing.</p>
+<p><b>SHIFT + SAVE</b> opens the SESSIONS list; SHIFT + SAVE again leaves it. <b>PRESETS</b> chooses a slot and <b>SAVE</b> opens its page: BACK, LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE. SAVE runs the row chosen, or moves to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it as it was). Loading over changes not saved, saving over another session, copying over one and deleting ask first: NO or YES on PRESETS.</p>
+<table>
+<tr><th>To</th><th>Do this</th></tr>
+<tr><td>Save the session playing</td><td>hold SAVE (or HOME) 0.8 s, away from the SESSIONS pages and the PATTERNS grid. Never saved, it offers the first empty slot (SAVE NEW?)</td></tr>
+<tr><td>Load a session</td><td>its page, LOAD</td></tr>
+<tr><td>Start a new session</td><td>SAVE on an empty slot's page: new sounds, a scale and root at random, tempo 120, no patterns or loops. It asks first if the session playing has changes not saved. With nothing saved yet, it saves what is playing there instead</td></tr>
+<tr><td>Copy a session into another slot</td><td>its page, COPY, then the slot</td></tr>
+<tr><td>Delete a session</td><td>its page, DELETE</td></tr>
+</table>
+<p>Loading a session brings all of it back; while the sequencer plays, its loops start at the next bar. Loops take room in a store shared by all the sessions: if it is full, NO ROOM FOR LOOPS shows and nothing is saved; deleting a session frees room. Sessions saved by older builds load as they played. Changes not saved before the FM-1 is switched off are lost.</p>
+<p>How the FM-1 starts is set in <a href="#global-setup">GLOBAL SETUP</a> &gt; START: with a new session (NEW) or the last session loaded or saved (LAST).</p>
+<h3 id="backup">Backup</h3>
+<p>The website's <a href="https://nzimas.github.io/bigorna/backup.html">Backup page</a> (desktop Chrome, Edge or Opera, over USB MIDI) copies every session, with its patterns and loops, and GLOBAL SETUP to a file on the computer, and writes them back. Use it before installing another firmware: Bigorna keeps its sessions where Tonitor keeps its own, so either may overwrite the other's. A restore puts each session back into its own slot and leaves the others; RESTORED S3 (or SETUP) shows as each lands.</p>
+<h2 id="global-setup">GLOBAL SETUP</h2>
+<p><b>SHIFT + SAVE held</b> (0.8 s) opens GLOBAL SETUP: the FM-1's own settings, kept apart from the sessions. <b>PRESETS</b> moves through the entries; <b>SAVE</b> opens one, or moves to a value and sets it; <b>SHIFT + SAVE</b> leaves a value as it was or goes back a level. A track button leaves. Changes are saved as you leave.</p>
+<p><b>START</b>: how the FM-1 starts. <b>NEW</b> (at first): with a new session, as Tonitor starts: new sounds on every track, a scale and root at random, tempo 120. Hold SAVE to keep it. <b>LAST</b>: with the last session loaded or saved.</p>
+<h3 id="midi">MIDI</h3>
+<p>MIDI goes over the USB cable both ways (the FM-1 shows up as FM-1 Bigorna) and comes in through the 3.5 mm MIDI IN jack (TRS Type A). The settings follow the Model:Cycles' MIDI CONFIG:</p>
+<table>
+<tr><th>Part</th><th>Settings</th><th>At the start</th></tr>
+<tr><td>SYNC</td><td>CLK IN: follow a MIDI clock and its transport; CLK OUT: send them; PCH IN: a program change chooses the pattern; PCH OUT: send one when a pattern is chosen (ON / OFF)</td><td>all OFF</td></tr>
+<tr><td>IN CHAN</td><td>TRACK 1 to 6: the channel each track listens on; AUTO: the channel that plays the chosen track; PCH: the program changes' channel</td><td>1 to 6; AUTO 16; PCH 16</td></tr>
+<tr><td>OUT CHAN</td><td>TRACK 1 to 6: the channel each track sends on; PCH</td><td>1 to 6; PCH 16</td></tr>
+<tr><td>RECEIVE</td><td>NOTES, CC (ON / OFF)</td><td>ON, ON</td></tr>
+<tr><td>SEND</td><td>NOTES, CC (ON / OFF)</td><td>OFF, OFF</td></tr>
+<tr><td>PORTS</td><td>USB IN, TRS IN: take MIDI from USB, from the jack (ON / OFF)</td><td>ON, ON</td></tr>
+</table>
+<p><b>Clock in.</b> With CLK IN on, the FM-1 follows the clock that arrives: its tempo, START (from step 1), CONTINUE (from the song position) and STOP. The sending device must send its transport as well as its clock (on Elektron machines, CLOCK SEND and TRANSPORT SEND). The TEMPO page shows EXT TEMPO. If the clock stops for half a second, the FM-1 goes back to its own tempo.</p>
+<p><b>Clock out.</b> With CLK OUT on, the FM-1 sends its clock all the time, so another device can lock to it before it starts; PLAY sends START, stopping sends STOP.</p>
+<p><b>Notes.</b> A note on a track's IN channel plays that track; on the AUTO channel, the chosen track. Notes on the chosen track are recorded as the keys are. With SEND NOTES on, every note a track plays (steps, loops, keys, notes received) goes out on its OUT channel; a muted track sends nothing.</p>
+<p><b>CCs.</b> Each track answers to, and with SEND CC sends, these CCs on its channel: level 7, pan 10, mute 94 (64 and up mutes), and each page's eight parameters (A to H), whatever the machine:</p>
 <table>
 <tr><th>Page</th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th></tr>
 <tr><td>SYN 1</td><td>16</td><td>17</td><td>18</td><td>19</td><td>20</td><td>21</td><td>22</td><td>23</td></tr>
@@ -325,38 +513,40 @@
 <tr><td>FX</td><td>80</td><td>81</td><td>82</td><td>83</td><td>84</td><td>85</td><td>86</td><td>87</td></tr>
 <tr><td>MANGLE</td><td>88</td><td>89</td><td>90</td><td>91</td><td>92</td><td>93</td><td>95</td><td>102</td></tr>
 </table>
-<p>The CCs a keyboard or a DAW sends for other things are left out: 32, 38, 64 to 69 (pedals), 96 to 101. A value from 0 to 127 is spread over the parameter's whole range.</p>
-<p>Program changes 0 to 15 choose the session's patterns 1 to 16, in time as the patterns' grid does.</p>
-<h3 id="tested-with">Tested with</h3>
-<p>MIDI has been tested on the FM-1 with:</p>
+<p><b>Program changes</b> 0 to 15 choose patterns 1 to 16, in time as the PATTERNS grid does.</p>
+<p>The jack takes everything USB does except SysEx. With both inputs on they are merged; a clock should come from only one of them. A controller cannot be plugged straight into the FM-1's USB-C port (both are USB devices and need a computer between them); one with a 5-pin MIDI OUT goes into the jack.</p>
+<p><b>Tested with:</b></p>
 <ul>
-<li><b>Elektron Digitone II, into the TRS MIDI IN jack</b> (a Roland TRS-to-DIN cable, Type A, from the Digitone II's 5-pin MIDI OUT): the FM-1 follows its clock, starts and stops with it, and its keyboard plays the FM-1's tracks by channel (track 6 on channel 6). The Digitone II needs, in SETTINGS &gt; MIDI CONFIG: SYNC &gt; CLOCK SEND and TRANSPORT SEND on; PORT CONFIG &gt; OUTPUT TO MIDI (or MIDI+USB), TRIG KEY DEST INT + EXT, OUTPUT CH TRK CH (or AUTO CH, which the FM-1 takes on its AUTO channel). On the FM-1: GLOBAL SETUP &gt; MIDI &gt; SYNC &gt; CLK IN on.</li>
-<li><b>A computer over USB</b> (macOS): notes, CCs, and MIDI LEARN with CCs as the M-VAVE SMC Mixer sends them in MIDI mode.</li>
+<li><b>Elektron Digitone II, into the TRS jack</b> (a Roland TRS-to-DIN cable, Type A): the FM-1 follows its clock, starts and stops with it, and its keyboard plays the FM-1's tracks by channel. On the Digitone II, in SETTINGS &gt; MIDI CONFIG: SYNC &gt; CLOCK SEND and TRANSPORT SEND on; PORT CONFIG &gt; OUTPUT TO MIDI (or MIDI+USB), TRIG KEY DEST INT + EXT, OUTPUT CH TRK CH (or AUTO CH). On the FM-1: GLOBAL SETUP &gt; MIDI &gt; SYNC &gt; CLK IN on.</li>
+<li><b>A computer over USB</b> (macOS): notes, CCs, and MIDI LEARN with an M-VAVE SMC Mixer in MIDI mode.</li>
 </ul>
-<p>A controller cannot be plugged straight into the FM-1's USB-C port: both are USB devices, and USB needs a computer (a host) between them. A controller with a 5-pin MIDI OUT goes into the TRS jack.</p>
-<p>This list grows as more gear is tried.</p>
 <h3 id="midi-learn">MIDI LEARN</h3>
-<p>The 4th black key (the step view off) turns MIDI LEARN on or off; it is lit while on, and MIDI LEARN shows in the name band. With it on, the EDIT pages and the effects' pages (SEQ) show CC instead of the page count, and in each row, where the value goes, the CC learned for it in amber, or — if none. PRESETS moves through the page's rows, A to H (the half shown follows); OCT− and OCT+ turn the pages as before.</p>
-<ul>
-<li>SAVE: the chosen row waits for a CC (WAIT). The next CC to come in, from USB or the jack, on any channel, is learned for it, and its number shows. SAVE again stops waiting.</li>
-<li>SHIFT + SAVE: the chosen row's CC forgotten.</li>
-</ul>
-<p>A CC learned for a sound's parameter turns it on the track it was learned on; one learned for an effect's turns it for all (COMP's SC SOURCE and SC LEVEL, and the LFOs' rows: on the track it was learned on; an LFO's DEST cannot be learned). A CC and channel are learned for one parameter at a time, and a parameter has one CC: learning again moves it. A learned CC comes before the CC map above, on its channel; it needs RECEIVE CC on. Up to 64 are kept, in the flash with GLOBAL SETUP, written when MIDI LEARN is turned off.</p>
-<p>The jack takes notes, CCs, program changes, the clock, START, CONTINUE, STOP and the song position, as USB does (not SysEx). With both inputs on, the two are merged; a clock should come from one of them only.</p>
+<p>Black key 4 turns MIDI LEARN on or off (lit while on; the screen reads MIDI LEARN). The EDIT pages and the effects' pages then show, in each row, the CC learned for it, or — if none. <b>PRESETS</b> chooses the row; <b>OCT− / OCT+</b> turn the pages.</p>
+<table>
+<tr><th>To</th><th>Do this</th></tr>
+<tr><td>Learn a CC</td><td>SAVE (WAIT shows), then move the control: the next CC to arrive, on any channel, is learned</td></tr>
+<tr><td>Stop waiting</td><td>SAVE again</td></tr>
+<tr><td>Forget the row's CC</td><td>SHIFT + SAVE</td></tr>
+</table>
+<p>A learned sound parameter moves on the track it was learned on; an effect's moves for all. Each CC and channel controls one parameter, and each parameter has one CC. Up to 64 are kept, with GLOBAL SETUP. RECEIVE CC must be on.</p>
 <h2 id="usb-audio">USB audio</h2>
-<p>The FM-1 is also a USB audio device: plugged into a computer, a phone or a tablet, it shows up as an audio input named FM-1 Bigorna, carrying its master output in stereo, 16-bit, at 44.1 kHz — the rate it is made at, sent as it is. Record it or monitor it like any class-compliant audio interface; nothing to install. Its MIDI stays as it was, on the same cable. The FM-1's own output (the headphone jack) plays on as usual. The USB stream does not follow the MASTER knob: the knob sets the jack's level only, so a recording keeps its level whatever the headphones are set to.</p>
-<p>The host has to be the USB host: a computer, or a phone or tablet that takes USB audio devices (on Android, most do through USB-C). The FM-1 offers 44.1 kHz only; a host or app that works at 48 kHz converts it (Android, macOS and Windows do). Streaming takes about 2 % of the FM-1's processing time.</p>
-<h3 id="tested-with">Tested with</h3>
+<p>Plugged into a computer, a phone or a tablet, the FM-1 is also a USB audio input named FM-1 Bigorna: its master output in stereo, 16-bit, 44.1 kHz. Record or monitor it like any class-compliant audio interface; nothing to install. The headphone jack plays on as usual. The USB sound does not follow the MASTER knob, so a recording keeps its level whatever the headphones are set to. MIDI goes on alongside on the same cable.</p>
+<p>The other end must be a USB host: a computer, or a phone or tablet that takes USB audio devices (on Android, most do through USB-C). A host that works at 48 kHz converts the sound itself.</p>
+<p><b>Tested with:</b></p>
 <ul>
-<li><b>POCO X7 Pro (HyperOS), over a USB-C cable:</b> the phone's own camera app records video with the FM-1's sound as its audio, as it plays. The phone needs OTG switched on before the FM-1 is plugged in: Settings &gt; Additional settings &gt; OTG. The switch is greyed out while anything is plugged into the phone's USB-C port (a charger too): unplug, switch it on, then connect the FM-1. HyperOS turns it off again after 10 minutes with no device.</li>
-<li><b>MacBook Air M5 (macOS), over a USB-C cable:</b> the FM-1 shows up as FM-1 Bigorna, 2 input channels, 44,100 Hz, next to its MIDI port. Measured with a test tone in place of the music: the FM-1 sends a packet every 1 ms USB frame, every frame in order (none repeated, none dropped), under six tracks playing eighth notes; streaming costs 1.8 % of the FM-1's processing time. Music recorded from it peaked at -3 dBFS, the MASTER knob not changing it.</li>
+<li><b>POCO X7 Pro (HyperOS), over USB-C:</b> the phone's camera app records video with the FM-1's sound. Switch on OTG first (Settings &gt; Additional settings &gt; OTG), with nothing plugged into the phone; HyperOS turns it off again after 10 minutes with no device.</li>
+<li><b>MacBook Air M5 (macOS), over USB-C:</b> FM-1 Bigorna, 2 input channels, 44,100 Hz, every packet in order with six tracks playing.</li>
 </ul>
-<p>The FM-1's own MIDI goes on alongside the audio on the same cable.</p>
 <h2 id="the-screen">The screen</h2>
-<p>Few words, very large type, high contrast, and a colour for each track. The track's view shows the track's number, its machine and its sound's family; at the top left the pattern playing (orange with changes not saved) and the chord form (and ARP while the arpeggiator is on); at the top right the battery, the octave, under them the track's transposition (T+2) and, while recording, REC or LOOP.</p>
-<p>The battery shows three bars in green when full, two in green, one in amber, and one in red when it runs low. On a computer's or phone's USB power it shows a white bolt instead (the reading is then the supply's, not the charge's). The levels are read from the battery's voltage, smoothed over a few seconds; they are coarse, not a percentage.</p>
+<p>Few words, very large type, high contrast, and a colour for each track. The track's view shows, from the top: the pattern playing (orange with changes not saved) and the chord form (or ARP) at the top left; the battery, the octave and the transposition (T+2) at the top right, with REC or LOOP while recording; the track's number, its machine and its sound's family.</p>
+<p>The battery shows three green bars when full, then two green, one amber, and one red when it runs low. On USB power it shows a white bolt instead.</p>
 <h2 id="rescue">Rescue</h2>
-<p>Hold OCT− while switching the FM-1 on: the rescue screen, from which the installer can run again. Two failed starts in a row also enter it. If the FM-1 starts but no longer answers over USB, hold OCT− and OCT+ for 5 seconds while it runs: the chip's own update mode, from which a firmware can be restored with <a href="https://github.com/keremimo/melodee/blob/main/docs/RECOVERY.md">Melodee's recovery tool</a>.</p>
+<p>Hold <b>OCT−</b> while switching the FM-1 on for the rescue screen, from which the installer can run again; two failed starts in a row also lead there. If the FM-1 starts but no longer answers over USB, hold <b>OCT−</b> and <b>OCT+</b> for 5 seconds while it runs: the chip's own update mode, from which a firmware can be restored with <a href="https://github.com/keremimo/melodee/blob/main/docs/RECOVERY.md">Melodee's recovery tool</a>.</p>
+<nav class="mfloat" aria-label="Page">
+<a href="#contents" data-tip="Contents" aria-label="Contents"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg></a>
+<a href="#top" data-tip="Back to top" aria-label="Back to top"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></a>
+</nav>
+</div>
     </main>
     <footer>
       <p>Developed by Nuno Zimas. Firmware: GPL-3.0. Website and logo: MIT. <a href="https://github.com/nzimas/bigorna">Source on GitHub</a>.</p>
@@ -373,6 +563,6 @@
     </footer>
   </div>
 </div>
-<script src="js/menu.js?v=426632170b"></script>
+<script src="js/menu.js?v=aab4cce4a7"></script>
 </body>
 </html>

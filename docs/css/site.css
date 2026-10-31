@@ -180,6 +180,67 @@ main blockquote { border-left: 4px solid var(--mid); margin: 16px 0; padding: 4p
 .toc a { display: block; padding: 2px 0; text-decoration: none; }
 .toc a.sub { padding-left: 16px; color: var(--dim); }
 
+/* the manual: a bar that stays at the top (search), the contents and the top a click away (after Tonitor's) */
+.mbar { position: sticky; top: 7px; z-index: 5; display: flex; gap: 10px; align-items: center;
+        margin: 0 0 18px; padding: 12px 0; background: #131417; border-bottom: 1px solid var(--line); }
+.mbar input { flex: 1; min-width: 0; font: inherit; font-size: 17px; color: var(--fg); background: var(--plate2);
+              border: 1px solid var(--line); border-radius: 3px; padding: 7px 12px; }
+.mbar input:focus { outline: 2px solid var(--hot); outline-offset: 0; border-color: transparent; }
+.mresults { position: absolute; top: 100%; left: 0; right: 0; max-height: min(70vh, 560px); overflow-y: auto;
+            background: var(--plate2); border: 1px solid var(--line); border-top: 3px solid var(--mid);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6); }
+.mresults a { display: block; padding: 9px 14px; border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none; }
+.mresults a:last-child { border-bottom: 0; }
+.mresults a[aria-selected="true"], .mresults a:hover { background: #24272c; }
+.mresults .where { display: block; font-family: var(--head); font-size: 16px; font-weight: 700; letter-spacing: 0.04em;
+                   text-transform: uppercase; color: var(--steel); }
+.mresults .what { display: block; font-size: 15px; color: var(--dim); line-height: 1.45; }
+.mresults mark { background: none; color: #fff; font-weight: 700; text-decoration: underline; text-decoration-color: var(--hot); }
+.mresults .none { padding: 10px 14px; color: var(--dim); }
+kbd { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.85em; padding: 0 0.4em;
+      border: 1px solid var(--mid); border-bottom-width: 2px; border-radius: 3px; background: var(--plate2); }
+/* bottom right, once the contents are scrolled past: to the contents, to the top; named beside them on hover */
+.mfloat { position: fixed; right: 20px; bottom: 20px; z-index: 6; display: flex; flex-direction: column; gap: 10px;
+          opacity: 0; visibility: hidden; transform: translateY(8px); transition: opacity 0.2s, transform 0.2s, visibility 0.2s; }
+.mfloat.show { opacity: 1; visibility: visible; transform: none; }
+.mfloat a { position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+            color: var(--steel); background: var(--plate2); border: 1px solid var(--mid); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
+.mfloat a:hover, .mfloat a:focus-visible { color: #fff; border-color: var(--steel); }
+.mfloat a:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
+.mfloat a::after { content: attr(data-tip); position: absolute; right: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+                   white-space: nowrap; font-size: 14px; font-weight: 700; color: var(--fg); background: var(--plate2);
+                   border: 1px solid var(--line); border-radius: 3px; padding: 3px 9px; pointer-events: none;
+                   opacity: 0; transition: opacity 0.15s; }
+.mfloat a:hover::after, .mfloat a:focus-visible::after { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .mfloat, .mfloat a::after { transition: none; } }
+@media (max-width: 820px) { .mfloat { right: 14px; bottom: 14px; } }
+.manual h2, .manual h3, .manual p, .manual tr, .manual li, .manual figure, .manual nav { scroll-margin-top: 80px; }
+.found { animation: found 2.4s ease-out; }
+@keyframes found { from { background: rgba(210, 213, 218, 0.28); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .found { animation: none; outline: 2px solid var(--hot); } }
+
+/* the manual: the FM-1 drawn, numbered, with its table */
+.fm1-fig { margin: 22px 0 8px; }
+.fm1-scroll { overflow-x: auto; }
+.fm1-fig .narrow { display: none; }
+@media (max-width: 700px) { .fm1-fig .narrow { display: inline; } }
+.fm1-fig svg { display: block; width: 100%; height: auto; min-width: 640px; }
+.fm1-fig figcaption { color: var(--dim); font-size: 15px; margin-top: 4px; }
+.fm1 .cut { stroke: var(--dim); stroke-width: 1.5; stroke-dasharray: 6 6; }
+.fm1 .lead { fill: none; stroke: var(--mid); stroke-width: 2; }
+.fm1 .tip { fill: var(--steel); }
+.fm1 .num { fill: var(--steel); stroke: var(--bg); stroke-width: 2; }
+.fm1 text { fill: var(--bg); font: 700 19px "Atkinson Hyperlegible", system-ui, sans-serif; text-anchor: middle; }
+.fm1 .callout:hover .lead, .fm1 .callout.hot .lead, .fm1 .callout:focus-visible .lead { stroke: #fff; stroke-width: 3; }
+.fm1 .callout:hover .num, .fm1 .callout.hot .num, .fm1 .callout:focus-visible .num,
+.fm1 .callout:hover .tip, .fm1 .callout.hot .tip, .fm1 .callout:focus-visible .tip { fill: #fff; }
+.fm1 .callout:focus { outline: none; }
+table.controls td.n { text-align: center; font-weight: 700; }
+table.controls td.n a { display: inline-block; min-width: 30px; padding: 1px 0; border-radius: 999px; background: var(--steel);
+                        color: var(--bg); text-decoration: none; }
+table.controls tr.hot td { background: #24272c; }
+table.controls tr.hot td.n a { background: #fff; }
+
 /* other projects */
 p.lead { font-size: 20px; color: var(--dim); margin: 0; max-width: 36em; }
 .projects { display: grid; gap: 24px; margin: 34px 0 0; }
