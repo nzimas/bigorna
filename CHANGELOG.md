@@ -1,5 +1,24 @@
 # Changelog
 
+## Build 79
+
+Added
+- Subtracks, after Titan Haze's lanes: a track on DRUM has subtracks ST-A to ST-D, each a track in its own right (its
+  own sound, steps, length, clock, direction, phrase, octave, transposition, level, pan, sends and MANGLE), all
+  playing through the track's mute, sidechain and MIDI channel. Hold the track's button and press white key 1 to 4 to
+  choose one; SHIFT with it gives one past ST-A up. Three subtracks past ST-A are shared by all the tracks: one track
+  with four, or several with two or three. A new subtrack gets the kit's next piece after the track's own.
+- The keys, MIDI notes, EDIT, the step view, the TRACK and PHRASE pages, SELECT, ALGORITHM and OCT act on the
+  subtrack chosen. The screen shows it (ST-A to ST-D) under the pattern; the TRACK page's title reads 1B.
+- Patterns keep each subtrack's steps and settings; sessions keep its sound, level and pan; the looper notes the
+  subtrack of each note. A track off DRUM puts its subtracks away until it is on DRUM again.
+
+Compatibility
+- Sessions, patterns and loops from earlier builds load as before, with no subtracks.
+
+Changed
+- A track that is ducked follows its sidechain source's subtracks too: their hits are summed before they are followed.
+
 ## Build 78
 
 Added

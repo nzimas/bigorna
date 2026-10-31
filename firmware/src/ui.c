@@ -120,20 +120,22 @@ enum { PG_MAIN, PG_EDIT, PG_FXP, PG_TRK, PG_GEN, PG_TEMPO, PG_SCALE, PG_PRJ, PG_
 
 static struct {
     uint8_t sel;
+    uint8_t sub[NTRACK];         /* each track's subtrack chosen (0 ST-A; a DRUM track's B .. D: build 79) .. */
+    uint8_t sl;                  /* .. and the lane chosen: the chosen track's subtrack (sel_sync) */
     uint8_t page;
     uint8_t edit_pg;             /* the EDIT page shown (0 .. pages_n - 1) */
     uint8_t fx_pg;               /* the effect shown: FXP_* (CHORUS, COMP, DELAY, REVERB) */
     uint8_t half;                /* the half of the page shown: 0 A .. D, 1 E .. H (the pages': ehalf; else SHIFT held) */
     uint8_t ehalf;               /* the EDIT and effects pages' half, set by PRESETS */
-    int8_t oct[NTRACK];
+    int8_t oct[NLANE];           /* (a lane's, as the levels and pans, the steps' notes and phrases below) */
     uint8_t eng[NTRACK];
     sound_t snd[NTRACK][NENG];
-    uint8_t dirty[NTRACK];       /* the sound changed: to be published */
+    uint8_t dirty[NLANE];        /* the sound changed: to be published (a lane's) */
     uint8_t key_track[NKEY], key_note[NKEY];
     uint8_t key_cn[NKEY][3];     /* a key down: the notes it sounds (its chord's three; a note: it alone) */
     uint8_t key_arp[NKEY];       /* .. given to its track's arpeggiator, not sounded (build 52) */
-    uint8_t last_note[NTRACK];   /* the note last played on each track (0: none yet): what a step is given */
-    uint8_t last_chf[NTRACK];    /* .. and its chord (form + 1; 0: a note alone) */
+    uint8_t last_note[NLANE];    /* the note last played on each lane (0: none yet): what a step is given */
+    uint8_t last_chf[NLANE];    /* .. and its chord (form + 1; 0: a note alone) */
     uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode, and its form (CH_*) */
     uint8_t mute_mode;           /* MUTE mode (the 2nd black key): the tracks' buttons mute, held 1 s solo (build 35) */
     uint8_t brk, brk_shown;      /* BREAK (the 3rd black key held): the tracks under it; the way last said (build 37) */
@@ -155,8 +157,8 @@ static struct {
     uint8_t ak_down, ak_long;    /* the 5th black key (the arpeggiator's) held: since ak_t0; held 0.8 s (its page;
                                   * build 53) */
     uint32_t ak_t0;
-    int8_t trn[NTRACK];          /* each track's transposition in the pattern playing, steps of the scale (build 51) */
-    uint8_t gen_den[NTRACK], gen_cx[NTRACK];   /* the phrase generator's DENSITY and COMPLEXITY, 0 .. 100, a track's */
+    int8_t trn[NLANE];           /* each lane's transposition in the pattern playing, steps of the scale (build 51) */
+    uint8_t gen_den[NLANE], gen_cx[NLANE];   /* the phrase generator's DENSITY and COMPLEXITY, 0 .. 100, a track's */
     uint8_t trig;                /* TRIG on (the 3rd black key): a step held shows its own page */
     uint8_t mod;                 /* MOD on (the 4th): a step held shows its MOD page */
     uint8_t play_down, play_long;   /* PLAY held: since play_t0; held 0.8 s (the TEMPO page) */
@@ -195,7 +197,7 @@ static struct {
     uint32_t seed;
     uint8_t scale, root;
     int16_t tempo;               /* the project's, BPM */
-    int8_t level[NTRACK], pan[NTRACK];
+    int8_t level[NLANE], pan[NLANE];
     int8_t touched;              /* the row just turned (-1 none), until touch_until */
     uint32_t touch_until;
     uint32_t sc_peek_until;      /* the SCALE page shown over any page until then (SHIFT + ARP) */
@@ -299,7 +301,40 @@ static void flash(const char *l1, const char *l2, uint16_t c)
     ui.flash_on = 1;
     ui.flash_phase = 0xFF;
 }
-static sound_t *cur(void) { return &ui.snd[ui.sel][ui.eng[ui.sel]]; }
+/* (build 79) the lanes: a track's own sound is ui.snd's, a shared lane's (a subtrack ST-B .. ST-D) its own */
+static sound_t ui_lsnd[NXL] POOL;
+static sound_t *lane_snd(uint32_t l) { return l < NTRACK ? &ui.snd[l][ui.eng[l]] : &ui_lsnd[l - NTRACK]; }
+static int trk_lanes(uint32_t t) { return ui.eng[t] == ENG_FMD; }   /* (subtracks: DRUM's only) */
+static void sel_sync(void)                       /* (the lane chosen: the chosen track's subtrack, while it has them) */
+{
+    uint32_t l = ui.sel;
+    if (trk_lanes(ui.sel) && ui.sub[ui.sel]) {
+        l = lane_find(ui.sel, ui.sub[ui.sel]);
+        if (l >= NLANE) {
+            ui.sub[ui.sel] = 0;
+            l = ui.sel;
+        }
+    }
+    ui.sl = (uint8_t)l;
+}
+static sound_t *cur(void)                        /* (the chosen sound: the chosen track's subtrack's) */
+{
+    sel_sync();
+    return lane_snd(ui.sl);
+}
+static uint32_t trk_lane(uint32_t t)             /* (track t's subtrack chosen: its lane) */
+{
+    uint32_t l = trk_lanes(t) && ui.sub[t] ? lane_find(t, ui.sub[t]) : t;
+    return l < NLANE ? l : t;
+}
+static void trk_note_off(uint32_t t, uint32_t note)   /* (a note let go on track t: on each of its lanes -- the subtrack
+                                                  * may have changed since it was struck) */
+{
+    uint32_t l;
+    for (l = t; l < NLANE; l = l < NTRACK ? NTRACK : l + 1u)
+        if (l < NTRACK || (ln_s[l] && ln_t[l] == t))
+            ev_post(arp_on[t] ? EV_ARP_OFF : EV_OFF, l, note, 0);
+}
 
 /* ------------------------------------------------------------ notes --- */
 #define LEVEL_MAX 23
@@ -395,7 +430,8 @@ static void lp_follow(const int8_t *to)
     uint32_t t;
     for (t = 0; t < NTRACK; t++)
         lp_trn[t] = to[t];
-}static int32_t trn_track(uint32_t t, int32_t d)
+}
+static int32_t trn_track(uint32_t t, int32_t d)   /* (t a lane: a subtrack's own steps) */
 {
     int32_t v = clampi(ui.trn[t] + d, -TRN_MAX, TRN_MAX);
     uint32_t i;
@@ -406,7 +442,8 @@ static void lp_follow(const int8_t *to)
         if (seq_note[t][i])
             seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], d);
     ui.trn[t] = (int8_t)v;
-    lp_trn[t] = (int8_t)v;                       /* (its loops played so: build 68) */
+    if (t < NTRACK)                              /* (its loops played so: build 68 -- the track's own lane's) */
+        lp_trn[t] = (int8_t)v;
     for (i = 0; i < NLOOP; i++)
         if (lp_get(t, i))
             prj_dirty = 1;
@@ -526,9 +563,80 @@ static void mark(uint32_t t)
 static void ui_publish(void)
 {
     uint32_t t;
-    for (t = 0; t < NTRACK; t++)
-        if (ui.dirty[t] && track_publish(t, &ui.snd[t][ui.eng[t]]))
+    for (t = 0; t < NLANE; t++)                  /* (each lane: a subtrack's sound too) */
+        if (ui.dirty[t] && track_publish(t, lane_snd(t)))
             ui.dirty[t] = 0;
+}
+
+/* ------------------------------------------------------------ subtracks --- */
+/* (build 79, after Titan Haze's lanes) a DRUM track's subtracks ST-B .. ST-D, each a lane of the NXL shared ones, a
+ * track in its own right: its sound, steps, length, clock, direction, phrase, octave, transposition, level and pan.
+ * A track button held and a white key 1 .. 4 chooses one (taken then, its sound the kit's next piece); SHIFT with it,
+ * one past ST-A given up. Off DRUM, a track's subtracks are put away -- silent, kept, back as they were on DRUM --
+ * and another DRUM track may take one when no lane is free */
+static void lanes_apply(uint32_t t)              /* (track t's subtracks playing as its machine is DRUM, or not) */
+{
+    uint32_t l;
+    for (l = NTRACK; l < NLANE; l++)
+        if (ln_s[l] && ln_t[l] == t)
+            ln_on[l] = (uint8_t)trk_lanes(t);
+}
+static void lane_fresh(uint32_t l)               /* (a lane's own as at the start: its steps empty, at unity, centred) */
+{
+    steps_clear(l);
+    seq_len[l] = 0;
+    seq_div[l] = SEQ_DIV1;
+    seq_dir[l] = DIR_FWD;
+    ui.oct[l] = 0;
+    ui.trn[l] = 0;
+    ui.level[l] = LEVEL_UNITY;
+    ui.pan[l] = 0;
+    ui.gen_den[l] = ui.gen_cx[l] = 50;
+    ui.last_note[l] = ui.last_chf[l] = 0;
+    level_pan_apply(l);
+}
+/* the lane of track t's subtrack s (1 .. 3): its own; else a free one, or one a track off DRUM put away -- its sound
+ * new, the kit's next piece after the track's own (a kick's track: B a snare, C a hat, D a tom); NLANE: none */
+static uint32_t lane_take(uint32_t t, uint32_t s)
+{
+    static const uint8_t KIT[4] = {0, 4, 8, 12};   /* (RECIPES: TIGHT KICK, FM SNARE, METAL HAT, TOM) */
+    uint32_t l = lane_find(t, s), base;
+    int32_t f;
+    if (l < NLANE)
+        return l;
+    for (l = NTRACK; l < NLANE && ln_s[l]; l++)
+        ;
+    if (l == NLANE)
+        for (l = NTRACK; l < NLANE && trk_lanes(ln_t[l]); l++)
+            ;
+    if (l == NLANE)
+        return NLANE;
+    if (ln_s[l] && ui.sub[ln_t[l]] == ln_s[l])  /* (taken from a track off DRUM: its choice back on ST-A) */
+        ui.sub[ln_t[l]] = 0;
+    ln_on[l] = 0;
+    RING_PUBLISH();
+    ln_t[l] = (uint8_t)t;
+    ln_s[l] = (uint8_t)s;
+    lane_fresh(l);
+    f = ui.snd[t][ENG_FMD].family;
+    base = f >= 0 && f < 16 ? (uint32_t)f / 4u : 3u;
+    gen_sound(&ui_lsnd[l - NTRACK], ENG_FMD, KIT[(base + s) % 4u], -1, next_seed());
+    ui.dirty[l] = 1;
+    RING_PUBLISH();
+    ln_on[l] = (uint8_t)trk_lanes(t);
+    return l;
+}
+static void lane_free(uint32_t l)                /* (a subtrack given up: its lane free, its steps gone) */
+{
+    uint32_t t = ln_t[l];
+    ln_on[l] = 0;
+    RING_PUBLISH();
+    ln_s[l] = 0;
+    lane_fresh(l);
+    if (lane_find(t, ui.sub[t]) >= NLANE)
+        ui.sub[t] = 0;
+    ev_post(EV_ARP_CLR, t, 0, 0);                /* (its arpeggiator back on the track's own lane) */
+    sel_sync();
 }
 
 /* HOME: a new sound for the chosen track (same: of the family it plays) */
@@ -538,7 +646,7 @@ static void new_sound(int same)
     uint32_t m = ui.eng[ui.sel];
     int32_t fam = s->family;
     gen_sound(s, m, same ? fam : -1, same ? -1 : fam, next_seed());
-    mark(ui.sel);
+    mark(ui.sl);
     say(same ? "SAME FAMILY" : "NEW", 700);
     ui.home_until = fm1_ms + 400u;
 }
@@ -559,7 +667,7 @@ static void par_turn(uint32_t id, uint32_t j, int32_t s)   /* a parameter of the
     par_put(snd, id, j, v);
     if (id == PG_FLT2 && j == 6u)                    /* (another FLTR machine: its knob G within its range) */
         snd->flt[F_TYPE] = (uint8_t)(snd->fmach == FLT_LEG ? snd->flt[F_TYPE] != 0 : snd->flt[F_TYPE]);
-    mark(ui.sel);
+    mark(ui.sl);
     if (mcfg.send_cc && mcfg.out_ch[ui.sel] && id * 8u + j < MIDI_NPAR && p.hi > p.lo)   /* (SEND CC: midi.c) */
         midi_main_send(0xB0u | (mcfg.out_ch[ui.sel] - 1u), MIDI_CC[id * 8u + j],
                        (uint32_t)((clampi(v, p.lo, p.hi) - p.lo) * 127 + (p.hi - p.lo) / 2) / (uint32_t)(p.hi - p.lo));
@@ -620,7 +728,7 @@ static void fx_changed(void)                     /* (an effect: all cooked again
     if (fx_arp())
         return;
     if (fx_lfo())
-        mark(ui.sel);
+        mark(ui.sl);
     else
         fx_cook_all();
 }
@@ -699,11 +807,11 @@ static void loop_drop(void)                      /* the loop being recorded, dro
 }
 /* a note played with the looper armed or recording (k: its key, NKEY none), at step q of seq_gcount's count (the
  * arpeggiator's: where it played it; 0xFFFFFFFF: now) */
-static void loop_note_at(const uint8_t *nn, uint32_t cnt, uint32_t vel, uint32_t k, uint32_t q)
+static void loop_note_at(const uint8_t *nn, uint32_t cnt, uint32_t vel, uint32_t k, uint32_t q, uint32_t l)
 {
     loop_t *p = lrp;
     uint32_t j;
-    if (!ui.lrec || !p || ui.sel != ui.lt)
+    if (!ui.lrec || !p || LANE_T(l) != ui.lt)    /* (lane l's notes: the track's, its subtrack noted with each) */
         return;
     if (!seq_run) {                              /* (stopped: the sequencer starts on it) */
         seq_run = 1;
@@ -724,7 +832,7 @@ static void loop_note_at(const uint8_t *nn, uint32_t cnt, uint32_t vel, uint32_t
     }
     for (j = 0; j < cnt; j++) {
         p->ev[p->n].step = (uint16_t)(q - ui.lstart);
-        p->ev[p->n].len8 = 4;
+        p->ev[p->n].len8 = LEV_PACK(4u, LANE_S(l));
         p->ev[p->n].note = nn[j];
         p->ev[p->n].vel = (uint8_t)clampi((int32_t)vel, 1, 127);
         p->n++;
@@ -732,13 +840,13 @@ static void loop_note_at(const uint8_t *nn, uint32_t cnt, uint32_t vel, uint32_t
 }
 static void loop_note(const uint8_t *nn, uint32_t cnt, uint32_t vel, uint32_t k)   /* (a chord: its three) */
 {
-    loop_note_at(nn, cnt, vel, k, 0xFFFFFFFFu);
+    loop_note_at(nn, cnt, vel, k, 0xFFFFFFFFu, ui.sl);
 }
 static void loop_release(uint32_t k)             /* a key the looper recorded let go: its notes' length */
 {
     uint32_t j;
     for (j = 0; ui.lrec == 2 && lrp && j < ui.lk_n[k] && ui.lk_ev[k] + j < lrp->n; j++)
-        lrp->ev[ui.lk_ev[k] + j].len8 = (uint16_t)loop_len8(fm1_ms - ui.lk_t0[k]);
+        lrp->ev[ui.lk_ev[k] + j].len8 = LEV_PACK(loop_len8(fm1_ms - ui.lk_t0[k]), LEV_SUB(lrp->ev[ui.lk_ev[k] + j]));
     ui.lk_ev[k] = 0xFFFF;
 }
 /* REC: the loop ends, its length the nearest whole number of bars (one at least; build 42), so it never drifts from
@@ -797,7 +905,7 @@ static uint32_t loops_n(uint32_t t)
  * sequencer comes to next is not played that once (the key has) */
 static uint32_t rec_note_at(uint32_t note, uint32_t vel, uint32_t k, uint32_t f1, uint32_t pos, uint32_t acc)
 {
-    uint32_t t = ui.sel, i;
+    uint32_t t = ui.sl, i;                       /* (the lane: the chosen subtrack) */
     if (ui.rec == REC_ARMED) {                   /* the first note: the sequencer starts on it, step 1 */
         seq_skip[t][0] = 1;
         seq_run = 1;
@@ -837,7 +945,7 @@ static uint32_t rec_note_at(uint32_t note, uint32_t vel, uint32_t k, uint32_t f1
 /* (f1: a chord's form + 1, or 0; the sequencer where it is now) */
 static void rec_note(uint32_t note, uint32_t vel, uint32_t k, uint32_t f1)
 {
-    rec_note_at(note, vel, k, f1, seq_pos[ui.sel], seq_tacc_now[ui.sel]);
+    rec_note_at(note, vel, k, f1, seq_pos[ui.sl], seq_tacc_now[ui.sl]);
 }
 static uint32_t glen_of8(uint32_t e)             /* the step length nearest e eighths of a step */
 {
@@ -855,19 +963,19 @@ static void arp_take(void)
         arp_rec_t r = arp_rq[arp_rr % ARP_RQ];
         RING_PUBLISH();
         arp_rr++;
-        if (r.t != ui.sel)
+        if (r.t != ui.sl)                        /* (the chosen track's subtrack the arpeggiator plays) */
             continue;
         if (ui.rec != REC_OFF) {
             uint32_t i = rec_note_at(r.note, r.vel, NKEY, 0, r.pos, r.acc);
             if (i < NSTEP)
                 seq_glen[r.t][i] = (uint8_t)glen_of8(r.len8);
         }
-        if (ui.lrec && lrp && ui.lt == r.t) {
+        if (ui.lrec && lrp && ui.lt == LANE_T(r.t)) {
             loop_t *p = lrp;
             uint32_t n0 = p->n;
-            loop_note_at(&r.note, 1, r.vel, NKEY, r.q);
+            loop_note_at(&r.note, 1, r.vel, NKEY, r.q, r.t);
             if (p->n > n0)
-                p->ev[n0].len8 = r.len8;
+                p->ev[n0].len8 = LEV_PACK(r.len8, LANE_S(r.t));
         }
     }
 }
@@ -897,6 +1005,7 @@ static void midi_take(void)
             learn_toggle();
         else if (a == 1u) {                      /* (EDIT on track b, its page c) */
             ui.sel = (uint8_t)(b % NTRACK);
+            sel_sync();
             ui.page = PG_EDIT;
             ui.edit_pg = (uint8_t)(c % pages_n(cur()));
             ui.ehalf = ui.lsel = ui.listen = 0;
@@ -1013,9 +1122,11 @@ static void midi_take(void)
                     uint8_t pg = ui.fx_pg, sel = ui.sel;
                     ui.fx_pg = (uint8_t)(l->id / 8u % NFXP);
                     ui.sel = (uint8_t)(l->track % NTRACK);
+                    sel_sync();
                     v = fx_get(l->id % 8u);
                     ui.fx_pg = pg;
                     ui.sel = sel;
+                    sel_sync();
                 }
                 f[n++] = l->ch; f[n++] = l->cc; f[n++] = l->kind; f[n++] = l->track; f[n++] = l->id;
                 f[n++] = (uint8_t)((uint32_t)(v + 1024) >> 7 & 0x7Fu); f[n++] = (uint8_t)((uint32_t)(v + 1024) & 0x7Fu);
@@ -1032,6 +1143,7 @@ static void midi_take(void)
         if (tl_cmd[0] == 0x56u && tl_cmd[2] < NENG) {
             gen_sound(&ui.snd[t][tl_cmd[2]], tl_cmd[2], tl_cmd[3], -1, 7u + t);
             ui.eng[t] = tl_cmd[2];
+            lanes_apply(t);
         } else if (tl_cmd[0] == 0x57u) {
             ui.level[t] = tl_cmd[2];
             level_pan_apply(t);
@@ -1077,18 +1189,19 @@ static void midi_take(void)
                 continue;
             for (t = 0; t < NTRACK; t++)
                 if ((ui.midi_track[d1] >> t) & 1u)
-                    ev_post(arp_on[t] ? EV_ARP_OFF : EV_OFF, t, d1, 0);
+                    trk_note_off(t, d1);
             ui.midi_track[d1] = (uint8_t)m;
             for (t = 0; t < NTRACK; t++) {
                 if (!(m >> t & 1u))
                     continue;
-                ui.last_note[t] = (uint8_t)d1;
-                ui.last_chf[t] = 0;
+                uint32_t l = trk_lane(t);        /* (its subtrack chosen) */
+                ui.last_note[l] = (uint8_t)d1;
+                ui.last_chf[l] = 0;
                 if (arp_on[t]) {                 /* (the track's arpeggiator: the note its; what it plays recorded) */
-                    ev_post(EV_ARP_ON, t, d1, d2);
+                    ev_post(EV_ARP_ON, l, d1, d2);
                     continue;
                 }
-                ev_post(EV_ON, t, d1, d2);
+                ev_post(EV_ON, l, d1, d2);
                 if (t == ui.sel) {               /* (the chosen track's: recorded, into the steps or a loop) */
                     uint8_t n8 = (uint8_t)d1;
                     rec_note(d1, d2, NKEY, 0);
@@ -1098,7 +1211,7 @@ static void midi_take(void)
         } else if (cin == 8u || cin == 9u) {
             for (t = 0; t < NTRACK; t++)
                 if ((ui.midi_track[d1] >> t) & 1u)
-                    ev_post(arp_on[t] ? EV_ARP_OFF : EV_OFF, t, d1, 0);
+                    trk_note_off(t, d1);
             ui.midi_track[d1] = 0;
         }
     }
@@ -1263,17 +1376,19 @@ static int learn_cc(uint32_t ch, uint32_t cc, uint32_t v)
             uint32_t k = l->id % 8u;
             ui.fx_pg = (uint8_t)(l->id / 8u % NFXP);
             ui.sel = (uint8_t)(l->track % NTRACK);
+            sel_sync();
             if (k < fx_n() && fx_kind(k) != 5u) {
                 uint32_t kd = fx_kind(k);
                 fx_put(k, kd == 3u ? (int32_t)((v * (fx_list_n(k) - 1u) + 63u) / 127u)
                           : ui.fx_pg == FXP_DEL && k == DL_X ? (int32_t)(v >= 64u) : (int32_t)v);
                 if (fx_lfo())
-                    mark(ui.sel);
+                    mark(ui.sl);
                 else
                     fx_cook_all();
             }
             ui.fx_pg = pg;
             ui.sel = sel;
+            sel_sync();
         }
         prj_dirty = 1;
         ui.force = 1;
@@ -1344,21 +1459,21 @@ static void step_say(uint32_t i, uint32_t n)
 }
 static void step_down(uint32_t k)
 {
-    uint32_t i = (uint32_t)white_ix(k), n = seq_note[ui.sel][i];
+    uint32_t i = (uint32_t)white_ix(k), n = seq_note[ui.sl][i];
     ui.step_key = (uint8_t)k;
     ui.step_edit = 0;
     ui.step_new = !n;
     ui.step_t0 = fm1_ms;
     if (!n) {
-        n = ui.last_note[ui.sel] ? ui.last_note[ui.sel] : key_note(0, ui.oct[ui.sel]);
-        seq_vel[ui.sel][i] = VEL_DEF;
-        seq_glen[ui.sel][i] = GLEN_DEF;
-        seq_cond[ui.sel][i] = CD_NONE;
-        seq_rtg[ui.sel][i] = 0;
-        seq_mut[ui.sel][i] = 0;
-        seq_mcy[ui.sel][i] = seq_mfx[ui.sel][i] = seq_fcy[ui.sel][i] = 0;
-        seq_chf[ui.sel][i] = ui.last_note[ui.sel] ? ui.last_chf[ui.sel] : 0u;   /* (the chord last played, too) */
-        seq_note[ui.sel][i] = (uint8_t)n;
+        n = ui.last_note[ui.sl] ? ui.last_note[ui.sl] : key_note(0, ui.oct[ui.sl]);
+        seq_vel[ui.sl][i] = VEL_DEF;
+        seq_glen[ui.sl][i] = GLEN_DEF;
+        seq_cond[ui.sl][i] = CD_NONE;
+        seq_rtg[ui.sl][i] = 0;
+        seq_mut[ui.sl][i] = 0;
+        seq_mcy[ui.sl][i] = seq_mfx[ui.sl][i] = seq_fcy[ui.sl][i] = 0;
+        seq_chf[ui.sl][i] = ui.last_note[ui.sl] ? ui.last_chf[ui.sl] : 0u;   /* (the chord last played, too) */
+        seq_note[ui.sl][i] = (uint8_t)n;
         pat_dirty = 1;
     }
     step_say(i, n);
@@ -1367,7 +1482,7 @@ static void step_down(uint32_t k)
 /* a parameter of the step held turned: locked (from the sound's value, if it had none) */
 static void pl_turn(uint32_t id, int32_t s, int show)
 {
-    uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key);
+    uint32_t t = ui.sl, i = (uint32_t)white_ix(ui.step_key);
     par_t p;
     pl_par(cur(), id, &p);
     if (p.kind == PK_NONE)
@@ -1387,7 +1502,7 @@ static void pl_turn(uint32_t id, int32_t s, int show)
 /* the knobs on the step held (EDIT not up): the note, the velocity, the length, the condition */
 static void step_knob(uint32_t j, int32_t s)
 {
-    uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key);
+    uint32_t t = ui.sl, i = (uint32_t)white_ix(ui.step_key);
     if (ui.mod) {                                /* MOD: MUTATE (-N .. -1, OFF, +1 .. +N, RND), its EVERY, MIDI FX, its
                                                   * EVERY */
         if (j == 0u) {
@@ -1424,7 +1539,7 @@ static void step_up(void)
 {
     uint32_t i = (uint32_t)white_ix(ui.step_key);
     if (!ui.step_new && !ui.step_edit && (uint32_t)(fm1_ms - ui.step_t0) < 400u) {
-        seq_note[ui.sel][i] = 0;
+        seq_note[ui.sl][i] = 0;
         pat_dirty = 1;
         step_say(i, 0);
     }
@@ -1435,7 +1550,7 @@ static void step_up(void)
 /* SHIFT and step i held: copied (the same again: let go); a step copied, pasted into i, on the chosen track */
 static void step_copy_hold(uint32_t i)
 {
-    uint32_t t = ui.sel, j;
+    uint32_t t = ui.sl, j;
     char m[12] = "STEP ";
     fmt_int(m + 5, (int32_t)i + 1);
     if (ui.sclip.on && ui.sclip.t == t && ui.sclip.i == i) {
@@ -1511,7 +1626,7 @@ static void mute_set(uint32_t m)
     RING_PUBLISH();
     if (ses_muq && seq_run) {
         if (m != now) {
-            seq_mq_t = ui.sel;
+            seq_mq_t = ui.sl;               /* (the chosen lane's cycle) */
             RING_PUBLISH();
             seq_mq = (uint8_t)(0x80u | m);
         }
@@ -1525,6 +1640,7 @@ static void ui_input(void)
     uint32_t rel, press = fm1_input_edges(&rel), keys, ch, k, t, j;
     int32_t s, e_pre, e_sel, e_alg;
     int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u);
+    sel_sync();                                      /* (the lane chosen, as the track chosen is now) */
     (void)rel;
     pat_poll();                                      /* (a pattern switched as the sequencer took it in) */
     arp_take();                                      /* (the arpeggiator's notes recorded: build 52) */
@@ -1597,6 +1713,7 @@ static void ui_input(void)
     for (t = 0; !ui.mute_mode && t < NTRACK; t++)
         if (btn_bit(press, TRACK_BTN[t])) {
             ui.sel = (uint8_t)t;
+            sel_sync();
             if (ui.page == PG_TEMPO || ui.page == PG_SCALE || pg_any() || (ui.page == PG_FXP && !sh))   /* (the effects' pages: back to the
                                                       * track; SHIFT: they stay, COMP's sidechain the chosen track's) */
                 ui.page = PG_MAIN;
@@ -1606,7 +1723,7 @@ static void ui_input(void)
         }
     if (btn_bit(press, B_SEQ) && sh && !pg_any()) {   /* SHIFT + SEQ: the chosen track's LFOs thrown anew (build 58) */
         lfo_random(cur(), next_seed());
-        mark(ui.sel);
+        mark(ui.sl);
         say("LFO RANDOM", 900);
         ui.force = 1;
     } else if (btn_bit(press, B_SEQ)) {              /* CHORUS, COMP, DELAY, REVERB, LFO 1 .. 3, back */
@@ -1734,7 +1851,7 @@ static void ui_input(void)
     } else if (ui.page == PG_GEN) {                  /* PHRASE: KNOB 1 DENSITY, 2 COMPLEXITY */
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0 && j < 2u) {
-                uint8_t *v = j ? &ui.gen_cx[ui.sel] : &ui.gen_den[ui.sel];
+                uint8_t *v = j ? &ui.gen_cx[ui.sl] : &ui.gen_den[ui.sl];
                 *v = (uint8_t)clampi(*v + s, 0, 100);
                 pat_dirty = 1;
                 ui.touched = (int8_t)j;
@@ -1743,7 +1860,7 @@ static void ui_input(void)
     } else if (ui.page == PG_TRK) {                  /* TRACK: KNOB 1 the length, 2 the clock */
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0 && j < 2u) {
-                uint32_t t = ui.sel;
+                uint32_t t = ui.sl;                  /* (the lane: the chosen subtrack) */
                 if (j == 0u)
                     seq_len[t] = (uint8_t)clampi((seq_len[t] ? seq_len[t] : (int32_t)NSTEP) + s, 1, NSTEP);
                 else
@@ -1876,9 +1993,9 @@ static void ui_input(void)
     }
     if ((s = e_sel) != 0) {                          /* the level */
         char m[12] = "VOL ";
-        int32_t lv = clampi(ui.level[ui.sel] + s, 0, LEVEL_MAX);
-        ui.level[ui.sel] = (int8_t)lv;
-        level_pan_apply(ui.sel);
+        int32_t lv = clampi(ui.level[ui.sl] + s, 0, LEVEL_MAX);
+        ui.level[ui.sl] = (int8_t)lv;
+        level_pan_apply(ui.sl);
         prj_dirty = 1;
         if (!lv)
             str_cpy(m + 4, "OFF", 8);
@@ -1890,9 +2007,9 @@ static void ui_input(void)
     }
     if ((s = e_alg) != 0) {                          /* the pan */
         char m[12] = "PAN ";
-        int32_t pn = clampi(ui.pan[ui.sel] + s, -PAN_MAX, PAN_MAX);
-        ui.pan[ui.sel] = (int8_t)pn;
-        level_pan_apply(ui.sel);
+        int32_t pn = clampi(ui.pan[ui.sl] + s, -PAN_MAX, PAN_MAX);
+        ui.pan[ui.sl] = (int8_t)pn;
+        level_pan_apply(ui.sl);
         prj_dirty = 1;
         if (!pn)
             str_cpy(m + 4, "C", 8);
@@ -1922,20 +2039,21 @@ static void ui_input(void)
             char m[16];
             uint32_t t;
             if (sh) {
-                for (t = 0; t < NTRACK; t++)
-                    trn_track(t, d);
+                for (t = 0; t < NLANE; t++)          /* (every lane: the subtracks taken too) */
+                    if (t < NTRACK || ln_s[t])
+                        trn_track(t, d);
                 str_cpy(m, "TRN ALL ", 16);
             } else {
-                trn_track(ui.sel, d);
+                trn_track(ui.sl, d);
                 str_cpy(m, "TRN ", 16);
             }
-            trn_text(m + str_len(m), ui.trn[ui.sel]);
+            trn_text(m + str_len(m), ui.trn[ui.sl]);
             say(m, 1200);
             ui.force = 1;
         } else {
             char m[8] = "OCT  ";
-            int32_t o = clampi(ui.oct[ui.sel] + d, -3, 3);
-            ui.oct[ui.sel] = (int8_t)o;
+            int32_t o = clampi(ui.oct[ui.sl] + d, -3, 3);
+            ui.oct[ui.sl] = (int8_t)o;
             prj_dirty = 1;
             m[4] = o < 0 ? '-' : o > 0 ? '+' : ' ';
             m[5] = (char)('0' + (o < 0 ? -o : o));
@@ -1979,13 +2097,17 @@ static void ui_input(void)
         }
         if (f >= 0 && f < n && RECIPES[f].mach == m) {
             gen_sound(sn, m, f, -1, next_seed());
-            mark(ui.sel);
+            mark(ui.sl);
             ui.home_until = fm1_ms + 300u;
         }
+    } else if (s && ui.sl >= NTRACK) {               /* (a subtrack past ST-A: DRUM's, always) */
+        say("DRUM ONLY", 900);
     } else if (s) {                                  /* the machine */
         int32_t e = clampi((int32_t)ui.eng[ui.sel] + (s > 0 ? 1 : -1), 0, NENG - 1);
         if (e != ui.eng[ui.sel]) {
             ui.eng[ui.sel] = (uint8_t)e;
+            lanes_apply(ui.sel);                     /* (off DRUM: its subtracks put away, silent; back: as they were) */
+            sel_sync();
             mark(ui.sel);
             if (ui.page == PG_EDIT && ui.edit_pg >= pages_n(cur()))
                 ui.edit_pg = 0;
@@ -1994,6 +2116,42 @@ static void ui_input(void)
     }
     keys = fm1_in.notes;
     ch = keys ^ ui.keys;
+    {   /* (build 79) a DRUM track's button held and a white key 1 .. 4: its subtrack ST-A .. ST-D chosen (taken if new);
+         * SHIFT with it, one past ST-A given up. The key plays nothing */
+        uint32_t ht = NTRACK, k;
+        for (k = 0; k < NTRACK; k++)
+            if (btn_bit(fm1_in.buttons, TRACK_BTN[k]))
+                ht = k;
+        for (k = 0; ht < NTRACK && !ui.mute_mode && trk_lanes(ht) && k < NKEY; k++) {
+            int32_t w = white_ix(k);
+            char m[8] = "ST-A";
+            if (w < 0 || w >= (int32_t)NSUB || !((ch >> k) & 1u))
+                continue;
+            ch &= ~(1u << k);
+            if (!((keys >> k) & 1u))
+                continue;
+            m[3] = (char)('A' + w);
+            if (sh && w) {                       /* (SHIFT: given up) */
+                uint32_t l = lane_find(ht, (uint32_t)w);
+                if (l < NLANE) {
+                    lane_free(l);
+                    str_cpy(m + 4, " OFF", 4);
+                    prj_dirty = pat_dirty = 1;
+                }
+                say(m, 900);
+            } else if (w && lane_take(ht, (uint32_t)w) >= NLANE)
+                say("NO SUBTRACK", 1200);       /* (the NXL shared lanes all taken by DRUM tracks) */
+            else {
+                ui.sel = (uint8_t)ht;
+                ui.sub[ht] = (uint8_t)w;
+                sel_sync();
+                if (ui.page == PG_EDIT && ui.edit_pg >= pages_n(cur()))
+                    ui.edit_pg = 0;
+                say(m, 900);
+            }
+            ui.force = 1;
+        }
+    }
     /* BREAK: the 3rd black key held (the step view off; on the PATTERNS grid too, build 64), the chosen track broken
      * up (tracks.c); SHIFT and it, every track. Let go, each plays on from where it is */
     if (!ui.brk && ((ch & keys) >> KEY_TRIG & 1u) && (!step_view() || ui.page == PG_PAT) && !ui.lrec_down) {
@@ -2127,9 +2285,9 @@ static void ui_input(void)
             ui.gen_down = 0;
             if (!ui.gen_long && step_view()) {
                 if (ui.gen_sh)
-                    phrase_relock(ui.sel);
+                    phrase_relock(ui.sl);
                 else
-                    phrase_new(ui.sel);
+                    phrase_new(ui.sl);
                 ui.gen_until = fm1_ms + 400u;
                 flash("NEW", ui.gen_sh ? "LOCKS" : "PHRASE", TRACK_COL[ui.sel]);
             }
@@ -2166,7 +2324,7 @@ static void ui_input(void)
     if (((ch & keys) >> KEY_STEP & 1u) && sh) {      /* SHIFT + STEP: the chosen track's steps emptied (the view kept) */
         if (ui.step_key != KEY_NONE)
             step_up();
-        steps_clear(ui.sel);
+        steps_clear(ui.sl);
         say("STEPS CLEARED", 1200);
         ui.force = 1;
     } else if ((ch & keys) >> KEY_STEP & 1u) {       /* STEP: the step view on or off */
@@ -2248,15 +2406,15 @@ static void ui_input(void)
         if (((ch & keys) >> k & 1u) && step_view() && (k == KEY_DIR[0] || k == KEY_DIR[1] || k == KEY_DIR[2])) {
             uint32_t d = k == KEY_DIR[0] ? DIR_REV : k == KEY_DIR[1] ? DIR_PING : DIR_RND;   /* (the track's direction;
                                                                                          * again: forward) */
-            seq_dir[ui.sel] = (uint8_t)(seq_dir[ui.sel] == d ? DIR_FWD : d);
+            seq_dir[ui.sl] = (uint8_t)(seq_dir[ui.sl] == d ? DIR_FWD : d);
             pat_dirty = 1;
-            say(DIR_NAME[seq_dir[ui.sel]], 900);
+            say(DIR_NAME[seq_dir[ui.sl]], 900);
             continue;
         }
         if (!((ch >> k) & 1u) || !key_plays(k))
             continue;
         if ((keys >> k) & 1u) {
-            uint32_t note = key_note(k, ui.oct[ui.sel]);
+            uint32_t note = key_note(k, ui.oct[ui.sl]);
             ui.key_track[k] = KEY_NONE;
             if (step_view()) {                       /* the step view: the white keys are the steps (SHIFT: copy, paste) */
                 if (white_ix(k) >= 0 && sh && ui.sk == KEY_NONE) {
@@ -2273,15 +2431,15 @@ static void ui_input(void)
                 int32_t c[3] = {(int32_t)note, 0, 0};
                 if (f1)
                     chord_of((int32_t)note, f1 - 1u, c);
-                ui.key_track[k] = ui.sel;
+                ui.key_track[k] = ui.sl;          /* (the lane: the track's subtrack chosen) */
                 ui.key_note[k] = (uint8_t)note;
-                ui.last_note[ui.sel] = (uint8_t)note;
-                ui.last_chf[ui.sel] = (uint8_t)f1;
+                ui.last_note[ui.sl] = (uint8_t)note;
+                ui.last_chf[ui.sl] = (uint8_t)f1;
                 ui.key_cn[k][0] = ui.key_cn[k][1] = ui.key_cn[k][2] = 0;
                 ui.key_arp[k] = arp_on[ui.sel];  /* (the arpeggiator on: the notes its, what it plays recorded) */
                 for (j = 0; j < nn; j++) {
                     ui.key_cn[k][j] = (uint8_t)c[j];
-                    ev_post(ui.key_arp[k] ? EV_ARP_ON : EV_ON, ui.sel, (uint32_t)c[j], 127);
+                    ev_post(ui.key_arp[k] ? EV_ARP_ON : EV_ON, ui.sl, (uint32_t)c[j], 127);
                 }
                 if (!ui.key_arp[k]) {
                     rec_note(note, 127, k, f1);  /* (a step holds the chord as its root and form) */
@@ -2318,7 +2476,8 @@ static void led_dim_key(uint32_t id, int on)
 }
 static void ui_leds(void)
 {
-    uint32_t t, k;
+    uint32_t t, k, ht;
+    sel_sync();
     for (t = 0; t < NTRACK; t++) {
         if (ui.mute_mode) {                          /* (MUTE mode: playing lit, muted dim) */
             uint32_t mu = trk_mute[t] != 0;
@@ -2329,18 +2488,30 @@ static void ui_leds(void)
             continue;
         }
         fm1_led_key(PANEL_BTN[TRACK_BTN[t]], t == ui.sel);
-        led_dim_key(PANEL_BTN[TRACK_BTN[t]], track_sounding(t));
+        led_dim_key(PANEL_BTN[TRACK_BTN[t]], trk_sounding(t));
     }
     fm1_led_key(PANEL_BTN[B_HOME], (int32_t)(ui.home_until - fm1_ms) > 0);
     fm1_led_key(PANEL_BTN[B_SEQ], ui.page == PG_FXP && !fx_arp());
     fm1_led_key(PANEL_BTN[B_ARP], ui.page == PG_SCALE);
     fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD || ui.page == PG_SET || ui.page == PG_PAT);
-    fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || (step_view() ? ui.trn[ui.sel] < 0 : ui.oct[ui.sel] < 0));
-    fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || (step_view() ? ui.trn[ui.sel] > 0 : ui.oct[ui.sel] > 0));
+    fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || (step_view() ? ui.trn[ui.sl] < 0 : ui.oct[ui.sl] < 0));
+    fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || (step_view() ? ui.trn[ui.sl] > 0 : ui.oct[ui.sl] > 0));
     fm1_led_key(PANEL_BTN[B_REC], ui.rec == REC_ON || ui.lrec == 2 ||
                                       ((ui.rec == REC_ARMED || ui.lrec == 1) && (fm1_ms / 250u) & 1u));
-    fm1_led_key(PANEL_BTN[B_PLAY], seq_run && (seq_pos[ui.sel] & 3u) == 0u);   /* (the beat, while it plays) */
+    fm1_led_key(PANEL_BTN[B_PLAY], seq_run && (seq_pos[ui.sl] & 3u) == 0u);   /* (the beat, while it plays) */
+    ht = NTRACK;                                 /* (build 79) a DRUM track's button held: its subtracks on white keys
+                                                  * 1 .. 4 (the chosen lit; ST-A and the ones taken dim), the others dark */
+    for (t = 0; t < NTRACK; t++)
+        if (btn_bit(fm1_in.buttons, TRACK_BTN[t]) && !ui.mute_mode && trk_lanes(t))
+            ht = t;
     for (k = 0; k < NKEY; k++) {
+        if (ht < NTRACK && k != KEY_SHIFT) {
+            int32_t w = white_ix(k);
+            int in = w >= 0 && w < (int32_t)NSUB;
+            fm1_led_key(14u + k, in && (uint32_t)w == ui.sub[ht]);
+            led_dim_key(14u + k, in && (!w || lane_find(ht, (uint32_t)w) < NLANE));
+            continue;
+        }
         if (ui.lrec_down && white_ix(k) >= 0) {      /* (the loops: playing lit, muted dim) */
             int32_t w = white_ix(k);
             const loop_t *p = w < (int32_t)NLOOP ? lp_get(ui.sel, (uint32_t)w) : 0;
@@ -2400,7 +2571,7 @@ static void ui_leds(void)
         if (step_view() && (k == KEY_DIR[0] || k == KEY_DIR[1] || k == KEY_DIR[2])) {   /* (the directions: the one
                                                                                      * the track goes lit) */
             uint32_t d = k == KEY_DIR[0] ? DIR_REV : k == KEY_DIR[1] ? DIR_PING : DIR_RND;
-            fm1_led_key(14u + k, seq_dir[ui.sel] == d);
+            fm1_led_key(14u + k, seq_dir[ui.sl] == d);
             led_dim_key(14u + k, 1);
             continue;
         }
@@ -2411,9 +2582,9 @@ static void ui_leds(void)
         }
         if (step_view() && white_ix(k) >= 0) {       /* (the step view: with a note lit, empty dim, the one playing
                                                       * the other way round; past the track's length, dark) */
-            uint32_t i = (uint32_t)white_ix(k), len = seq_len[ui.sel] ? seq_len[ui.sel] : NSTEP;
-            int on = seq_note[ui.sel][i] != 0;
-            if (seq_run && seq_pos[ui.sel] == i)
+            uint32_t i = (uint32_t)white_ix(k), len = seq_len[ui.sl] ? seq_len[ui.sl] : NSTEP;
+            int on = seq_note[ui.sl][i] != 0;
+            if (seq_run && seq_pos[ui.sl] == i)
                 on = !on;
             if (ui.sclip.on && ui.sclip.t == ui.sel && ui.sclip.i == i)
                 on = (fm1_ms / 250u) & 1u;           /* (the step copied: blinks) */
@@ -2423,7 +2594,7 @@ static void ui_leds(void)
         }
         led_dim_key(14u + k, key_plays(k) && (key_note(k, 0) + 120u - ui.root) % 12u == 0u);   /* (the root, dim:
                                                                                          * build 72) */
-        fm1_led_key(14u + k, key_plays(k) && ((ui.keys >> k) & 1u) && ui.key_track[k] == ui.sel);
+        fm1_led_key(14u + k, key_plays(k) && ((ui.keys >> k) & 1u) && ui.key_track[k] == ui.sl);
     }
     fm1_led_key(14u + KEY_SHIFT, (ui.keys >> KEY_SHIFT) & 1u);
     fm1_led_key(14u + KEY_STEP, ui.sv);
@@ -2488,6 +2659,12 @@ static void draw_number(void)
                 cv_text(4 + (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD
                              ? text_w(&FONT_S, CH_ABBR[ui.chord_form[ui.sel] % CHF_N]) + 8 : 0),
                         6 + FONT_S.h, &FONT_S, "ARP", TRACK_COL[ui.sel]);
+            if (trk_lanes(ui.sel)) {                 /* (build 79: a DRUM track, its subtrack, left, under the ARP:
+                                                      * ST-A .. ST-D) */
+                char st[6] = "ST-A";
+                st[3] = (char)('A' + ui.sub[ui.sel] % NSUB);
+                cv_text(4, 10 + 2 * FONT_S.h, &FONT_S, st, TRACK_COL[ui.sel]);
+            }
             if (ui.rec || ui.lrec) {                 /* (recording, right, under the transposition: REC or LOOP in
                                                       * red; armed: ARM) */
                 const char *r = ui.lrec == 2 ? "LOOP" : ui.rec == REC_ON ? "REC" : "ARM";
@@ -2497,14 +2674,14 @@ static void draw_number(void)
         }
         {
             int32_t x = draw_batt(237, 2 + ((int32_t)FONT_S.h - 10) / 2);   /* (the battery, top right; then the octave) */
-            if (ui.oct[ui.sel]) {                     /* the octave, top right: +1, -2 */
-                char o[4] = {ui.oct[ui.sel] < 0 ? '-' : '+', (char)('0' + (ui.oct[ui.sel] < 0 ? -ui.oct[ui.sel] : ui.oct[ui.sel])), 0, 0};
+            if (ui.oct[ui.sl]) {                     /* the octave, top right: +1, -2 */
+                char o[4] = {ui.oct[ui.sl] < 0 ? '-' : '+', (char)('0' + (ui.oct[ui.sl] < 0 ? -ui.oct[ui.sl] : ui.oct[ui.sl])), 0, 0};
                 x -= text_w(&FONT_S, o);
                 cv_text(x, 2, &FONT_S, o, C_WHITE);
             }
-            if (ui.trn[ui.sel]) {                     /* the track's transposition, under them, in its colour: T+2 */
+            if (ui.trn[ui.sl]) {                     /* the track's transposition, under them, in its colour: T+2 */
                 char o[8] = "T";
-                trn_text(o + 1, ui.trn[ui.sel]);
+                trn_text(o + 1, ui.trn[ui.sl]);
                 cv_text(236 - text_w(&FONT_S, o), 6 + FONT_S.h, &FONT_S, o, TRACK_COL[ui.sel]);
             }
         }
@@ -2543,7 +2720,7 @@ static int32_t meter_px(int32_t peak)
 }
 static void draw_meter(int32_t px)
 {
-    int32_t lv = ui.level[ui.sel];
+    int32_t lv = ui.level[ui.sl];
     cv_begin(240, BAND_D - BAND_M - 2, C_BLACK);
     cv_frame(METER_X - 2, 3, METER_LEN + 4, 16, 2, C_GREY);
     if (px)
@@ -2558,7 +2735,7 @@ static void draw_meter(int32_t px)
 }
 static void draw_pan(void)
 {
-    int32_t pn = ui.pan[ui.sel], x = 120 + pn * 104 / PAN_MAX;
+    int32_t pn = ui.pan[ui.sl], x = 120 + pn * 104 / PAN_MAX;
     cv_begin(240, 240 - BAND_D, C_BLACK);
     cv_rect(6, 10, 228, 4, C_GREY);
     cv_rect(6, 4, 3, 16, C_GREY);
@@ -2664,9 +2841,9 @@ static void draw_edit_page(void)
         int32_t v;
         char b[16];
         uint32_t pid = id * 8u + j + 4u * ui.half;
-        int locked = st < NSTEP && pl_find(ui.sel, st, pid) >= 0;
+        int locked = st < NSTEP && pl_find(ui.sl, st, pid) >= 0;
         par_get(s, id, j + 4u * ui.half, &p);
-        v = st < NSTEP ? pl_val(ui.sel, st, pid) : par_val(s, id, j + 4u * ui.half);
+        v = st < NSTEP ? pl_val(ui.sl, st, pid) : par_val(s, id, j + 4u * ui.half);
         if (!full && ui.shown_rows[j] == v + locked * 100000 && ((int32_t)j == t) == ((int32_t)j == ui.shown_touch))
             continue;
         par_text(&p, v, b);
@@ -2824,13 +3001,13 @@ static void cond_text(char *b, uint32_t c)
 static void draw_step_page(void)
 {
     static const char *const NAME[4] = {"NOTE", "VEL", "LEN", "COND"};
-    uint32_t t = ui.sel, i = (uint32_t)white_ix(ui.step_key), j;
+    uint32_t t = ui.sl, i = (uint32_t)white_ix(ui.step_key), j;
     int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
     int full = ui.force || ui.shown_page != SHOWN_STEP || ui.shown_sub != (ui.mod ? i + 48u : i + 16u * ui.half);
     if (full) {
         char t1[12] = "STEP ";
         fmt_int(t1 + 5, (int32_t)i + 1);
-        draw_rows_title(t1, ui.mod ? "MOD" : "TRIG", TRACK_COL[t]);   /* (its half under the title: A .. D, E .. H) */
+        draw_rows_title(t1, ui.mod ? "MOD" : "TRIG", TRACK_COL[ui.sel]);   /* (its half under the title: A .. D, E .. H) */
     }
     if (ui.mod) {                                /* MOD: MUTATE, MUT EVERY, MIDI FX, FX EVERY */
         static const char *const MN[4] = {"MUTATE", "MUT EVERY", "MIDI FX", "FX EVERY"};
@@ -2859,7 +3036,7 @@ static void draw_step_page(void)
                 fmt_int(b, v + 1);
                 fr = v * 1000 / 15;
             }
-            draw_row(j, MN[j], b, fr, bip, (int32_t)j == tc, TRACK_COL[t]);
+            draw_row(j, MN[j], b, fr, bip, (int32_t)j == tc, TRACK_COL[ui.sel]);
             ui.shown_rows[j] = v;
         }
         ui.shown_touch = (int8_t)tc;
@@ -2872,9 +3049,9 @@ static void draw_step_page(void)
             if (!full && ui.shown_rows[j] == v && ((int32_t)j == tc) == ((int32_t)j == ui.shown_touch))
                 continue;
             if (j == 0u)
-                draw_row(j, "RATCHET", RTG_NAME[v % NRTG], v * 1000 / (NRTG - 1), 0, (int32_t)j == tc, TRACK_COL[t]);
+                draw_row(j, "RATCHET", RTG_NAME[v % NRTG], v * 1000 / (NRTG - 1), 0, (int32_t)j == tc, TRACK_COL[ui.sel]);
             else
-                draw_row(j, "", "", 0, 0, 0, TRACK_COL[t]);
+                draw_row(j, "", "", 0, 0, 0, TRACK_COL[ui.sel]);
             ui.shown_rows[j] = v;
         }
         ui.shown_touch = (int8_t)tc;
@@ -2898,7 +3075,7 @@ static void draw_step_page(void)
             str_cpy(b, GLEN_NAME[v], sizeof b);
         else
             cond_text(b, (uint32_t)v);
-        draw_row(j, NAME[j], b, fr, 0, (int32_t)j == tc, TRACK_COL[t]);
+        draw_row(j, NAME[j], b, fr, 0, (int32_t)j == tc, TRACK_COL[ui.sel]);
         ui.shown_rows[j] = key;
     }
     ui.shown_touch = (int8_t)tc;
@@ -2953,15 +3130,19 @@ static void draw_scale_page(void)
 /* the PHRASE page (the phrase key held): the track's DENSITY and COMPLEXITY, as rows */
 static void draw_gen_page(void)
 {
-    uint32_t t = ui.sel, j;
+    uint32_t t = ui.sl, j;                       /* (the lane: the chosen subtrack's) */
     int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
     int full = ui.force || ui.shown_page != PG_GEN || ui.shown_sub != t;
     if (full) {
         char t1[12] = "PHRASE ";
         uint8_t h = ui.half;
-        fmt_int(t1 + 7, (int32_t)t + 1);
+        fmt_int(t1 + 7, (int32_t)ui.sel + 1);
+        if (trk_lanes(ui.sel)) {                 /* (a DRUM track: its subtrack, 1B) */
+            t1[8] = (char)('A' + ui.sub[ui.sel] % NSUB);
+            t1[9] = 0;
+        }
         ui.half = 0;
-        draw_rows_title(t1, "", TRACK_COL[t]);
+        draw_rows_title(t1, "", TRACK_COL[ui.sel]);
         ui.half = h;
     }
     for (j = 0; j < 4u; j++) {
@@ -2971,9 +3152,9 @@ static void draw_gen_page(void)
             continue;
         fmt_int(b, v);
         if (j < 2u)
-            draw_row(j, j ? "COMPLEXITY" : "DENSITY", b, v * 10, 0, (int32_t)j == tc, TRACK_COL[t]);
+            draw_row(j, j ? "COMPLEXITY" : "DENSITY", b, v * 10, 0, (int32_t)j == tc, TRACK_COL[ui.sel]);
         else
-            draw_row(j, "", "", 0, 0, 0, TRACK_COL[t]);
+            draw_row(j, "", "", 0, 0, 0, TRACK_COL[ui.sel]);
         ui.shown_rows[j] = v;
     }
     ui.shown_touch = (int8_t)tc;
@@ -2983,15 +3164,19 @@ static void draw_gen_page(void)
 /* the TRACK page (the step view's 2nd black key): the track's LENGTH and CLOCK, as rows */
 static void draw_trk_page(void)
 {
-    uint32_t t = ui.sel, j;
+    uint32_t t = ui.sl, j;                       /* (the lane: the chosen subtrack's) */
     int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1;
     int full = ui.force || ui.shown_page != PG_TRK || ui.shown_sub != t;
     if (full) {
         char t1[12] = "TRACK ";
         uint8_t h = ui.half;
-        fmt_int(t1 + 6, (int32_t)t + 1);
+        fmt_int(t1 + 6, (int32_t)ui.sel + 1);
+        if (trk_lanes(ui.sel)) {                 /* (a DRUM track: its subtrack, 1B) */
+            t1[7] = (char)('A' + ui.sub[ui.sel] % NSUB);
+            t1[8] = 0;
+        }
         ui.half = 0;
-        draw_rows_title(t1, "", TRACK_COL[t]);
+        draw_rows_title(t1, "", TRACK_COL[ui.sel]);
         ui.half = h;
     }
     for (j = 0; j < 4u; j++) {
@@ -3001,12 +3186,12 @@ static void draw_trk_page(void)
             continue;
         if (j == 0u) {
             fmt_int(b, v);
-            draw_row(j, "LENGTH", b, (v - 1) * 1000 / 15, 0, (int32_t)j == tc, TRACK_COL[t]);
+            draw_row(j, "LENGTH", b, (v - 1) * 1000 / 15, 0, (int32_t)j == tc, TRACK_COL[ui.sel]);
         } else if (j == 1u)                      /* (bipolar: 1X in the middle) */
             draw_row(j, "CLOCK", DIV_NAME[v % NDIV], v <= (int32_t)SEQ_DIV1 ? v * 500 / (int32_t)SEQ_DIV1
-                     : 500 + (v - (int32_t)SEQ_DIV1) * 500 / (int32_t)(NDIV - 1u - SEQ_DIV1), 1, (int32_t)j == tc, TRACK_COL[t]);
+                     : 500 + (v - (int32_t)SEQ_DIV1) * 500 / (int32_t)(NDIV - 1u - SEQ_DIV1), 1, (int32_t)j == tc, TRACK_COL[ui.sel]);
         else
-            draw_row(j, "", "", 0, 0, 0, TRACK_COL[t]);
+            draw_row(j, "", "", 0, 0, 0, TRACK_COL[ui.sel]);
         ui.shown_rows[j] = v;
     }
     ui.shown_touch = (int8_t)tc;
@@ -3027,7 +3212,7 @@ static void dial_at(uint32_t a, int32_t r, int32_t *x, int32_t *y)
 static int32_t dial_key(void)                    /* (what the dial shows, folded into one number) */
 {
     if (ui.dial_lk)
-        return pl_val(ui.sel, ui.dial_step, ui.dial_lk - 1u) + ui.dial_lk * 1024 + ui.dial_step * 131072 + (1 << 24);
+        return pl_val(ui.sl, ui.dial_step, ui.dial_lk - 1u) + ui.dial_lk * 1024 + ui.dial_step * 131072 + (1 << 24);
     return par_val(cur(), ui.dial_pg, ui.dial_j) + ui.dial_pg * 1024 + ui.dial_j * 8192;
 }
 static void draw_dial(void)
@@ -3043,7 +3228,7 @@ static void draw_dial(void)
     if (ui.dial_lk) {                                /* a step's lock: REVERB S5 */
         uint32_t id = ui.dial_lk - 1u;
         pl_par(s, id, &p);
-        v = pl_val(ui.sel, ui.dial_step, id);
+        v = pl_val(ui.sl, ui.dial_step, id);
         str_cpy(t, p.name, sizeof t - 4);
         str_cpy(t + str_len(t), " S", 3);
         fmt_int(t + str_len(t), ui.dial_step + 1);
@@ -3128,8 +3313,11 @@ static int draw_flash(void)
 
 static void ui_draw(void)
 {
-    int msg = (int32_t)(ui.msg_until - fm1_ms) > 0;
-    const char *c = msg ? ui.msg : family_name(cur());
+    int msg;
+    const char *c;
+    sel_sync();
+    msg = (int32_t)(ui.msg_until - fm1_ms) > 0;
+    c = msg ? ui.msg : family_name(cur());
     char cp[12] = "COPY S";
     if (ui.sclip.on && step_view() && !msg) {        /* (a step copied: shown, blinking, until it is pasted) */
         fmt_int(cp + 6, ui.sclip.i + 1);
@@ -3220,15 +3408,15 @@ static void ui_draw(void)
     {
         int32_t pk = pat_cur * 32 + pat_dirty * 16 + ui.rec * 4 + ui.lrec +
                      (seq_pend == 1u ? 1024 + (int32_t)((fm1_ms / 300u) & 1u) * 2048 : 0) +
-                     (ui.oct[ui.sel] + 3) * 4096 +
+                     (ui.oct[ui.sl] + 3) * 4096 +
                      (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD ? (ui.chord_form[ui.sel] + 1) * 32768 : 0) +
-                     trk_mute[ui.sel] * (1 << 20) + (ui.trn[ui.sel] + 64) * (1 << 21) + arp_on[ui.sel] * (1 << 28);   /* (the
+                     trk_mute[ui.sel] * (1 << 20) + (ui.trn[ui.sl] + 64) * (1 << 21) + arp_on[ui.sel] * (1 << 28);   /* (the
                                                       * octave and the chord shown: drawn again as they change) */
-        if (ui.force || ui.shown_sel != ui.sel || ui.shown_prj != pk || ui.shown_batt != batt_key()) {
+        if (ui.force || ui.shown_sel != (int32_t)(ui.sel + 16u * ui.sl) || ui.shown_prj != pk || ui.shown_batt != batt_key()) {
             ui.shown_prj = pk;
             ui.shown_batt = batt_key();
             draw_number();
-            ui.shown_sel = ui.sel;
+            ui.shown_sel = (int32_t)(ui.sel + 16u * ui.sl);   /* (the track and its subtrack) */
             ui.shown_eng = ui.shown_msg = ui.shown_pan = ui.shown_level = -100;
         }
     }
@@ -3242,12 +3430,12 @@ static void ui_draw(void)
         str_cpy(ui.shown_text, c, sizeof ui.shown_text);
         ui.shown_msg = msg;
     }
-    px = meter_px(trk[ui.sel].meter);
-    if (ui.shown_level != ui.level[ui.sel] || ((uint32_t)(fm1_ms - ui.meter_at) >= 30u && px != ui.shown_meter)) {
+    px = meter_px(trk[ui.sl].meter);
+    if (ui.shown_level != ui.level[ui.sl] || ((uint32_t)(fm1_ms - ui.meter_at) >= 30u && px != ui.shown_meter)) {
         draw_meter(px);
         ui.meter_at = fm1_ms;
     }
-    if (ui.shown_pan != ui.pan[ui.sel])
+    if (ui.shown_pan != ui.pan[ui.sl])
         draw_pan();
     ui.force = 0;
 }
@@ -3282,6 +3470,14 @@ static void ui_init(void)
         ui.pan[t] = PAN_DEF[t];
         level_pan_apply(t);
         ck_cook(&ck_buf[t][0], &ui.snd[t][ui.eng[t]]);
+        ck_buf[t][1] = ck_buf[t][0];
+        ck_pub[t] = ck_use[t] = 0;
+    }
+    for (t = NTRACK; t < NLANE; t++) {           /* (the shared lanes: free, a drum sound each, at unity) */
+        gen_sound(&ui_lsnd[t - NTRACK], ENG_FMD, -1, -1, next_seed());
+        ui.level[t] = LEVEL_UNITY;
+        level_pan_apply(t);
+        ck_cook(&ck_buf[t][0], &ui_lsnd[t - NTRACK]);
         ck_buf[t][1] = ck_buf[t][0];
         ck_pub[t] = ck_use[t] = 0;
     }

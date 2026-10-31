@@ -15,7 +15,7 @@
  *             pattern turned by slices
  * Both cost a few operations a sample; neither needs memory beyond a few words a track. */
 
-#define MG_TRACKS 6u             /* (NTRACK: tracks.c) */
+#define MG_TRACKS 9u             /* (NLANE: tracks.c -- a lane mangled as a track) */
 
 typedef struct {
     int32_t g;                   /* the gate's level as it moves, Q15 */

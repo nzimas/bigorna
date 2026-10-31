@@ -92,6 +92,11 @@ typedef struct {
     uint8_t arp_on[NTRACK];      /* each track's arpeggiator on (from build 52: before, PRJ_LEN50) .. */
     uint8_t arp[NTRACK][NARP];   /* .. and its settings (tracks.c's AR_*) */
     uint8_t muq;                 /* MUTE QT (build 78: in the padding at the end, saved as 0 before -- NO) */
+    uint8_t ln_t[NXL], ln_s[NXL];   /* (build 79: before, PRJ_LEN78) the shared lanes: each one's track and subtrack
+                                  * (0: free) .. */
+    uint8_t sub[NTRACK];         /* .. each track's subtrack chosen .. */
+    int8_t loct[NXL], llevel[NXL], lpan[NXL];   /* .. each lane's octave, level and pan .. */
+    sound_t lsnd[NXL];           /* .. and its sound */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body49_t, cp)   /* (the lengths builds 18 .. 49 saved: the sound without LFOs) */
 #define PRJ_LEN28 __builtin_offsetof(prj_body49_t, sc_src)
@@ -100,8 +105,10 @@ typedef struct {
 #define PRJ_LEN49 sizeof(prj_body49_t)
 #define PRJ_LEN50 __builtin_offsetof(prj_body_t, arp_on)   /* (builds 50 and 51: the sounds with LFOs, no arpeggiator) */
 typedef char prj_len50[PRJ_LEN50 % 4u == 0u ? 1 : -1];   /* (their size as saved: no padding after loop_gen) */
-typedef char prj_len77[sizeof(prj_body_t) == ((PRJ_LEN50 + NTRACK * (1u + NARP) + 3u) & ~3u) ? 1 : -1];   /* (MUTE QT
-                                                  * took a byte of the padding: the size builds 52 .. 77 saved) */
+#define PRJ_LEN78 ((__builtin_offsetof(prj_body_t, muq) + 1u + 3u) & ~3u)   /* (builds 52 .. 78: no subtracks) */
+typedef char prj_len78[PRJ_LEN78 == ((PRJ_LEN50 + NTRACK * (1u + NARP) + 3u) & ~3u) &&
+                       __builtin_offsetof(prj_body_t, ln_t) <= PRJ_LEN78 ? 1 : -1];   /* (MUTE QT took a byte of the
+                                                  * padding: the size builds 52 .. 78 saved) */
 /* (builds 35 .. 37: the body ended at mute, and its size -- what they saved -- was rounded up to the struct's
  * alignment, 4: two bytes of padding past mute. Build 38 took the unrounded length and found none of their sessions
  * (build 40)) */
@@ -167,6 +174,12 @@ typedef struct {
                                   * every pattern before: pat_encode clears them) */
 #define SEQ_REC4 32u
 #define SEQ_NREC 7u
+/* (build 79) the subtracks: a shared lane x's steps at the places 96 + 16 x + i; first, before any step, a record for
+ * each lane taken (SEQ_LANE): 0xFE, x, its track | subtrack << 4, its length | clock, direction, DENSITY, COMPLEXITY,
+ * transposition. A pattern read where the lane is not that track's subtrack leaves its steps out */
+#define SEQ_XPL (NTRACK * NSTEP)
+#define SEQ_LANE 0xFEu
+#define SEQ_LANE_N 8u
 #define SEQ_REC 8u
 #define PAT_SEQ_ROOM 676u
 /* (build 62) the tracks' state as the pattern was saved, at the end of seq (the records end before it, so that an
@@ -306,22 +319,26 @@ static void prj_from17(void)
 /* sector s of project k into prj_buf; 0 if it is whole (a session saved by an earlier build: made one of now) */
 static int prj_read(uint32_t k, uint32_t s)
 {
-    static const uint16_t OLD[8] = {sizeof(prj_body17_t), PRJ_LEN23, PRJ_LEN28, PRJ_LEN32, PRJ_LEN34, PRJ_LEN37,
-                                    PRJ_LEN49, PRJ_LEN50};
+    static const uint16_t OLD[9] = {sizeof(prj_body17_t), PRJ_LEN23, PRJ_LEN28, PRJ_LEN32, PRJ_LEN34, PRJ_LEN37,
+                                    PRJ_LEN49, PRJ_LEN50, PRJ_LEN78};
     uint32_t magic = s ? PAT_MAGIC : PRJ_MAGIC, len = s ? PAT_PER * sizeof(pat_t) : sizeof(prj_body_t), i;
     const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
     if (!prj_ok || k >= PRJ_SLOTS || prj_flash_read(prj_sector(k, s), prj_buf, sizeof(prj_head_t) + len))
         return -1;
-    for (i = 0; !s && i < 8u; i++)
+    for (i = 0; !s && i < 9u; i++)
         if (prj_head_ok(h, magic, k * 16u, OLD[i]) && h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), OLD[i])) {
+            uint8_t *body = prj_buf + sizeof(prj_head_t);
             if (i == 0u)
                 prj_from17();
             else if (OLD[i] == PRJ_LEN50) {      /* (builds 50, 51: as now, the arpeggiators added) */
-                prj_ar0((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
+                prj_ar0((prj_body_t *)(void *)body);
                 prj_head_fill(PRJ_MAGIC, h->what, sizeof(prj_body_t));
-            }
+            } else if (OLD[i] == PRJ_LEN78)      /* (builds 52 .. 78: as now, no subtracks) */
+                prj_head_fill(PRJ_MAGIC, h->what, sizeof(prj_body_t));
             else
                 prj_up(OLD[i]);
+            memset(body + PRJ_LEN78, 0, sizeof(prj_body_t) - PRJ_LEN78);   /* (before build 79: no subtracks) */
+            prj_head_fill(PRJ_MAGIC, h->what, sizeof(prj_body_t));
             return 0;
         }
     if (!prj_head_ok(h, magic, k * 16u + s, len) || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
@@ -694,9 +711,11 @@ static void prj_scan(int flash_ok)
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN34) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN37) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49) ||
-                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN50));
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN50) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN78));
             if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)) ||
-                prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN50))   /* (its loops' generation: builds 50 on, here) */
+                prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN50) ||
+                prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN78))   /* (its loops' generation: builds 50 on, here) */
                 prj_flash_read(prj_sector(k, 0) + sizeof h + __builtin_offsetof(prj_body_t, loop_gen), &prj_lgen[k], 4u);
             else if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49))   /* (builds 38 .. 49: at their place -- else their
                                                   * loops' sectors would count as free; build 50) */
@@ -736,11 +755,16 @@ static uint32_t pl_n(uint32_t t, uint32_t i)    /* step i of track t: its locks 
 static uint32_t pat_bytes(void)
 {
     uint32_t t, i, n = SEQ_REC4;
-    for (t = 0; t < NTRACK; t++)
+    for (t = 0; t < NLANE; t++) {                /* (each lane: a subtrack's too, and its record) */
+        if (t >= NTRACK && !ln_s[t])
+            continue;
+        if (t >= NTRACK)
+            n += SEQ_LANE_N;
         for (i = 0; i < NSTEP; i++)
             if (seq_note[t][i])
                 n += 6u + 3u * pl_n(t, i) + (seq_mut[t][i] || seq_mcy[t][i] || seq_mfx[t][i] || seq_fcy[t][i] ? 3u : 0u) +
                      (seq_chf[t][i] ? 1u : 0u);
+    }
     return n;
 }
 static int mod_on(const seqbuf_t *b, uint32_t t, uint32_t i)
@@ -792,6 +816,7 @@ static void px_give(const uint8_t *x)
         if (e < NENG && e != ui.eng[t]) {
             ui.eng[t] = (uint8_t)e;
             ui.dirty[t] = 1;                     /* (its sound on that machine published) */
+            lanes_apply(t);                      /* (its subtracks with it: on DRUM, or put away) */
         }
         ui.oct[t] = (int8_t)clampi(o, -3, 3);
         if (lv != ui.level[t] || pn != ui.pan[t]) {
@@ -881,7 +906,7 @@ static void px_note(void)
  * (build 72: before, the tracks in order -- a track locked on every step left the tracks after it without steps) */
 static void pat_encode(pat_t *p, const seqbuf_t *b)
 {
-    static uint8_t md[NTRACK][NSTEP], ch[NTRACK][NSTEP], nl[NTRACK][NSTEP];
+    static uint8_t md[NLANE][NSTEP], ch[NLANE][NSTEP], nl[NLANE][NSTEP], ok[NLANE][NSTEP];
     uint32_t t, i, r, more, o = SEQ_REC4, n = 0, room = SEQ_PX - SEQ_REC4;
     memset(p, 0, sizeof *p);
     p->used = 1;
@@ -896,41 +921,59 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
     memset(md, 0, sizeof md);
     memset(ch, 0, sizeof ch);
     memset(nl, 0, sizeof nl);
-    for (t = 0; t < NTRACK; t++)
+    memset(ok, 0, sizeof ok);
+    for (t = NTRACK; t < NLANE; t++)             /* (build 79) the subtracks' records first, before any step */
+        if (ln_s[t] && room >= SEQ_LANE_N) {
+            p->seq[o++] = SEQ_LANE;
+            p->seq[o++] = (uint8_t)(t - NTRACK);
+            p->seq[o++] = (uint8_t)(ln_t[t] | ln_s[t] << 4);
+            p->seq[o++] = (uint8_t)(b->len[t] | ((b->div[t] + SEQ_DIV1) % NDIV) << 5);
+            p->seq[o++] = b->dir[t];
+            p->seq[o++] = b->den[t];
+            p->seq[o++] = b->cx[t];
+            p->seq[o++] = (uint8_t)b->trn[t];
+            room -= SEQ_LANE_N;
+            n++;
+        }
+    for (t = 0; t < NLANE; t++)                  /* (every note that fits: the tracks' own first, then the subtracks') */
         for (i = 0; i < NSTEP; i++)
-            if (b->note[t][i])
+            if (b->note[t][i] && (t < NTRACK || ln_s[t]) && room >= 6u) {
+                ok[t][i] = 1;
                 room -= 6u;
-    for (t = 0; t < NTRACK; t++)
+            }
+    for (t = 0; t < NLANE; t++)
         for (i = 0; i < NSTEP; i++)
-            if (b->note[t][i] && b->chf[t][i] && room >= 1u) {
+            if (ok[t][i] && b->chf[t][i] && room >= 1u) {
                 ch[t][i] = 1;
                 room -= 1u;
             }
-    for (t = 0; t < NTRACK; t++)
+    for (t = 0; t < NLANE; t++)
         for (i = 0; i < NSTEP; i++)
-            if (b->note[t][i] && mod_on(b, t, i) && room >= 3u) {
+            if (ok[t][i] && mod_on(b, t, i) && room >= 3u) {
                 md[t][i] = 1;
                 room -= 3u;
             }
     for (r = 0, more = 1; more && room >= 3u; r++)
-        for (t = 0, more = 0; t < NTRACK; t++)
+        for (t = 0, more = 0; t < NLANE; t++)
             for (i = 0; i < NSTEP; i++)
-                if (b->note[t][i] && pl_nb(b, t, i) > r && room >= 3u) {
+                if (ok[t][i] && pl_nb(b, t, i) > r && room >= 3u) {
                     nl[t][i]++;
                     room -= 3u;
                     more = 1;
                 }
-    for (t = 0; t < NTRACK; t++) {
-        p->seq[SEQ_LEN + t] = (uint8_t)(b->len[t] | ((b->div[t] + SEQ_DIV1) % NDIV) << 5);
-        p->seq[SEQ_DIR + t] = b->dir[t];
-        p->seq[SEQ_DEN + t] = b->den[t];
-        p->seq[SEQ_CX + t] = b->cx[t];
-        p->seq[SEQ_TRN + t] = (uint8_t)b->trn[t];
+    for (t = 0; t < NLANE; t++) {
+        if (t < NTRACK) {
+            p->seq[SEQ_LEN + t] = (uint8_t)(b->len[t] | ((b->div[t] + SEQ_DIV1) % NDIV) << 5);
+            p->seq[SEQ_DIR + t] = b->dir[t];
+            p->seq[SEQ_DEN + t] = b->den[t];
+            p->seq[SEQ_CX + t] = b->cx[t];
+            p->seq[SEQ_TRN + t] = (uint8_t)b->trn[t];
+        }
         for (i = 0; i < NSTEP; i++) {
             uint32_t j, at;
-            if (!b->note[t][i])
+            if (!ok[t][i])
                 continue;
-            p->seq[o++] = (uint8_t)(t * NSTEP + i);
+            p->seq[o++] = (uint8_t)(t < NTRACK ? t * NSTEP + i : SEQ_XPL + (t - NTRACK) * NSTEP + i);
             p->seq[o++] = b->note[t][i];
             p->seq[o++] = b->vel[t][i];
             p->seq[o++] = (uint8_t)(b->glen[t][i] | b->rtg[t][i] << 4);
@@ -963,16 +1006,33 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
     }
     p->seq[SEQ_NREC] = (uint8_t)n;
 }
-static seqbuf_t sb_tmp;                           /* (the main loop's) */
+/* (build 79) the main loop's scratch steps, in one of the pattern switch's two buffers: sb_next, unless a pattern waits
+ * in it -- then sb_old, the sequencer held from taking the pattern in (sb_lock) until the scratch is done with */
+static seqbuf_t *sb_scratch(void)
+{
+    if (seq_pend == 2u)                          /* (a pattern just taken in: its switch finished first -- both buffers
+                                                  * hold what it needs) */
+        pat_poll();
+    sb_lock = 1;
+    RING_PUBLISH();
+    return seq_pend == 1u ? &sb_old : &sb_next;
+}
+static void sb_done(void)
+{
+    RING_PUBLISH();
+    sb_lock = 0;
+}
 static uint8_t pat_dirtyv[PAT_SLOTS];             /* a pattern changed since saved (kept in the store, not the flash) */
 static uint8_t seq_pend_k;                        /* (the pattern waiting) */
 static void pat_take(pat_t *p)                   /* the pattern playing, as a pattern */
 {
-    seq_copy_out(&sb_tmp);
-    memcpy(sb_tmp.den, ui.gen_den, NTRACK);
-    memcpy(sb_tmp.cx, ui.gen_cx, NTRACK);
-    memcpy(sb_tmp.trn, ui.trn, NTRACK);
-    pat_encode(p, &sb_tmp);
+    seqbuf_t *s = sb_scratch();
+    seq_copy_out(s);
+    memcpy(s->den, ui.gen_den, NLANE);
+    memcpy(s->cx, ui.gen_cx, NLANE);
+    memcpy(s->trn, ui.trn, NLANE);
+    pat_encode(p, s);
+    sb_done();
 }
 /* a pattern as steps, into b (empty: none) */
 static void pat_decode(const pat_t *p, seqbuf_t *b)
@@ -998,37 +1058,66 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
         b->cx[t] = (uint8_t)(v4 && p->seq[SEQ_CX + t] <= 100u ? p->seq[SEQ_CX + t] : 50u);
         b->trn[t] = (int8_t)(v4 ? clampi((int8_t)p->seq[SEQ_TRN + t], -TRN_MAX, TRN_MAX) : 0);
     }
+    for (t = NTRACK; t < NLANE; t++) {           /* (the subtracks: as at the start, unless the pattern has theirs) */
+        b->len[t] = 0;
+        b->div[t] = SEQ_DIV1;
+        b->dir[t] = DIR_FWD;
+        b->den[t] = b->cx[t] = 50;
+        b->trn[t] = 0;
+    }
     if (p->used && (p->seq[SEQ_FMT] == SEQ_V3 || p->seq[SEQ_FMT] == SEQ_V4)) {
-        uint32_t v4 = p->seq[SEQ_FMT] == SEQ_V4, o = v4 ? SEQ_REC4 : SEQ_REC, r;
+        uint32_t v4 = p->seq[SEQ_FMT] == SEQ_V4, o = v4 ? SEQ_REC4 : SEQ_REC, r, mine = 0;
         for (r = 0; r < p->seq[SEQ_NREC] && o + 6u <= PAT_SEQ_ROOM; r++) {
-            uint32_t id = p->seq[o], nl = p->seq[o + 5u] & 63u, md = p->seq[o + 5u] >> 7, ch = p->seq[o + 5u] >> 6 & 1u, l;
-            if (id >= NTRACK * NSTEP)
+            uint32_t id = p->seq[o], nl = p->seq[o + 5u] & 63u, md = p->seq[o + 5u] >> 7, ch = p->seq[o + 5u] >> 6 & 1u, l, keep;
+            if (id == SEQ_LANE && v4 && o + SEQ_LANE_N <= PAT_SEQ_ROOM) {   /* (build 79: a subtrack's record) */
+                uint32_t x = p->seq[o + 1u], w = p->seq[o + 2u], bb = p->seq[o + 3u], c = bb >> 5;
+                o += SEQ_LANE_N;
+                if (x >= NXL)
+                    continue;
+                t = NTRACK + x;
+                if (!ln_s[t] || ln_t[t] != (w & 15u) || ln_s[t] != (w >> 4))   /* (not that track's subtrack here) */
+                    continue;
+                mine |= 1u << x;
+                b->len[t] = (uint8_t)((bb & 31u) <= NSTEP ? bb & 31u : 0u);
+                b->div[t] = (uint8_t)(c < NDIV ? (c + SEQ_DIV1) % NDIV : SEQ_DIV1);
+                b->dir[t] = (uint8_t)(p->seq[o - 4u] < NDIR ? p->seq[o - 4u] : DIR_FWD);
+                b->den[t] = (uint8_t)(p->seq[o - 3u] <= 100u ? p->seq[o - 3u] : 50u);
+                b->cx[t] = (uint8_t)(p->seq[o - 2u] <= 100u ? p->seq[o - 2u] : 50u);
+                b->trn[t] = (int8_t)clampi((int8_t)p->seq[o - 1u], -TRN_MAX, TRN_MAX);
+                continue;
+            }
+            if (id >= SEQ_XPL + NXL * NSTEP)
                 break;
-            t = id / NSTEP;
+            t = id < SEQ_XPL ? id / NSTEP : NTRACK + (id - SEQ_XPL) / NSTEP;
             i = id % NSTEP;
-            b->vel[t][i] = (uint8_t)clampi(p->seq[o + 2u], 1, 127);
-            {
+            keep = t < NTRACK || (mine >> (t - NTRACK) & 1u);   /* (a subtrack's steps not this track's here: read
+                                                  * past) */
+            if (keep) {
                 uint32_t g = v4 ? p->seq[o + 3u] & 15u : p->seq[o + 3u], rt = v4 ? p->seq[o + 3u] >> 4 : 0u;
+                b->vel[t][i] = (uint8_t)clampi(p->seq[o + 2u], 1, 127);
                 b->glen[t][i] = (uint8_t)(g < NGLEN ? g : GLEN_DEF);
                 b->rtg[t][i] = (uint8_t)(rt < NRTG ? rt : 0u);
+                b->cond[t][i] = (uint8_t)(p->seq[o + 4u] < NCOND ? p->seq[o + 4u] : CD_NONE);
+                b->note[t][i] = p->seq[o + 1u];
             }
-            b->cond[t][i] = (uint8_t)(p->seq[o + 4u] < NCOND ? p->seq[o + 4u] : CD_NONE);
-            b->note[t][i] = p->seq[o + 1u];
             o += 6u;
             if (md && o + 3u <= PAT_SEQ_ROOM) {  /* (MOD) */
                 int32_t mu = (int8_t)p->seq[o];
-                b->mut[t][i] = (int8_t)(mu == MUT_RND || (mu >= -12 && mu <= 12) ? mu : 0);
-                b->mcy[t][i] = (uint8_t)(p->seq[o + 1u] & 15u);
-                b->fcy[t][i] = (uint8_t)(p->seq[o + 1u] >> 4);
-                b->mfx[t][i] = (uint8_t)(p->seq[o + 2u] < NMFX ? p->seq[o + 2u] : 0u);
+                if (keep) {
+                    b->mut[t][i] = (int8_t)(mu == MUT_RND || (mu >= -12 && mu <= 12) ? mu : 0);
+                    b->mcy[t][i] = (uint8_t)(p->seq[o + 1u] & 15u);
+                    b->fcy[t][i] = (uint8_t)(p->seq[o + 1u] >> 4);
+                    b->mfx[t][i] = (uint8_t)(p->seq[o + 2u] < NMFX ? p->seq[o + 2u] : 0u);
+                }
                 o += 3u;
             }
             if (ch && o + 1u <= PAT_SEQ_ROOM) {  /* (a chord) */
-                b->chf[t][i] = (uint8_t)(p->seq[o] <= CHF_N ? p->seq[o] : 0u);
+                if (keep)
+                    b->chf[t][i] = (uint8_t)(p->seq[o] <= CHF_N ? p->seq[o] : 0u);
                 o += 1u;
             }
             for (l = 0; l < nl && o + 3u <= PAT_SEQ_ROOM; l++, o += 3u)
-                if (p->seq[o] <= PL_PAN && l < NPL) {
+                if (keep && p->seq[o] <= PL_PAN && l < NPL) {
                     b->lv[t][i][l] = (int16_t)(uint16_t)(p->seq[o + 1u] | p->seq[o + 2u] << 8);
                     b->lid[t][i][l] = p->seq[o];
                 }
@@ -1071,10 +1160,12 @@ static void pat_give(uint32_t k, int follow)
 {
     const pat_t *p = &pat_store[k];
     uint32_t i;
+    seqbuf_t *s;
     (void)follow;
     seq_pend = 0;                                /* (a pattern waiting: not now) */
-    pat_decode(p, &sb_tmp);
-    lp_follow(sb_tmp.trn);
+    s = sb_scratch();
+    pat_decode(p, s);
+    lp_follow(s->trn);
     if (k != seq_lpat) {                         /* (its loops from their first step: the next bar, playing) */
         uint32_t a = seq_run && seq_gcount != 0xFFFFFFFFu ? (seq_gcount / 16u + 1u) * 16u : 0u;
         for (i = 0; i < NLP; i++)
@@ -1087,10 +1178,11 @@ static void pat_give(uint32_t k, int follow)
         RING_PUBLISH();
         seq_lpat = (uint8_t)k;
     }
-    seq_copy_in(&sb_tmp);
-    memcpy(ui.gen_den, sb_tmp.den, NTRACK);
-    memcpy(ui.gen_cx, sb_tmp.cx, NTRACK);
-    memcpy(ui.trn, sb_tmp.trn, NTRACK);
+    seq_copy_in(s);
+    memcpy(ui.gen_den, s->den, NLANE);
+    memcpy(ui.gen_cx, s->cx, NLANE);
+    memcpy(ui.trn, s->trn, NLANE);
+    sb_done();
     pat_cur = (uint8_t)k;
     pat_tempo = p->used ? p->tempo : 0;
     pat_dirty = pat_dirtyv[k];
@@ -1325,14 +1417,18 @@ static void pat_brk_save(uint32_t k)
         say("NOT PLAYING", 900);
         return;
     }
-    seq_copy_out(&sb_tmp);
-    memcpy(sb_tmp.den, ui.gen_den, NTRACK);
-    memcpy(sb_tmp.cx, ui.gen_cx, NTRACK);
-    memcpy(sb_tmp.trn, ui.trn, NTRACK);
-    for (t = 0; t < NTRACK; t++)
-        if ((ui.brk >> t & 1u) && !(brk_keep >> t & 1u))
-            brk_render(&sb_tmp, t, brk_seed + t * 977u);
-    pat_encode(&pat_store[k], &sb_tmp);
+    {
+        seqbuf_t *s = sb_scratch();
+        seq_copy_out(s);
+        memcpy(s->den, ui.gen_den, NLANE);
+        memcpy(s->cx, ui.gen_cx, NLANE);
+        memcpy(s->trn, ui.trn, NLANE);
+        for (t = 0; t < NLANE; t++)              /* (each lane under the break: a subtrack's too) */
+            if (ln_on[t] && (ui.brk >> LANE_T(t) & 1u) && !(brk_keep >> t & 1u))
+                brk_render(s, t, brk_seed + t * 977u);
+        pat_encode(&pat_store[k], s);
+        sb_done();
+    }
     pat_dirtyv[k] = 0;
     lr = lp_copy_pat(pat_cur, k);                /* (the loops playing with it: build 73) */
     if (seq_pend == 1u && seq_pend_k == k)
@@ -1346,7 +1442,7 @@ static void pat_brk_save(uint32_t k)
         pat_decode(&pat_store[k], &sb_next);
         seq_pend_k = (uint8_t)k;
         seq_pend_lp = (uint8_t)k;
-        seq_pend_t = ui.sel;
+        seq_pend_t = ui.sl;
         seq_pend_mu = 0;
         RING_PUBLISH();
         seq_pend = 1;
@@ -1386,6 +1482,16 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     memcpy(b->snd, ui.snd, sizeof b->snd);
     b->sel = ui.sel;
     b->muq = ses_muq;
+    for (t = 0; t < NXL; t++) {                  /* (build 79) the subtracks */
+        uint32_t l = NTRACK + t;
+        b->ln_t[t] = ln_t[l];
+        b->ln_s[t] = ln_s[l];
+        b->loct[t] = ui.oct[l];
+        b->llevel[t] = ui.level[l];
+        b->lpan[t] = ui.pan[l];
+        b->lsnd[t] = ui_lsnd[t];
+    }
+    memcpy(b->sub, ui.sub, NTRACK);
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
 {
@@ -1421,6 +1527,30 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     ui.scale = (uint8_t)(b->scale < NSCALE ? b->scale : 0);
     ui.sel = (uint8_t)(b->sel < NTRACK ? b->sel : 0);
     ses_muq = (uint8_t)(b->muq == 1u);
+    for (t = 0; t < NXL; t++) {                  /* (build 79) the subtracks: each lane as it was, a DRUM sound; one
+                                                  * twice for a track's subtrack, or out of range: free */
+        uint32_t l = NTRACK + t, tr = b->ln_t[t], s = b->ln_s[t];
+        ln_on[l] = 0;
+        RING_PUBLISH();
+        ln_s[l] = 0;
+        if (tr < NTRACK && s && s < NSUB && lane_find(tr, s) >= NLANE) {
+            ln_t[l] = (uint8_t)tr;
+            ln_s[l] = (uint8_t)s;
+        }
+        ui_lsnd[t] = b->lsnd[t];
+        if (ui_lsnd[t].mach != ENG_FMD)
+            gen_sound(&ui_lsnd[t], ENG_FMD, -1, -1, next_seed());
+        ui.oct[l] = (int8_t)clampi(b->loct[t], -3, 3);
+        ui.level[l] = (int8_t)(ln_s[l] ? clampi(b->llevel[t], 0, LEVEL_MAX) : LEVEL_UNITY);
+        ui.pan[l] = (int8_t)clampi(b->lpan[t], -PAN_MAX, PAN_MAX);
+        level_pan_apply(l);
+        mark(l);
+    }
+    for (t = 0; t < NTRACK; t++) {
+        ui.sub[t] = (uint8_t)(b->sub[t] < NSUB ? b->sub[t] : 0u);
+        lanes_apply(t);
+    }
+    sel_sync();
 }
 static int prj_save(uint32_t k)              /* the loops into the store, the pattern playing into its slot, then the
                                              * whole project */
@@ -1458,32 +1588,33 @@ static int prj_save(uint32_t k)              /* the loops into the store, the pa
  * patterns or loops; the sequencer stopped. Not saved anywhere yet */
 static void prj_fresh(void)
 {
-    static prj_body_t b POOL;                    /* (not on the stack, not in RAM: 3 KB, in the pool) */
+    prj_body_t *b = (prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t));   /* (built in the flash's buffer, idle
+                                                  * till it is given: not on the stack, nor in RAM of its own; build 79) */
     uint32_t t, e;
-    memset(&b, 0, sizeof b);
-    b.tempo = 120;
+    memset(b, 0, sizeof *b);
+    b->tempo = 120;
     scale_draw();                                /* (a scale and root at random, as at the start: build 77) */
-    b.scale = ui.scale;
-    b.root = ui.root;
+    b->scale = ui.scale;
+    b->root = ui.root;
     for (t = 0; t < NTRACK; t++) {
-        b.eng[t] = ENG0[t];
-        b.oct[t] = (int8_t)(t ? 0 : -1);
-        b.level[t] = LEVEL_UNITY;
-        b.pan[t] = PAN_DEF[t];
+        b->eng[t] = ENG0[t];
+        b->oct[t] = (int8_t)(t ? 0 : -1);
+        b->level[t] = LEVEL_UNITY;
+        b->pan[t] = PAN_DEF[t];
         for (e = 0; e < NENG; e++)
-            gen_sound(&b.snd[t][e], e, e == ENG0[t] ? FAM0[t] : -1, -1, next_seed());
-        b.sc_lvl[t] = 64;
-        memcpy(b.arp[t], AR_DEF, NARP);
+            gen_sound(&b->snd[t][e], e, e == ENG0[t] ? FAM0[t] : -1, -1, next_seed());
+        b->sc_lvl[t] = 64;
+        memcpy(b->arp[t], AR_DEF, NARP);
     }
-    memcpy(b.dl, DL0, NDL);
-    memcpy(b.rv, RV0, NRV);
-    memcpy(b.ch, CH0, NCH);
-    memcpy(b.cp, CP0, NCP);
+    memcpy(b->dl, DL0, NDL);
+    memcpy(b->rv, RV0, NRV);
+    memcpy(b->ch, CH0, NCH);
+    memcpy(b->cp, CP0, NCP);
     seq_run = 0;
     rec_set(REC_OFF);
     lop_clear();
     ui.mute_mode = 0;
-    prj_give(&b);
+    prj_give(b);
     memset(pat_store, 0, sizeof pat_store);
     memset(pat_dirtyv, 0, sizeof pat_dirtyv);
     pat_give(0, 0);
@@ -1800,7 +1931,7 @@ static void pat_switch(uint32_t k)
     pat_decode(&pat_store[k], &sb_next);         /* playing: at the end of the chosen track's time through */
     seq_pend_k = (uint8_t)k;
     seq_pend_lp = (uint8_t)k;
-    seq_pend_t = ui.sel;
+    seq_pend_t = ui.sl;
     seq_pend_mu = (uint8_t)px_mutes_of(&pat_store[k]);   /* (its mutes, as it comes in: build 65) */
     RING_PUBLISH();
     seq_pend = 1;
@@ -1838,15 +1969,15 @@ static void pat_poll(void)
     if (sp != 2u)
         return;
     if (pat_dirty && seq_pend_k != pat_cur) {   /* (the same: a break saved over it, kept) */
-        memcpy(sb_old.den, ui.gen_den, NTRACK);
-        memcpy(sb_old.cx, ui.gen_cx, NTRACK);
-        memcpy(sb_old.trn, ui.trn, NTRACK);
+        memcpy(sb_old.den, ui.gen_den, NLANE);
+        memcpy(sb_old.cx, ui.gen_cx, NLANE);
+        memcpy(sb_old.trn, ui.trn, NLANE);
         pat_encode(&pat_store[pat_cur], &sb_old);
         pat_dirtyv[pat_cur] = 1;
     }
-    memcpy(ui.gen_den, sb_next.den, NTRACK);
-    memcpy(ui.gen_cx, sb_next.cx, NTRACK);
-    memcpy(ui.trn, sb_next.trn, NTRACK);
+    memcpy(ui.gen_den, sb_next.den, NLANE);
+    memcpy(ui.gen_cx, sb_next.cx, NLANE);
+    memcpy(ui.trn, sb_next.trn, NLANE);
     pat_cur = seq_pend_k;
     pat_tempo = pat_store[pat_cur].used ? pat_store[pat_cur].tempo : 0;
     pat_dirty = pat_dirtyv[pat_cur];

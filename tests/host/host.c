@@ -3934,8 +3934,9 @@ static int cmd_trn(const char *dir)
     {   /* a pattern saved before build 51: no transposition */
         pat_t p = pat_store[1];
         memset(p.seq + SEQ_TRN, 0, NTRACK);
-        pat_decode(&p, &sb_tmp);
-        TEXPECT(!sb_tmp.trn[0] && !sb_tmp.trn[1] && sb_tmp.note[1][0] == 52, "an older pattern: TRN 0, its notes");
+        static seqbuf_t w;
+        pat_decode(&p, &w);
+        TEXPECT(!w.trn[0] && !w.trn[1] && w.note[1][0] == 52, "an older pattern: TRN 0, its notes");
     }
     flash("SAVED", "SESSION 16", C_OK);          /* (the second line in the size that fits: build 52) */
     ui_draw();
@@ -5071,9 +5072,177 @@ static int cmd_patsave(void)
     printf("patsave: %d failures\n", fails);
     return fails != 0;
 }
+/* (build 79) subtracks: a DRUM track's ST-B .. ST-D on the NXL shared lanes, each a track in its own right */
+#define SEXPECT(c, what) do { if (!(c)) { printf("FAIL subtrk: %s\n", what); fails++; } } while (0)
+static uint32_t st_kw[16];
+static void st_choose(uint32_t t, uint32_t w, int sh)   /* (track t's button held, white key w pressed: SHIFT too) */
+{
+    uint32_t b = 1u << PANEL_BTN[TRACK_BTN[t]];
+    fm1_in.buttons |= b;
+    host_press = b;
+    ui_input();
+    if (sh)
+        fm1_in.notes |= 1u << KEY_SHIFT;
+    fm1_in.notes |= 1u << st_kw[w];
+    ui_input();
+    fm1_in.notes &= ~(1u << st_kw[w]);
+    ui_input();
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    fm1_in.buttons &= ~b;
+    ui_input();
+    fm1_ms += 1000;
+}
+static int cmd_subtrk(const char *dir)
+{
+    int32_t out[2 * CTL];
+    uint32_t k, i, l, lb, n0;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    for (k = 0; k < NKEY; k++)
+        if (white_ix(k) >= 0)
+            st_kw[white_ix(k)] = k;
+    SEXPECT(ui.eng[0] == ENG_FMD && trk_lanes(0) && ui.sl == 0u, "at the start: track 1 on DRUM, its own lane chosen (ST-A)");
+    /* choosing ST-B: a lane taken, the kit's next piece (a kick's track: a snare), chosen; the key plays nothing */
+    n0 = ev_w;
+    st_choose(0, 1, 0);
+    lb = lane_find(0, 1);
+    SEXPECT(lb >= NTRACK && lb < NLANE && ln_on[lb] && ui.sub[0] == 1u && ui.sl == lb, "track 1 held + white key 2: ST-B taken and chosen");
+    SEXPECT(ev_w == n0, "the key played no note");
+    SEXPECT(cur() == &ui_lsnd[lb - NTRACK] && cur()->mach == ENG_FMD && phrase_role(cur()) == RO_SNARE,
+            "its sound its own, on DRUM: the kit's next piece, a snare");
+    ui_draw();
+    shot(dir, "subtrack_b");
+    {   /* the LEDs while the button is held: ST-B lit, ST-A dim, C and D dark */
+        uint32_t b = 1u << PANEL_BTN[TRACK_BTN[0]];
+        fm1_in.buttons |= b;
+        ui_leds();
+        SEXPECT(host_led[14u + st_kw[1]] && !host_led[14u + st_kw[0]] && host_dim_on(14u + st_kw[0]) &&
+                !host_led[14u + st_kw[2]] && !host_dim_on(14u + st_kw[2]), "the button held: ST-B lit, ST-A dim, C dark");
+        fm1_in.buttons &= ~b;
+    }
+    /* its own level and pan, octave, steps; the sequencer plays it, its voices its own */
+    turn(EN_SELECT, -5);
+    SEXPECT(ui.level[lb] == LEVEL_UNITY - 5 && ui.level[0] == LEVEL_UNITY, "SELECT: the subtrack's level, not the track's");
+    memset((void *)seq_note[0], 0, NSTEP);
+    memset((void *)seq_note[lb], 0, NSTEP);
+    tap(KEY_STEP);
+    fm1_in.notes |= 1u << st_kw[0];
+    ui_input();
+    fm1_in.notes &= ~(1u << st_kw[0]);
+    ui_input();
+    tap(KEY_STEP);
+    SEXPECT(seq_note[lb][0] && !seq_note[0][0], "the step view: the subtrack's steps");
+    seq_run = 1;
+    {
+        uint32_t a0 = seq_sounded[lb], mine = 0;
+        for (i = 0; i < 3000u && seq_sounded[lb] == a0; i++)
+            mix_block(out);
+        for (k = 0; k < NVOICE; k++)
+            mine |= vox[k].sounding && vox[k].track == lb;
+        SEXPECT(seq_sounded[lb] > a0 && mine, "the sequencer plays the subtrack's step, on its own voice");
+    }
+    seq_run = 0;
+    for (i = 0; i < 8u; i++)
+        mix_block(out);
+    /* the shared lanes: three in all */
+    st_choose(0, 2, 0);
+    st_choose(0, 3, 0);
+    SEXPECT(lane_find(0, 2) < NLANE && lane_find(0, 3) < NLANE && ui.sub[0] == 3u, "ST-C and ST-D taken: four subtracks");
+    ui.eng[1] = ENG_FMD;
+    lanes_apply(1);
+    st_choose(1, 1, 0);
+    SEXPECT(lane_find(1, 1) >= NLANE && str_eq(ui.msg, "NO SUBTRACK"), "a fourth shared lane: none, NO SUBTRACK");
+    st_choose(0, 3, 1);
+    SEXPECT(lane_find(0, 3) >= NLANE && ui.sub[0] == 0u, "SHIFT + track 1 held + white key 4: ST-D given up, ST-A chosen");
+    st_choose(1, 1, 0);
+    SEXPECT(lane_find(1, 1) < NLANE && ui.sel == 1u, "track 2 takes the lane given up");
+    /* off DRUM: put away, silent, kept; another DRUM track may take one; back on DRUM: as it was */
+    ui.sel = 0;
+    ui.sub[0] = 1;
+    host_enc[PANEL_ENC[EN_PRESET]] = -1;
+    ui_input();
+    SEXPECT(ui.eng[0] == ENG_FMD && ui.sl == lb && str_eq(ui.msg, "DRUM ONLY"), "on a subtrack past ST-A, PRESETS stays on DRUM");
+    ui.sub[0] = 0;
+    ui_input();
+    host_enc[PANEL_ENC[EN_PRESET]] = 1;
+    ui_input();
+    SEXPECT(ui.eng[0] != ENG_FMD && !ln_on[lb] && ln_s[lb] && ui.sl == 0u, "track 1 off DRUM: its subtracks silent, kept");
+    host_enc[PANEL_ENC[EN_PRESET]] = -1;
+    ui_input();
+    SEXPECT(ui.eng[0] == ENG_FMD && ln_on[lb] && lane_find(0, 1) == lb, "back on DRUM: as they were");
+    /* patterns: the subtrack's steps saved and back; read where the lane is another track's, left out */
+    memset((void *)seq_note[lb], 0, NSTEP);
+    seq_note[lb][3] = 50;
+    seq_len[lb] = 7;
+    pat_take(&pat_store[4]);
+    {
+        static seqbuf_t w;
+        pat_decode(&pat_store[4], &w);
+        SEXPECT(w.note[lb][3] == 50u && w.len[lb] == 7u, "a pattern: the subtrack's steps and length");
+        l = lane_find(1, 1);
+        ln_t[l] = 0;
+        ln_s[l] = 3;                             /* (the other lane another track's -- track 1's ST-D, not the one saved) */
+        pat_decode(&pat_store[4], &w);
+        SEXPECT(w.note[lb][3] == 50u, "the lane the pattern names: its steps");
+        ln_t[lb] = 2;
+        pat_decode(&pat_store[4], &w);
+        SEXPECT(!w.note[lb][3] && !w.len[lb], "the lane another track's now: its steps left out");
+        ln_t[lb] = 0;
+        ln_t[l] = 1;
+        ln_s[l] = 1;
+    }
+    /* sessions: the subtracks with it; one saved by build 78 loads with none */
+    {
+        int32_t lv = ui.level[lb];
+        uint32_t fam = (uint32_t)ui_lsnd[lb - NTRACK].family;
+        SEXPECT(!prj_save(2), "(saved)");
+        lane_free(lb);
+        lane_free(lane_find(0, 2));
+        SEXPECT(lane_find(0, 1) >= NLANE, "(given up)");
+        SEXPECT(!prj_load(2), "(loaded)");
+        l = lane_find(0, 1);
+        SEXPECT(l < NLANE && ui.level[l] == lv && (uint32_t)ui_lsnd[l - NTRACK].family == fam && lane_find(0, 2) < NLANE &&
+                lane_find(1, 1) < NLANE, "a session loaded: its subtracks, their sounds and levels");
+        SEXPECT(seq_note[l][3] == 50u, "and their steps, in its pattern");
+        {   /* (as build 78 saved it: the record ending before the subtracks) */
+            const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
+            prj_flash_read(prj_sector(2, 0), prj_buf, sizeof(prj_head_t) + sizeof(prj_body_t));
+            prj_head_fill(PRJ_MAGIC, h->what, PRJ_LEN78);
+            prj_flash_erase(prj_sector(2, 0));
+            prj_flash_prog(prj_sector(2, 0), prj_buf, sizeof(prj_head_t) + PRJ_LEN78);
+            prj_scan(1);
+            SEXPECT(prj_has[2] && !prj_load(2), "a session of build 78: read");
+            for (l = NTRACK, k = 0; l < NLANE; l++)
+                k |= ln_s[l];
+            SEXPECT(!k && ui.sl < NTRACK, "with no subtracks");
+        }
+    }
+    /* the looper: a note on a subtrack, played back on it */
+    st_choose(0, 1, 0);
+    lb = ui.sl;
+    seq_run = 1;
+    for (i = 0; i < 4u; i++)
+        mix_block(out);
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    btn(B_REC, 0);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    ui_input();
+    tap(st_kw[2]);
+    SEXPECT(lrp && lrp->n == 1u && LEV_SUB(lrp->ev[0]) == 1u, "the looper: the note noted with its subtrack, ST-B");
+    seq_run = 0;
+    for (i = 0; i < 8u; i++)
+        mix_block(out);
+    printf("subtrk: %d failures\n", fails);
+    return fails != 0;
+}
 int main(int argc, char **argv)
 {
     wt_init();
+    if (argc >= 3 && !strcmp(argv[1], "subtrk"))
+        return cmd_subtrk(argv[2]);
     if (argc >= 2 && !strcmp(argv[1], "patsave"))
         return cmd_patsave();
     if (argc >= 3 && !strcmp(argv[1], "newses"))

@@ -258,7 +258,8 @@ CONTROLS = [
     ([10], "KNOB 3", "The chosen track's delay send. <b>SHIFT +</b>: its chorus send. On a page: row C."),
     ([11], "KNOB 4", "The chosen track's reverb send. <b>SHIFT +</b>: its overdrive. On a page: row D."),
     ([12, 13, 14, 15, 16, 17], ["FX (T1)", "SEL (T2)", "ENV (T3)", "LFO (T4)", "EDIT (T5)", "GLO (T6)"],
-     "<b>T1</b> to <b>T6</b>: choose track 1 to 6. From any page, back to the track. In "
+     "<b>T1</b> to <b>T6</b>: choose track 1 to 6. From any page, back to the track. <b>Held + white key 1–4</b>, "
+     'on DRUM: its <a href="#subtracks">subtrack</a> ST-A to ST-D (<b>SHIFT +</b>: give one up). In '
      '<a href="#mute-mode">MUTE mode</a>: mute; <b>held</b> (1 s), solo.'),
     ([18], "HOME", '<a href="#sounds">A new sound</a> for the chosen track. <b>SHIFT +</b>: of the same family. '
                    "<b>Held</b> (0.8 s): save the session."),
@@ -285,8 +286,9 @@ CONTROLS = [
                           "chosen track's steps."),
     ([33], "black key 10", '<b>EDIT</b>: the <a href="#the-sounds-pages-edit">sound\'s pages</a> (not the EDIT button, T5).'),
     ([34], "black key 11", "<b>SHIFT</b>."),
-    ([35], "the 16 white keys", "Play the chosen track in the scale; the root's keys glow. In the step view: the 16 "
-                                "steps. On the PATTERNS grid: the 16 patterns."),
+    ([35], "the 16 white keys", "Play the chosen track (its subtrack chosen) in the scale; the root's keys glow. In the "
+                                "step view: the 16 steps. On the PATTERNS grid: the 16 patterns. With a DRUM track's "
+                                "button held, 1–4: its subtracks."),
 ]
 
 # KNOB 1-4 on each page

@@ -16,7 +16,18 @@
  * chain, voice.c) summed, its level and pan, its sends; the chorus, the delay, the reverb; the master. */
 
 #define NTRACK 6
-typedef char mg_fits[MG_TRACKS == NTRACK ? 1 : -1];
+/* (build 79) the lanes: each track's own (lane t, its subtrack ST-A), then NXL more, shared: a DRUM track takes one as
+ * its subtrack ST-B .. ST-D (after Titan Haze's lanes). Each lane is a track in its own right in the sequencer, the
+ * voices and the mix (its sound, steps, level, pan, sends, MANGLE); its track's mute, sidechain and MIDI channel */
+#define NSUB 4u                                  /* (ST-A .. ST-D) */
+#define NXL 3u
+#define NLANE (NTRACK + NXL)
+static volatile uint8_t ln_t[NLANE] = {0, 1, 2, 3, 4, 5};   /* (the main loop's: the lane's track) .. */
+static volatile uint8_t ln_s[NLANE];             /* .. its subtrack, 0 ST-A; a shared lane's 0: free */
+static volatile uint8_t ln_on[NLANE] = {1, 1, 1, 1, 1, 1};   /* .. and it plays (a shared one: taken, its track on DRUM) */
+#define LANE_T(l) ((uint32_t)ln_t[l])
+#define LANE_S(l) ((l) < NTRACK ? 0u : (uint32_t)ln_s[l])   /* (its subtrack: 0 ST-A) */
+typedef char mg_fits[MG_TRACKS == NLANE ? 1 : -1];
 #define NVOICE 12
 typedef char midi_fits[MIDI_TRACKS == NTRACK ? 1 : -1];   /* (midi.c's) */
 static const char *const ENG_NAME[NENG] = {"4-OP", "DRUM", "WAVY", "HIVE"};
@@ -30,12 +41,12 @@ typedef struct {
     int32_t sd_del, sd_rev, sd_chr;      /* the sends, Q15 */
     sound_t snd;                         /* (the sound itself: a voice's locks cooked from it; MANGLE's values) */
 } ck_t;
-static ck_t ck_buf[NTRACK][2];
+static ck_t ck_buf[NLANE][2] POOL;
 #if TELEMETRY
 static uint32_t tl_cook[8];                      /* (a TELEMETRY build's: ticks a cook takes, each machine -- the
                                                   * chain's (vck_cook), the machine's (mck_cook); main.c measures) */
 #endif
-static volatile uint8_t ck_pub[NTRACK], ck_use[NTRACK];
+static volatile uint8_t ck_pub[NLANE], ck_use[NLANE];
 
 static void mck_cook(mck_t *m, const sound_t *s)
 {
@@ -72,14 +83,16 @@ AINL int32_t send_q15(int32_t v) { return v * v * Q15 / 16129; }
  * SC SOURCE 0: off */
 static volatile uint8_t sc_src[NTRACK], sc_lvl[NTRACK] = {64, 64, 64, 64, 64, 64};
 static dk_t dk[NTRACK];                          /* (the ISR's: each source's hits) */
-static int32_t dk_att[NTRACK];                   /* (the duck now, dB Q16) */
-static int32_t dk_gp[NTRACK] = {Q16, Q16, Q16, Q16, Q16, Q16};   /* (its gain as the last block ended) */
+static int32_t dk_att[NLANE];                    /* (a ducked lane's: the duck now, dB Q16) */
+static int32_t dk_gp[NLANE] = {Q16, Q16, Q16, Q16, Q16, Q16, Q16, Q16, Q16};   /* (its gain as the last block ended) */
+static int32_t dk_acc[CTL];                      /* (the source track being mixed: its lanes summed, for its dk_feed --
+                                                  * one at a time; build 79) */
 static uint8_t dk_mask;                          /* (the tracks some track ducks under) */
 static uint8_t dk_struck[NTRACK];                /* (a note began on the track this block: a hit) */
 /* a ducked track's effects ducked with it: each return (chorus, delay, reverb) brought down by the tracks in it, as
  * much as each is in it -- what each sent, followed over ~0.7 s (its tail) */
-static uint32_t dk_sent[NTRACK][3];              /* (this block's sends, |x| summed: chorus, delay, reverb) */
-static uint32_t dk_in[NTRACK][3];                /* (followed) */
+static uint32_t dk_sent[NLANE][3];               /* (this block's sends, |x| summed: chorus, delay, reverb; a lane's) */
+static uint32_t dk_in[NLANE][3];                 /* (followed) */
 static int32_t dk_rg[3] = {Q16, Q16, Q16};       /* (each return's gain as the last block ended) */
 static uint8_t dk_on;                            /* (some track ducked) */
 
@@ -97,8 +110,8 @@ static uint8_t dk_on;                            /* (some track ducked) */
 static int pl_track(uint32_t id) { return id == PL_DEL || id == PL_REV || id == PL_CHR || id >= PL_MNG; }
 static void par_put(sound_t *s, uint32_t id, uint32_t j, int32_t v);   /* (params.c) */
 static void lfo_apply(sound_t *s, const int32_t *mod);   /* (params.c: the LFOs' shares onto their destinations) */
-static volatile uint8_t lfo_trig[NTRACK];       /* (a note began on the track: its LFOs' trigger; build 50) */
-static uint32_t lfo_flips[NTRACK];               /* (each track's cooked sound taken anew: its LFOs' copy is old) */
+static volatile uint8_t lfo_trig[NLANE];       /* (a note began on the track: its LFOs' trigger; build 50) */
+static uint32_t lfo_flips[NLANE];               /* (each track's cooked sound taken anew: its LFOs' copy is old) */
 
 /* a voice's own memory: the chain (its comb line) and the machine's state */
 typedef struct {
@@ -140,9 +153,9 @@ typedef struct {
     uint8_t tid[NPL];            /* the track's locks from the step last played (the sends, MANGLE, the pan): ids .. */
     int16_t tv[NPL];             /* .. and values */
 } track_t;
-static track_t trk[NTRACK];
-/* each track's level (Q14) and equal-power pan (Q15), set by the main loop */
-static volatile int32_t trk_gain[NTRACK], trk_pl[NTRACK], trk_pr[NTRACK];
+static track_t trk[NLANE];                       /* (a lane's: each lane mixed as a track) */
+/* each lane's level (Q14) and equal-power pan (Q15), set by the main loop */
+static volatile int32_t trk_gain[NLANE], trk_pl[NLANE], trk_pr[NLANE];
 static volatile uint8_t trk_mute[NTRACK];        /* each track muted (the MUTE mode's, the main loop's; build 35) */
 static const int32_t zero_blk[CTL];
 
@@ -158,7 +171,7 @@ static uint32_t blk_last, blk_new;
 #define TL_FX(k, call) { call; }
 #endif
 #if TELEMETRY
-static uint32_t tl_trk[NTRACK], tl_fx, tl_all, tl_n, tl_max, tl_shed;   /* (main.c's report: ticks, summed) */
+static uint32_t tl_trk[NLANE], tl_fx, tl_all, tl_n, tl_max, tl_shed;   /* (main.c's report: ticks, summed) */
 #define TL_FX(k, call) { uint32_t c4 = COST_NOW(); call; tl_fxk[k] += COST_NOW() - c4; }
 static uint32_t tl_mach[NENG], tl_chain[NENG], tl_fxk[4], tl_c1, tl_evmax, tl_seqmax, tl_par, tl_parmax, tl_steal, tl_lost, tl_stealmax;   /* (a machine's render, its chain; CH DL RV CP) */
 #endif
@@ -180,7 +193,7 @@ static volatile uint32_t ev_w, ev_r;
 static void ev_post(uint32_t type, uint32_t t, uint32_t note, uint32_t val)   /* main loop */
 {
     ev_t e;
-    if (ev_w - ev_r >= EVQ || t >= NTRACK)
+    if (ev_w - ev_r >= EVQ || t >= NLANE)
         return;
     e.type = (uint8_t)type;
     e.track = (uint8_t)t;
@@ -297,7 +310,8 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
     track_t *y = &trk[t];
     uint32_t best;
     voice_t *v;
-    midi_note_out(t, note, note_vel, trk_mute[t]);   /* (out on the track's channel, SEND NOTES: midi.c) */
+    midi_note_out(LANE_T(t), note, note_vel, trk_mute[LANE_T(t)]);   /* (out on the track's channel, SEND NOTES:
+                                                  * midi.c; a lane: its track's) */
     lfo_trig[t] = 1;                             /* (the track's LFOs: TRIG, HOLD, ONE, HALF and the FADE start again) */
     if (!y->xfade && ck_buf[t][ck_use[t]].mach == ENG_FMD) {   /* an DRUM track chokes, as a drum machine's: its
                                                               * last hit faded out (~2 ms) as the next strikes,
@@ -314,7 +328,7 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
             }
         }
     }
-    dk_struck[t] = 1;                            /* (a hit, for the tracks it ducks) */
+    dk_struck[LANE_T(t)] = 1;                    /* (a hit, for the tracks it ducks) */
     best = voice_pick(t, y->xfade != 0);
     if (best == NVOICE) {
 #if TELEMETRY
@@ -357,7 +371,7 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
 static void note_off(uint32_t t, uint32_t note, uint32_t src)
 {
     uint32_t k, o = NVOICE;
-    midi_note_out(t, note, 0, 0);
+    midi_note_out(LANE_T(t), note, 0, 0);
     for (k = 0; k < NVOICE; k++) {               /* (the oldest held: two keys can hold the same note -- two chords
                                                   * with a note in common, legato -- and the first let go is the first
                                                   * struck, not the new chord's; build 34) */
@@ -428,11 +442,19 @@ static void change_apply(uint32_t t)
         voice_on(t, k, 1);
     }
 }
-static int track_sounding(uint32_t t)
+static int track_sounding(uint32_t t)            /* (lane t's voices) */
 {
     uint32_t k;
     for (k = 0; k < NVOICE; k++)
         if (vox[k].track == t && vox[k].sounding)
+            return 1;
+    return 0;
+}
+static int trk_sounding(uint32_t t)              /* (track t's: any of its lanes') */
+{
+    uint32_t k;
+    for (k = 0; k < NVOICE; k++)
+        if (LANE_T(vox[k].track) == t && vox[k].sounding)
             return 1;
     return 0;
 }
@@ -457,6 +479,7 @@ typedef struct {
     uint32_t left;                               /* .. its blocks left */
     uint32_t c, acc, since;                      /* notes in turn; stopped: its clock; blocks since a note */
     int32_t k;                                   /* playing: the grid's place it played last */
+    uint8_t lane;                                /* the lane it plays (build 79: the track's subtrack its keys were on) */
 } arp_t;
 static arp_t arps[NTRACK];
 static uint32_t arp_rnd = 0x9E3779B9u;
@@ -477,7 +500,7 @@ static void arp_quiet(uint32_t t)                /* (its note let go) */
 {
     arp_t *a = &arps[t];
     if (a->snd)
-        note_off(t, a->snd, SRC_ARP);
+        note_off(a->lane, a->snd, SRC_ARP);
     a->snd = 0;
     a->left = 0;
 }
@@ -522,6 +545,7 @@ static void arp_clear(uint32_t t)
 {
     arps[t].n = arps[t].down = 0;
     arp_quiet(t);
+    arps[t].lane = (uint8_t)t;                   /* (back on the track's own lane) */
 }
 /* (the main loop's: a session's) track t's arpeggiator on or off and its settings, each in its range; its notes let go */
 static void arp_set(uint32_t t, uint32_t on, const uint8_t *p)
@@ -534,18 +558,19 @@ static void arp_set(uint32_t t, uint32_t on, const uint8_t *p)
     ev_post(EV_ARP_CLR, t, 0, 0);
 }
 
-static void trk_hush(uint32_t t)                 /* (the ISR's: track t's notes let go, faded out at once) */
+static void trk_hush(uint32_t t)                 /* (the ISR's: track t's notes let go, faded out at once -- every
+                                                  * lane of it) */
 {
     uint32_t k;
     midi_track_off(t);
     for (k = 0; k < NVOICE; k++) {
         voice_t *v = &vox[k];
-        if (vox_owner(v) == t) {
+        if (LANE_T(vox_owner(v)) == t) {
             v->gate = 0;
-            if (v->pend && v->pend_track == t)
+            if (v->pend && LANE_T(v->pend_track) == t)
                 v->pend = 0;
         }
-        if (v->track == t && v->sounding && !v->fade)
+        if (LANE_T(v->track) == t && v->sounding && !v->fade)
             v->fade = FADE;
     }
 }
@@ -565,9 +590,15 @@ static void events_take(void)
             note_off(e.track, e.note, SRC_KEY);
             break;
         case EV_ARP_ON:
-        case EV_ARP_OFF:
-            arp_key(e.track, e.note, e.val, e.type == EV_ARP_ON);
+        case EV_ARP_OFF: {                       /* (a lane's keys: its track's arpeggiator, playing on that lane) */
+            uint32_t tr = LANE_T(e.track);
+            if (e.type == EV_ARP_ON && arps[tr].lane != e.track) {
+                arp_quiet(tr);
+                arps[tr].lane = e.track;
+            }
+            arp_key(tr, e.note, e.val, e.type == EV_ARP_ON);
             break;
+        }
         case EV_ARP_CLR:
             arp_clear(e.track);
             break;
@@ -609,12 +640,12 @@ static void cond_ab(uint32_t c, uint32_t *a, uint32_t *b)   /* (c an A:B conditi
         i -= *b;
     *a = i + 1u;
 }
-static volatile uint8_t seq_note[NTRACK][NSTEP];
-static volatile uint8_t seq_vel[NTRACK][NSTEP], seq_glen[NTRACK][NSTEP], seq_cond[NTRACK][NSTEP];
-static volatile uint8_t seq_lid[NTRACK][NSTEP][NPL];    /* the steps' locks: ids (PL_NONE: a free place) .. */
-static volatile int16_t seq_lv[NTRACK][NSTEP][NPL];     /* .. and values (written before the id: the ISR reads a
+static volatile uint8_t seq_note[NLANE][NSTEP];
+static volatile uint8_t seq_vel[NLANE][NSTEP], seq_glen[NLANE][NSTEP], seq_cond[NLANE][NSTEP];
+static volatile uint8_t seq_lid[NLANE][NSTEP][NPL];    /* the steps' locks: ids (PL_NONE: a free place) .. */
+static volatile int16_t seq_lv[NLANE][NSTEP][NPL] POOL;     /* .. and values (written before the id: the ISR reads a
                                                          * lock whole) */
-static volatile uint8_t seq_skip[NTRACK][NSTEP];   /* a step not to play when it next comes (recorded just before
+static volatile uint8_t seq_skip[NLANE][NSTEP];   /* a step not to play when it next comes (recorded just before
                                                     * it: the key played it already) */
 static volatile uint32_t seq_acc_now;     /* (the ISR's: how far into the step playing, of SEQ_16TH) */
 /* the metronome: a click on each beat (higher on the bar's first), while met_on; with the sequencer stopped it
@@ -642,7 +673,7 @@ static void met_block(int32_t *l, int32_t *r)
         r[i] += x;
     }
 }
-static volatile uint8_t seq_len[NTRACK];  /* (0: 16) */
+static volatile uint8_t seq_len[NLANE];  /* (0: 16) */
 /* each track's clock against the tempo's 16ths (TRACK page): 1/8, 1/4, 1/2, 1 (SEQ_DIV1), 2, 4 times as fast -- in
  * eighths of the tempo's (DIV_R8). Its own count (seq_tacc: a step is SEQ_STEP8), from PLAY; the metronome, the looper
  * and MANGLE's clock keep the tempo's */
@@ -651,20 +682,21 @@ static volatile uint8_t seq_len[NTRACK];  /* (0: 16) */
 #define SEQ_STEP8 (SEQ_16TH * 8u)
 static const uint8_t DIV_R8[NDIV] = {1, 2, 4, 8, 16, 32};
 static const char *const DIV_NAME[NDIV] = {"1/8", "1/4", "1/2", "1X", "2X", "4X"};
-static volatile uint8_t seq_div[NTRACK] = {SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1};
-static uint32_t seq_tacc[NTRACK];
+static volatile uint8_t seq_div[NLANE] = {SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1,
+                                         SEQ_DIV1, SEQ_DIV1};
+static uint32_t seq_tacc[NLANE];
 /* each track's direction through its steps (the step view's 4th .. 6th black keys) */
 enum { DIR_FWD, DIR_REV, DIR_PING, DIR_RND, NDIR };
-static volatile uint8_t seq_dir[NTRACK];
-static int8_t seq_ppd[NTRACK];            /* (PING: the way it goes now) */
-static uint8_t seq_rnd_n[NTRACK];         /* (RANDOM: steps since the count of its times through moved) */
+static volatile uint8_t seq_dir[NLANE];
+static int8_t seq_ppd[NLANE];            /* (PING: the way it goes now) */
+static uint8_t seq_rnd_n[NLANE];         /* (RANDOM: steps since the count of its times through moved) */
 /* a step's ratchet: the step played RTG_N times, evenly through it, each a little softer (index 0: once) */
 #define NRTG 6u
 static const uint8_t RTG_N[NRTG] = {1, 2, 3, 4, 6, 8};
 static const char *const RTG_NAME[NRTG] = {"OFF", "2", "3", "4", "6", "8"};
-static volatile uint8_t seq_rtg[NTRACK][NSTEP];
-static uint8_t rt_left[NTRACK], rt_note[NTRACK], rt_vel[NTRACK], rt_step[NTRACK], rt_chf[NTRACK], rt_n[NTRACK];
-static uint32_t rt_next[NTRACK], rt_int[NTRACK];
+static volatile uint8_t seq_rtg[NLANE][NSTEP];
+static uint8_t rt_left[NLANE], rt_note[NLANE], rt_vel[NLANE], rt_step[NLANE], rt_chf[NLANE], rt_n[NLANE];
+static uint32_t rt_next[NLANE], rt_int[NLANE];
 /* a step's MOD (the step view's 4th black key): MUTATE -- its note moved by so many steps of the scale (-12 .. 12;
  * MUT_RND: a step of the scale drawn at random, up to an octave either way) -- every (seq_mcy + 1) times it plays;
  * and a MIDI FX every (seq_fcy + 1) times it plays (after TONITOR's looper VARY and BRICKLAYER): echoes (rising,
@@ -675,11 +707,11 @@ enum { MFX_OFF, MFX_ECHO, MFX_ECHOUP, MFX_ECHODN, MFX_STUT, MFX_FLAM, MFX_LATE, 
        MFX_OCTUP, MFX_OCTDN, MFX_DROP, NMFX };
 static const char *const MFX_NAME[NMFX] = {"OFF", "ECHO", "ECHO UP", "ECHO DN", "STUTTER", "FLAM", "LATE", "GRACE",
                                            "FIFTH", "TRIAD", "OCT UP", "OCT DN", "DROP"};
-static volatile int8_t seq_mut[NTRACK][NSTEP];
-static volatile uint8_t seq_mcy[NTRACK][NSTEP], seq_mfx[NTRACK][NSTEP], seq_fcy[NTRACK][NSTEP];
-static volatile uint8_t seq_chf[NTRACK][NSTEP];   /* a step's chord: its form + 1 (0: the note alone; build 33) */
-static uint8_t seq_plays[NTRACK][NSTEP];         /* (the ISR's: the times each step has played since PLAY) */
-static uint8_t seq_played[NTRACK];               /* (the note a track's step played last, mutated: the tests') */
+static volatile int8_t seq_mut[NLANE][NSTEP];
+static volatile uint8_t seq_mcy[NLANE][NSTEP], seq_mfx[NLANE][NSTEP], seq_fcy[NLANE][NSTEP];
+static volatile uint8_t seq_chf[NLANE][NSTEP];   /* a step's chord: its form + 1 (0: the note alone; build 33) */
+static uint8_t seq_plays[NLANE][NSTEP];         /* (the ISR's: the times each step has played since PLAY) */
+static uint8_t seq_played[NLANE];               /* (the note a track's step played last, mutated: the tests') */
 /* the scale, for MUTATE and the MIDI FX (the main loop's, as it is set): its notes from the root (bit k: k
  * semitones up), the root */
 static volatile uint16_t seq_smask = 0xFFFu;
@@ -733,7 +765,7 @@ static void chord_of(int32_t root, uint32_t form, int32_t *n)   /* the chord's t
 /* the MIDI FX's notes to come: a track's, each so many blocks from now (note 0: a free place) */
 #define FXQ 8u
 typedef struct { uint16_t left; uint8_t note, vel, len8, step; } fxq_t;
-static fxq_t fxq[NTRACK][FXQ];
+static fxq_t fxq[NLANE][FXQ];
 static void fxq_add(uint32_t t, uint32_t blocks, int32_t note, int32_t vel, uint32_t len8, uint32_t step)
 {
     uint32_t k;
@@ -748,22 +780,22 @@ static void fxq_add(uint32_t t, uint32_t blocks, int32_t note, int32_t vel, uint
     fxq[t][k].note = (uint8_t)note;
 }
 
-static volatile uint32_t seq_tacc_now[NTRACK];   /* (as the block ended: where in its step the track is) */
+static volatile uint32_t seq_tacc_now[NLANE];   /* (as the block ended: where in its step the track is) */
 static volatile uint8_t seq_run;          /* PLAY */
-static volatile uint8_t seq_pos[NTRACK];  /* the step playing (the ISR's; the screen and the LEDs read it) */
+static volatile uint8_t seq_pos[NLANE];  /* the step playing (the ISR's; the screen and the LEDs read it) */
 static uint32_t seq_acc, seq_rnd = 0x2545F491u;
 static uint8_t seq_was;
-static uint16_t seq_loop[NTRACK];         /* the times the track has played through since PLAY */
-static uint8_t seq_pre[NTRACK];           /* the last condition evaluated on the track (but PRE): 0 none yet, 1 false,
+static uint16_t seq_loop[NLANE];         /* the times the track has played through since PLAY */
+static uint8_t seq_pre[NLANE];           /* the last condition evaluated on the track (but PRE): 0 none yet, 1 false,
                                            * 2 true */
 #define SEQ_HOLD 6u                       /* notes a track's steps and loops keep sounding at once */
-static uint8_t sq_note[NTRACK][SEQ_HOLD];
-static uint16_t sq_left[NTRACK][SEQ_HOLD];   /* blocks left (0xFFFF: INF) */
+static uint8_t sq_note[NLANE][SEQ_HOLD];
+static uint16_t sq_left[NLANE][SEQ_HOLD];   /* blocks left (0xFFFF: INF) */
 static void seq_release(void)
 {
     uint32_t t, i;
     memset(fxq, 0, sizeof fxq);
-    for (t = 0; t < NTRACK; t++)
+    for (t = 0; t < NLANE; t++)
         for (i = 0; i < SEQ_HOLD; i++)
             if (sq_note[t][i]) {
                 note_off(t, sq_note[t][i], SRC_SEQ);
@@ -794,7 +826,7 @@ static int seq_cond_ok(uint32_t t, uint32_t c)
 }
 /* a note of the sequencer's (a step's, a loop's) on track t, for len8 eighths of a step (0: until it plays again or
  * the sequencer stops), with the locks lk (0 none) */
-static uint32_t seq_sounded[NTRACK];             /* (the notes the sequencer has played a track: the tests count them) */
+static uint32_t seq_sounded[NLANE];             /* (the notes the sequencer has played a track: the tests count them) */
 static void seq_sound(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, const volatile uint8_t *lid,
                       const volatile int16_t *lv)
 {
@@ -900,16 +932,18 @@ enum { BR_REPEAT, BR_HALF, BR_DOUBLE, BR_REVERSE, BR_CHOP, BR_ROLL, NBR };
 static const char *const BR_NAME[NBR] = {"REPEAT", "HALF TIME", "DOUBLE", "REVERSE", "CHOP", "ROLL"};
 enum { BL_RAT = 1, BL_OCT = 2, BL_FLAM = 4, BL_GAP = 8, BL_ACC = 16 };
 static volatile uint8_t brk_mask;                /* (the main loop's: the tracks under the break; 0 none) */
-static volatile uint8_t brk_kick, brk_drum, brk_keep;   /* (.. the kicks, the drums, the drones: as the press found them) */
+static volatile uint16_t brk_kick, brk_drum, brk_keep;   /* (.. the kicks, the drums, the drones: as the press found
+                                                  * them; a bit a lane) */
 static volatile uint32_t brk_seed;               /* (.. a new one each press) */
 static volatile uint8_t brk_shown = 0xFF;        /* (the ISR's: the way playing, BR_*, for the screen; w after) */
 static volatile uint8_t brk_shown_w;
 static uint32_t brk_seen, brk_r, brk_n16, brk_since;
-static uint8_t brk_rec, brk_prev = 0xFF, brk_w, brk_chop[4], brk_gap, brk_lay, brk_fresh;
-static uint8_t brk_anchor[NTRACK];
-static uint8_t brk_rt[NTRACK], brk_fl[NTRACK];   /* (a step's: its ratchet, flam, velocity %) */
-static uint8_t brk_vp[NTRACK] = {100, 100, 100, 100, 100, 100};
-static int8_t brk_oct[NTRACK];
+static uint8_t brk_rec, brk_prev = 0xFF, brk_w, brk_chop[4], brk_gap, brk_lay;
+static uint16_t brk_fresh;                       /* (a bit a lane) */
+static uint8_t brk_anchor[NLANE];
+static uint8_t brk_rt[NLANE], brk_fl[NLANE];   /* (a step's: its ratchet, flam, velocity %) */
+static uint8_t brk_vp[NLANE] = {100, 100, 100, 100, 100, 100, 100, 100, 100};
+static int8_t brk_oct[NLANE];
 static uint8_t brk_last;                         /* (the tracks under it as the last block ended) */
 static uint32_t brk_rnd(uint32_t n)
 {
@@ -941,7 +975,7 @@ static void brk_draw(void)                       /* a plan: the way, its window,
                 brk_lay |= (uint8_t)(1u << i);
     if (brk_rec == BR_ROLL)
         brk_lay |= BL_RAT;
-    brk_fresh = (1u << NTRACK) - 1u;
+    brk_fresh = (uint16_t)((1u << NLANE) - 1u);
     brk_since = 0;
     brk_shown_w = brk_w;
     brk_shown = brk_rec;
@@ -1002,7 +1036,7 @@ static uint32_t brk_step(uint32_t t, uint32_t p, uint32_t len)
         if (p % (brk_w > 4u ? 8u : 4u))
             return p;
         brk_anchor[t] = (uint8_t)p;
-        brk_fresh &= (uint8_t)~(1u << t);
+        brk_fresh &= (uint16_t)~(1u << t);
     }
     src = brk_map(brk_anchor[t], p, len, kick);
     if ((brk_lay & BL_GAP) && !kick && p % 16u >= brk_gap)   /* a gap before the bar's end: the kick alone */
@@ -1119,7 +1153,7 @@ static void seq_trig(uint32_t t, uint32_t p)
 static void fxq_block(void)                      /* (each block, playing: the MIDI FX's notes come due) */
 {
     uint32_t t, k;
-    for (t = 0; t < NTRACK; t++)
+    for (t = 0; t < NLANE; t++)
         for (k = 0; k < FXQ; k++) {
             fxq_t *q = &fxq[t][k];
             if (q->note && !--q->left) {
@@ -1147,6 +1181,21 @@ static void fxq_block(void)                      /* (each block, playing: the MI
 #define LOOP_MAX 512u            /* (steps: 32 bars) */
 #define LP_FREE 0xFFu
 typedef struct { uint16_t step, len8; uint8_t note, vel; } lev_t;
+/* (build 79) a loop's note: the subtrack it was played on in len8's top two bits (0, ST-A: every loop before) */
+#define LEV_LEN(e) ((uint32_t)(e).len8 & 0x3FFFu)
+#define LEV_SUB(e) ((uint32_t)(e).len8 >> 14)
+#define LEV_PACK(len, s) ((uint16_t)(((len) > 0x3FFFu ? 0x3FFFu : (len)) | (uint32_t)(s) << 14))
+/* the lane of track t's subtrack s (s 0: the track's own); NLANE: none taken */
+static uint32_t lane_find(uint32_t t, uint32_t s)
+{
+    uint32_t l;
+    if (!s)
+        return t;
+    for (l = NTRACK; l < NLANE; l++)
+        if (ln_s[l] == s && ln_t[l] == t)
+            return l;
+    return NLANE;
+}
 typedef struct {
     volatile uint8_t on, mute;
     volatile uint8_t kick;       /* ended after its first step had gone by: that step's notes played at once */
@@ -1273,9 +1322,11 @@ static void loop_kick(void)                      /* (each block: a loop's first 
         if (p->pat != k || !p->on || !p->kick)
             continue;
         loop_wait[t] &= (uint8_t)~(1u << p->l);  /* (its first step: no more waiting) */
-        for (p->cur = 0; p->cur < p->n && p->ev[p->cur].step == 0u; p->cur++)
-            if (!p->mute)
-                seq_sound(t, lp_note(p, p->ev[p->cur].note), p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
+        for (p->cur = 0; p->cur < p->n && p->ev[p->cur].step == 0u; p->cur++) {
+            uint32_t l = lane_find(t, LEV_SUB(p->ev[p->cur]));   /* (the subtrack it was played on; gone: silent) */
+            if (!p->mute && l < NLANE && ln_on[l])
+                seq_sound(l, lp_note(p, p->ev[p->cur].note), p->ev[p->cur].vel, LEV_LEN(p->ev[p->cur]), 0, 0);
+        }
         p->kick = 0;
     }
 }
@@ -1294,22 +1345,24 @@ static void loop_step(void)
         }
         while (p->cur < p->n && p->ev[p->cur].step < ph)
             p->cur++;
-        for (; p->cur < p->n && p->ev[p->cur].step == ph; p->cur++)
-            if (!p->mute && !(loop_wait[t] >> p->l & 1u))
-                seq_sound(t, lp_note(p, p->ev[p->cur].note), p->ev[p->cur].vel, p->ev[p->cur].len8, 0, 0);
+        for (; p->cur < p->n && p->ev[p->cur].step == ph; p->cur++) {
+            uint32_t l = lane_find(t, LEV_SUB(p->ev[p->cur]));
+            if (!p->mute && !(loop_wait[t] >> p->l & 1u) && l < NLANE && ln_on[l])
+                seq_sound(l, lp_note(p, p->ev[p->cur].note), p->ev[p->cur].vel, LEV_LEN(p->ev[p->cur]), 0, 0);
+        }
     }
 }
 /* a pattern's steps whole, as the sequencer plays them (projects.c fills one, the ISR takes it in) */
 typedef struct {
-    uint8_t note[NTRACK][NSTEP], vel[NTRACK][NSTEP], glen[NTRACK][NSTEP], cond[NTRACK][NSTEP], rtg[NTRACK][NSTEP];
-    int8_t mut[NTRACK][NSTEP];
-    uint8_t mcy[NTRACK][NSTEP], mfx[NTRACK][NSTEP], fcy[NTRACK][NSTEP];
-    uint8_t chf[NTRACK][NSTEP];
-    uint8_t lid[NTRACK][NSTEP][NPL];
-    int16_t lv[NTRACK][NSTEP][NPL];
-    uint8_t len[NTRACK], div[NTRACK], dir[NTRACK];
-    uint8_t den[NTRACK], cx[NTRACK];             /* (the phrase generator's, the main loop's: not the ISR's) */
-    int8_t trn[NTRACK];                          /* (each track's transposition, steps of the scale: the main loop's) */
+    uint8_t note[NLANE][NSTEP], vel[NLANE][NSTEP], glen[NLANE][NSTEP], cond[NLANE][NSTEP], rtg[NLANE][NSTEP];
+    int8_t mut[NLANE][NSTEP];
+    uint8_t mcy[NLANE][NSTEP], mfx[NLANE][NSTEP], fcy[NLANE][NSTEP];
+    uint8_t chf[NLANE][NSTEP];
+    uint8_t lid[NLANE][NSTEP][NPL];
+    int16_t lv[NLANE][NSTEP][NPL];
+    uint8_t len[NLANE], div[NLANE], dir[NLANE];
+    uint8_t den[NLANE], cx[NLANE];             /* (the phrase generator's, the main loop's: not the ISR's) */
+    int8_t trn[NLANE];                          /* (each track's transposition, steps of the scale: the main loop's) */
 } seqbuf_t;
 static void seq_copy_out(seqbuf_t *b)            /* the steps playing, into b */
 {
@@ -1351,6 +1404,8 @@ static void seq_copy_in(const seqbuf_t *b)       /* b, as the steps playing */
  * time through -- the steps it leaves into sb_old, every track from its start -- then seq_pend 2 (the main loop
  * finishes it: pat_poll) */
 static seqbuf_t sb_next, sb_old;
+static volatile uint8_t sb_lock;                 /* (the main loop's scratch in sb_old: no pattern taken in meanwhile;
+                                                  * projects.c's sb_scratch) */
 static volatile uint8_t seq_pend, seq_pend_t;
 static volatile uint8_t seq_pend_mu;             /* (build 65: the pattern waiting's mutes, a bit a track, bit 7 set: it has
                                                   * them -- applied as it is taken in) */
@@ -1432,7 +1487,7 @@ static void arp_fire(uint32_t t, uint32_t l, uint32_t adv)
     a->c++;
     arp_quiet(t);
     note_vel = (uint8_t)vel;
-    note_on(t, note, SRC_ARP);
+    note_on(a->lane, note, SRC_ARP);
     note_vel = 127;
     a->snd = (uint8_t)note;
     a->left = adv ? (l >> 7) * g / adv : 1u;
@@ -1441,12 +1496,12 @@ static void arp_fire(uint32_t t, uint32_t l, uint32_t adv)
     if (arp_rw - arp_rr < ARP_RQ) {
         arp_rec_t *r = &arp_rq[arp_rw % ARP_RQ];
         uint32_t e = AR_R6[p[AR_RATE] % NAR_RATE] * g / 96u;   /* (eighths of a 16th: rate x 8 / 6, x the gate / 128) */
-        r->t = (uint8_t)t;
+        r->t = a->lane;                          /* (a lane: the track's subtrack) */
         r->note = (uint8_t)note;
         r->vel = (uint8_t)vel;
         r->len8 = (uint16_t)(e ? e : 1u);
-        r->pos = seq_pos[t];
-        r->acc = seq_tacc[t];
+        r->pos = seq_pos[a->lane];
+        r->acc = seq_tacc[a->lane];
         r->q = seq_gcount == 0xFFFFFFFFu ? 0u : seq_gcount + (seq_acc >= SEQ_16TH / 2u);
         RING_PUBLISH();
         arp_rw++;
@@ -1517,7 +1572,7 @@ static void seq_block(void)
                                                   * note playing, measured from the last run's count and ended at
                                                   * once after 32 bars of it; build 44) */
             seq_release();
-            for (t = 0; t < NTRACK; t++)
+            for (t = 0; t < NLANE; t++)
                 memset(trk[t].tid, PL_NONE, sizeof trk[t].tid);
         }
         seq_was = 0;
@@ -1541,7 +1596,7 @@ static void seq_block(void)
     if (!seq_was) {                              /* started: step 1 now */
         seq_was = 1;
         seq_acc = SEQ_16TH;
-        for (t = 0; t < NTRACK; t++) {
+        for (t = 0; t < NLANE; t++) {
             seq_pos[t] = 0xFF;
             seq_loop[t] = 0;
             seq_pre[t] = 0;
@@ -1563,7 +1618,7 @@ static void seq_block(void)
             uint32_t spp = xk_spp;
             seq_gcount = spp - 1u;
             seq_gstep = (uint8_t)((spp - 1u) & 15u);
-            for (t = 0; t < NTRACK; t++) {
+            for (t = 0; t < NLANE; t++) {
                 uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p8 = spp * DIV_R8[seq_div[t] % NDIV], st = p8 / 8u;
                 seq_loop[t] = (uint16_t)(st / len);
                 if (p8 % 8u) {                   /* (inside a step: that one, played already; the next to come) */
@@ -1578,7 +1633,7 @@ static void seq_block(void)
         adv = midi_adv(1);
     }
     midi_clock_out(adv);
-    for (t = 0; t < NTRACK; t++)                 /* the lengths run out */
+    for (t = 0; t < NLANE; t++)                  /* the lengths run out */
         for (i = 0; i < SEQ_HOLD; i++)
             if (sq_note[t][i] && sq_left[t][i] != 0xFFFFu && !--sq_left[t][i]) {
                 note_off(t, sq_note[t][i], SRC_SEQ);
@@ -1586,10 +1641,10 @@ static void seq_block(void)
             }
     /* the pattern waiting, in -- before the tempo's 16th that comes with it, so that its loops play that step as the
      * pattern has them (build 68) */
-    if (seq_pend == 1u && seq_tacc[seq_pend_t] >= SEQ_STEP8 && seq_wraps(seq_pend_t)) {
+    if (seq_pend == 1u && !sb_lock && seq_tacc[seq_pend_t] >= SEQ_STEP8 && seq_wraps(seq_pend_t)) {
         seq_copy_out(&sb_old);
         seq_copy_in(&sb_next);
-        for (t = 0; t < NTRACK; t++) {
+        for (t = 0; t < NLANE; t++) {
             seq_pos[t] = 0xFF;
             seq_loop[t] = 0;
             seq_pre[t] = 0;
@@ -1652,23 +1707,24 @@ static void seq_block(void)
     {   /* BREAK let go: its ratchets and echoes still to come dropped at once, so the pattern is back as the key
          * comes up (the notes sounding ring on) */
         uint8_t m = brk_mask, gone = (uint8_t)(brk_last & ~m);
-        for (t = 0; gone && t < NTRACK; t++)
-            if (gone >> t & 1u) {
+        for (t = 0; gone && t < NLANE; t++)
+            if (gone >> LANE_T(t) & 1u) {
                 rt_left[t] = 0;
                 memset(fxq[t], 0, sizeof fxq[t]);
             }
         brk_last = m;
     }
-    for (t = 0; t < NTRACK; t++) {               /* each track on its own clock */
+    for (t = 0; t < NLANE; t++) {                /* each lane on its own clock (a lane that does not play: in time,
+                                                  * silent) */
         if (seq_tacc[t] >= SEQ_STEP8) {
             uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_next(t, len), q = p;
             seq_tacc[t] -= SEQ_STEP8;
             rt_left[t] = 0;                      /* (a ratchet not done by the next step: cut) */
             seq_pos[t] = (uint8_t)p;
             brk_vp[t] = 100;
-            if ((brk_mask >> t & 1u) && !(brk_keep >> t & 1u) && brk_shown != 0xFFu)
+            if ((brk_mask >> LANE_T(t) & 1u) && !(brk_keep >> t & 1u) && brk_shown != 0xFFu)
                 q = brk_step(t, p, len);         /* (BREAK: another step, its own position kept) */
-            if (q != 0xFFu)
+            if (q != 0xFFu && ln_on[t])
                 seq_trig(t, q);
             brk_rt[t] = brk_fl[t] = 0;
             brk_oct[t] = 0;
@@ -1754,7 +1810,7 @@ FAST static void fx_render(void)
     TL_FX(2, rv_block(fxb.rv, fxb.wl[2], fxb.wr[2]))
     fxb.ticks = COST_NOW() - c0;
 }
-static const ck_t *vr_ck[NTRACK];                /* (each track's cooked sound, for the block) */
+static const ck_t *vr_ck[NLANE];                /* (each track's cooked sound, for the block) */
 FAST static void voice_render(uint32_t k)
 {
     voice_t *v = &vox[k];
@@ -1830,10 +1886,10 @@ typedef struct {
     uint8_t stop[NLFO];
     uint32_t cooked;                             /* lfo_flips[t] + 1 when its copy was cooked (0: none) */
 } lfo_st_t;
-static lfo_st_t lfs[NTRACK];
-static ck_t ck_lfo[NTRACK] POOL;                 /* (each track's cooked sound, as its LFOs have it now) */
-static int32_t lfo_mod[NTRACK][NLFO];            /* (each LFO's share on its sound's destination, Q15; 0 none) */
-static uint8_t lfo_any[NTRACK];                  /* (an LFO of the track has a destination and a depth) */
+static lfo_st_t lfs[NLANE];
+static ck_t ck_lfo[NLANE];                 /* (each track's cooked sound, as its LFOs have it now) */
+static int32_t lfo_mod[NLANE][NLFO];            /* (each LFO's share on its sound's destination, Q15; 0 none) */
+static uint8_t lfo_any[NLANE];                  /* (an LFO of the track has a destination and a depth) */
 static uint32_t lfo_rr, lfo_rnd = 0x2545F491u;
 static void lfo_off(lfo_t *l)
 {
@@ -1963,7 +2019,7 @@ static void lfo_block(void)
 #if TELEMETRY
     uint32_t t0 = fm1_ticks(), t1, t2, t;
     ph = (uint8_t)((ph + 1u) % LFO_EVERY);
-    for (t = 0; ph == 0u && t < NTRACK; t++)
+    for (t = 0; ph == 0u && t < NLANE; t++)
         lfo_step(t);
     t1 = fm1_ticks();
     if (ph == LFO_EVERY / 2u)
@@ -1976,7 +2032,7 @@ static void lfo_block(void)
 #else
     uint32_t t;
     ph = (uint8_t)((ph + 1u) % LFO_EVERY);
-    for (t = 0; ph == 0u && t < NTRACK; t++)
+    for (t = 0; ph == 0u && t < NLANE; t++)
         lfo_step(t);
     if (ph == LFO_EVERY / 2u)
         lfo_cook();
@@ -1986,28 +2042,28 @@ static void lfo_cook(void)
 {
     uint32_t t, i, k;
     sound_t s;
-    for (t = 0; t < NTRACK; t++)
+    for (t = 0; t < NLANE; t++)
         if (lfo_any[t] && lfs[t].cooked != lfo_flips[t] + 1u)
             break;
-    if (t == NTRACK)
-        for (i = 0; i < NTRACK + NVOICE; i++) {
-            uint32_t j = (lfo_rr + i) % (NTRACK + NVOICE);
-            if (j < NTRACK ? lfo_any[j] : vox[j - NTRACK].own && vox[j - NTRACK].sounding && lfo_any[vox[j - NTRACK].track]) {
+    if (t == NLANE)
+        for (i = 0; i < NLANE + NVOICE; i++) {
+            uint32_t j = (lfo_rr + i) % (NLANE + NVOICE);
+            if (j < NLANE ? lfo_any[j] : vox[j - NLANE].own && vox[j - NLANE].sounding && lfo_any[vox[j - NLANE].track]) {
                 lfo_rr = j + 1u;
                 t = j;
                 break;
             }
         }
-    if (t == NTRACK)
+    if (t == NLANE)
         return;
-    if (t < NTRACK) {
+    if (t < NLANE) {
         s = ck_buf[t][ck_use[t]].snd;
         lfo_apply(&s, lfo_mod[t]);
         ck_cook(&ck_lfo[t], &s);
         lfs[t].cooked = lfo_flips[t] + 1u;
         return;
     }
-    k = t - NTRACK;                              /* (a voice with step locks: its locks, then the LFOs) */
+    k = t - NLANE;                              /* (a voice with step locks: its locks, then the LFOs) */
     s = ck_buf[vox[k].track][ck_use[vox[k].track]].snd;
     for (i = 0; i < NPL; i++)
         if (vox[k].lid[i] < PL_MNG)
@@ -2025,7 +2081,7 @@ static void vr_block(void)
     uint32_t t, k, s0 = 0, s1 = fxb.ticks, any1 = 0, n = 0, j;
     uint8_t ord[NVOICE];
     uint32_t cst[NVOICE];
-    for (t = 0; t < NTRACK; t++) {
+    for (t = 0; t < NLANE; t++) {
         track_t *y = &trk[t];
         if (!y->xfade && ck_pub[t] != ck_use[t]) {
             if (ck_buf[t][ck_pub[t]].mach != ck_buf[t][ck_use[t]].mach && track_sounding(t))
@@ -2039,8 +2095,14 @@ static void vr_block(void)
             }
         }
     }
+    for (k = 0; k < NVOICE; k++)                 /* (a lane that no longer plays -- freed, or its track off DRUM: its
+                                                  * voices out) */
+        if (!ln_on[vox[k].track] && vox[k].sounding && !vox[k].fade) {
+            vox[k].gate = 0;
+            vox[k].fade = FADE;
+        }
     lfo_block();                                 /* the LFOs: on a block, one sound cooked anew (build 50) */
-    for (t = 0; t < NTRACK; t++)
+    for (t = 0; t < NLANE; t++)
         vr_ck[t] = lfo_live(t) ? &ck_lfo[t] : &ck_buf[t][ck_use[t]];
     audio_worker_check();                        /* (a CPU1 that misread or faulted: alone from here) */
     for (k = 0; k < NVOICE; k++) {               /* (the voices by their last cost, the dearest first ..) */
@@ -2094,6 +2156,7 @@ static void vr_block(void)
 FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin, int32_t *rvin, int32_t *chin)
 {
     track_t *y = &trk[t];
+    uint32_t tr = LANE_T(t);                     /* (a lane: its track's mute and sidechain) */
     int32_t buf[CTL], pk = 0, sd1, sr1, sc1, pl1, pr1, dk_dg = 0, dk_next = Q16;
     int duck = 0;
     uint8_t mg[NM];
@@ -2196,18 +2259,9 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
             pr1 = trk_pr[t];
         }
     }
-    if (!any) {
-        if (dk_mask >> t & 1u) {                 /* (a source, silent: its level falls) */
-            for (i = 0; i < CTL;) {
-                REP4({
-                    buf[i] = 0;
-                })
-            }
-            dk_feed(&dk[t], buf, dk_struck[t]);
-            dk_struck[t] = 0;
-        }
+    if (!any) {                                  /* (a source, silent: nothing to its track's sum) */
         dk_sent[t][0] = dk_sent[t][1] = dk_sent[t][2] = 0;
-        y->mg = trk_mute[t] ? 0 : Q15;           /* (silent: muted or not at once) */
+        y->mg = trk_mute[tr] ? 0 : Q15;          /* (silent: muted or not at once) */
         y->meter -= y->meter >> 4;
         y->g = (int32_t)(((int64_t)trk_gain[t] * y->mg) >> 15);
         y->pl = pl1;
@@ -2229,14 +2283,18 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
         y->dc = dc;
     }
     lim_block(&y->lim_env, &y->lim_g, buf);
-    if (dk_mask >> t & 1u)                       /* (a source: its hits followed; muted, it ducks nothing) */
-        dk_feed(&dk[t], trk_mute[t] ? zero_blk : buf, dk_struck[t] && !trk_mute[t]);
-    dk_struck[t] = 0;
+    if ((dk_mask >> tr & 1u) && !trk_mute[tr])   /* (a source: its lanes summed, its hits followed after them;
+                                                  * muted, it ducks nothing) */
+        for (i = 0; i < CTL;) {
+            REP4({
+                dk_acc[i] += buf[i];
+            })
+        }
     {   /* this track ducked under its source's hits: by SC LEVEL (0 .. 100: up to 45 dB, near a gate) as the source's
          * level stands against its hit, coming down at ATTACK, back as the source's level falls (RELEASE) */
-        uint32_t src = sc_src[t];
-        if (src && src - 1u != t && src <= NTRACK && sc_lvl[t]) {
-            int32_t e = dk_e(&dk[src - 1u]), d = (sc_lvl[t] * 100 + 63) / 127, att = e * d / 10 * 9;   /* (dB,
+        uint32_t src = sc_src[tr];
+        if (src && src - 1u != tr && src <= NTRACK && sc_lvl[tr]) {
+            int32_t e = dk_e(&dk[src - 1u]), d = (sc_lvl[tr] * 100 + 63) / 127, att = e * d / 10 * 9;   /* (dB,
                                                                                          * Q16: 0.45 dB a step of 100) */
             int32_t g1;
             dk_att[t] = att > dk_att[t] ? dk_att[t] + (int32_t)(((int64_t)(att - dk_att[t]) * cpc.ka) >> 16) : att;
@@ -2250,7 +2308,7 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
         }
     }
     {   /* the level, the pan and the sends, gliding over the block */
-        int32_t mg1 = y->mg + clampi((trk_mute[t] ? 0 : Q15) - y->mg, -Q15 / 12, Q15 / 12);   /* (the mute, gliding) */
+        int32_t mg1 = y->mg + clampi((trk_mute[tr] ? 0 : Q15) - y->mg, -Q15 / 12, Q15 / 12);   /* (the mute, gliding) */
         int32_t g1 = (int32_t)(((int64_t)trk_gain[t] * mg1) >> 15);
         int32_t dg = (g1 - y->g) / CTL, dl = (pl1 - y->pl) / CTL, dr = (pr1 - y->pr) / CTL;
         int32_t dd = (sd1 - y->sd) / CTL, dv = (sr1 - y->sr) / CTL, dc = (sc1 - y->sc) / CTL;
@@ -2427,14 +2485,25 @@ static void mix_block(int32_t *out)
 #else
     vr_block();
 #endif
-    for (t = 0; t < NTRACK; t++) {
+    for (t = 0; t < NTRACK; t++) {               /* each track: its lanes (its own, then its subtracks), then its hits
+                                                  * followed for the tracks it ducks, the lanes summed (build 79) */
+        uint32_t l;
+        if (dk_mask >> t & 1u)
+            memset(dk_acc, 0, sizeof dk_acc);
+        for (l = t; l < NLANE; l = l < NTRACK ? NTRACK : l + 1u) {
+            if (l >= NTRACK && (!ln_s[l] || LANE_T(l) != t))
+                continue;
 #if TELEMETRY
-        uint32_t c1 = COST_NOW();
-        FAR(track_block)(t, l_, r_, dlin, rvin, chin);
-        tl_trk[t] += COST_NOW() - c1;
+            uint32_t c1 = COST_NOW();
+            FAR(track_block)(l, l_, r_, dlin, rvin, chin);
+            tl_trk[l] += COST_NOW() - c1;
 #else
-        FAR(track_block)(t, l_, r_, dlin, rvin, chin);
+            FAR(track_block)(l, l_, r_, dlin, rvin, chin);
 #endif
+        }
+        if (dk_mask >> t & 1u)
+            FAR(dk_feed)(&dk[t], dk_acc, dk_struck[t] && !trk_mute[t]);   /* (RAM code: through a pointer) */
+        dk_struck[t] = 0;
     }
     {   /* the returns (last block's sends): each ducked by its tracks' share in it (a ducked pad's reverb with it) */
         uint32_t f;
@@ -2442,7 +2511,7 @@ static void mix_block(int32_t *out)
             int32_t g1 = Q16, dg, g;
             if (dk_on) {
                 uint32_t num = 0, den = 0;
-                for (t = 0; t < NTRACK; t++) {
+                for (t = 0; t < NLANE; t++) {
                     uint32_t w;
                     dk_in[t][f] += ((dk_sent[t][f] < (1u << 21) ? dk_sent[t][f] : 1u << 21) >> 6) - (dk_in[t][f] >> 10);   /* (below 2^25) */
                     w = dk_in[t][f] >> 9;
@@ -2517,7 +2586,7 @@ static void tracks_init(void)
     eng_cost[ENG_WAV] = BLK_TICKS * 5u / 100u;
     eng_cost[ENG_SWM] = BLK_TICKS * 7u / 100u;
     blk_last = blk_new = 0;
-    for (t = 0; t < NTRACK; t++) {
+    for (t = 0; t < NLANE; t++) {
         trk[t].lim_g = Q15;
         trk[t].mg = Q15;
         memset(trk[t].tid, PL_NONE, sizeof trk[t].tid);
@@ -2525,8 +2594,15 @@ static void tracks_init(void)
     memset((void *)seq_lid, PL_NONE, sizeof seq_lid);
     memset(arps, 0, sizeof arps);                /* (the arpeggiators off, their settings the start's) */
     memset((void *)arp_on, 0, sizeof arp_on);
-    for (t = 0; t < NTRACK; t++)
+    for (t = 0; t < NTRACK; t++) {
         arp_defaults(t);
+        arps[t].lane = (uint8_t)t;
+    }
+    for (t = 0; t < NLANE; t++) {                /* (the lanes: each track's own; the shared ones free) */
+        ln_t[t] = (uint8_t)(t < NTRACK ? t : 0u);
+        ln_s[t] = 0;
+        ln_on[t] = (uint8_t)(t < NTRACK);
+    }
     memset(lfs, 0, sizeof lfs);                  /* (no LFO copy cooked: each track plays its own sound) */
     memset(lfo_any, 0, sizeof lfo_any);
     memset(lfo_mod, 0, sizeof lfo_mod);

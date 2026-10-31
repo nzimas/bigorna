@@ -48,12 +48,12 @@ static uint32_t phrase_role(const sound_t *s)
 static void phrase_brk_roles(void)
 {
     uint32_t t, r;
-    uint8_t k = 0, d = 0, n = 0;
-    for (t = 0; t < NTRACK; t++) {
-        r = phrase_role(&ui.snd[t][ui.eng[t]]);
-        k |= (uint8_t)((r == RO_KICK) << t);
-        d |= (uint8_t)((r <= RO_NOISE) << t);
-        n |= (uint8_t)((r == RO_DRONE) << t);
+    uint16_t k = 0, d = 0, n = 0;
+    for (t = 0; t < NLANE; t++) {                /* (each lane: a subtrack's own sound, build 79) */
+        r = phrase_role(lane_snd(t));
+        k |= (uint16_t)((r == RO_KICK) << t);
+        d |= (uint16_t)((r <= RO_NOISE) << t);
+        n |= (uint16_t)((r == RO_DRONE) << t);
     }
     brk_kick = k;
     brk_drum = d;
@@ -384,8 +384,8 @@ static void ph_trim(uint32_t t)
 {
     while (pat_bytes() > SEQ_PX) {
         uint32_t u, i, j, k = ph_rnd(NSTEP * NPL), found = 0;
-        for (u = 0; u < NTRACK && !found; u++) {
-            uint32_t tt = (t + u) % NTRACK;
+        for (u = 0; u < NLANE && !found; u++) {  /* (every lane: the subtracks' too) */
+            uint32_t tt = (t + u) % NLANE;
             for (j = 0; j < NSTEP * NPL && !found; j++) {
                 uint32_t q = (k + j) % (NSTEP * NPL);
                 if (seq_lid[tt][q / NPL][q % NPL] != PL_NONE) {
@@ -412,7 +412,7 @@ static void phrase_relock(uint32_t t)
     int32_t pan = 64;
     ph_seed = next_seed();
     ph_t = t;
-    ph_s = &ui.snd[t][ui.eng[t]];
+    ph_s = lane_snd(t);
     role = phrase_role(ph_s);
     for (i = 0; i < NSTEP; i++) {
         pl_clear(t, i);
@@ -502,7 +502,7 @@ static void ph_complexity(uint32_t role, uint32_t cx)
 /* the chosen track's phrase, new; the pattern changed */
 static void phrase_new(uint32_t t)
 {
-    sound_t *s = &ui.snd[t][ui.eng[t]];
+    sound_t *s = lane_snd(t);
     uint32_t i, role;
     ph_seed = next_seed();
     ph_t = t;

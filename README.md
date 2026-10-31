@@ -35,6 +35,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | Control | What it does |
 | --- | --- |
 | **The six top buttons** | choose track **1–6** (lit: chosen; glowing dimly: sounding). From any page, back to the track. In [MUTE mode](#mute-mode): mute and solo. |
+| **A track's button held + white key 1–4** | on a DRUM track: its [subtrack](#subtracks) **ST-A**–**ST-D**. **SHIFT +**: give up a subtrack past ST-A. |
 | **PRESETS** knob | the chosen track's machine: **4-OP**, **DRUM**, **WAVY**, **HIVE**. Each track keeps one sound per machine. |
 | **SHIFT + PRESETS** | a new sound of the family before or after. |
 | **HOME** | a new sound for the chosen track ([Sounds](#sounds)). |
@@ -80,6 +81,32 @@ sound, a new note takes the quietest one. DRUM tracks choke: each hit fades the 
 
 The FM-1's second processor core plays half the voices and the effects. If it ever faults, the first core carries on
 alone until the FM-1 is switched off, and the screen says **1 CORE**.
+
+### Subtracks
+
+A track on DRUM has subtracks, ST-A to ST-D, and each is a track in its own right: its own sound, steps with their
+locks, length, clock, direction, phrase, octave, transposition, level, pan, sends and MANGLE. All of a track's
+subtracks play through its mute and its sidechain, and on its MIDI channel. So one track can hold a whole kit, and
+the other five are free for other parts. A track not on DRUM has none (ST-A is the track itself).
+
+| To | Do this |
+| --- | --- |
+| Choose a subtrack | hold the track's button and press white key 1–4 (ST-A–ST-D); ST-B shows for a moment |
+| See them | hold the track's button: the chosen subtrack's key lit, ST-A and the other subtracks in use dim |
+| Give one up | hold SHIFT and the track's button, and press its white key (ST-B–ST-D): its steps go |
+
+- ST-A is the track's own sound; until another is chosen, everything acts on it.
+- A new subtrack gets the kit's next piece after the track's own: on a kick's track, ST-B a snare, ST-C a hat,
+  ST-D a tom. HOME, SHIFT + HOME and SHIFT + PRESETS draw its sound; PRESETS on it says DRUM ONLY.
+- Everything then acts on the subtrack chosen: the keys and MIDI notes play it, EDIT shows its sound, the step view
+  its steps, the TRACK and PHRASE pages are its (TRACK 1B), SELECT and ALGORITHM set its level and pan, OCT its
+  octave. The screen shows it under the pattern, at the left: ST-A to ST-D.
+- There are three subtracks past ST-A in all, shared by the tracks: one track with all four (ST-A to ST-D), or
+  several tracks with two or three. When none is left, NO SUBTRACK shows.
+- A track turned off DRUM puts its subtracks away: silent, kept, back as they were when it is on DRUM again.
+  Another DRUM track can take one of them when none is free.
+- Patterns keep each subtrack's steps and settings; the session keeps its sound, level and pan. The looper notes
+  which subtrack each note was played on; SHIFT + OCT− / OCT+ moves every subtrack.
 
 ### Sounds
 
@@ -369,7 +396,7 @@ it.
 
 ## Patterns
 
-A session has 16 patterns. A pattern holds every track's steps (with their length, clock, direction and
+A session has 16 patterns. A pattern holds every track's and subtrack's steps (with their length, clock, direction and
 transposition), its loops, and each track's mute, machine, octave, level, pan, sidechain, CHORD mode and arpeggiator.
 The sounds, the effects, the tempo, the scale and the root belong to the session.
 
@@ -394,7 +421,7 @@ program changes 0 to 15 choose patterns 1 to 16 ([MIDI](#midi)).
 
 ## Sessions
 
-16 sessions are kept in the FM-1's flash. A session holds everything: every track's sounds and settings, the effects,
+16 sessions are kept in the FM-1's flash. A session holds everything: every track's and subtrack's sounds and settings, the effects,
 the tempo, the scale and root, the 16 patterns with their loops, and the pattern playing.
 
 **SHIFT + SAVE** opens the SESSIONS list; SHIFT + SAVE again leaves it. **PRESETS** chooses a slot and **SAVE** opens
