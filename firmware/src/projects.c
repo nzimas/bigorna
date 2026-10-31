@@ -91,6 +91,7 @@ typedef struct {
     uint32_t loop_gen;           /* .. and the generation they were written with */
     uint8_t arp_on[NTRACK];      /* each track's arpeggiator on (from build 52: before, PRJ_LEN50) .. */
     uint8_t arp[NTRACK][NARP];   /* .. and its settings (tracks.c's AR_*) */
+    uint8_t muq;                 /* MUTE QT (build 78: in the padding at the end, saved as 0 before -- NO) */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body49_t, cp)   /* (the lengths builds 18 .. 49 saved: the sound without LFOs) */
 #define PRJ_LEN28 __builtin_offsetof(prj_body49_t, sc_src)
@@ -99,6 +100,8 @@ typedef struct {
 #define PRJ_LEN49 sizeof(prj_body49_t)
 #define PRJ_LEN50 __builtin_offsetof(prj_body_t, arp_on)   /* (builds 50 and 51: the sounds with LFOs, no arpeggiator) */
 typedef char prj_len50[PRJ_LEN50 % 4u == 0u ? 1 : -1];   /* (their size as saved: no padding after loop_gen) */
+typedef char prj_len77[sizeof(prj_body_t) == ((PRJ_LEN50 + NTRACK * (1u + NARP) + 3u) & ~3u) ? 1 : -1];   /* (MUTE QT
+                                                  * took a byte of the padding: the size builds 52 .. 77 saved) */
 /* (builds 35 .. 37: the body ended at mute, and its size -- what they saved -- was rounded up to the struct's
  * alignment, 4: two bytes of padding past mute. Build 38 took the unrounded length and found none of their sessions
  * (build 40)) */
@@ -1382,10 +1385,12 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     memcpy(b->arp, (const void *)arp_p, sizeof b->arp);
     memcpy(b->snd, ui.snd, sizeof b->snd);
     b->sel = ui.sel;
+    b->muq = ses_muq;
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
 {
     uint32_t t;
+    seq_mq = 0;                                  /* (MUTE QT: mutes waiting, dropped) */
     for (t = 0; t < NTRACK; t++) {
         ev_post(EV_STOP, t, 0, 0);
         ui.eng[t] = (uint8_t)(b->eng[t] % NENG);
@@ -1415,6 +1420,7 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     ui.root = (uint8_t)(b->root % 12u);
     ui.scale = (uint8_t)(b->scale < NSCALE ? b->scale : 0);
     ui.sel = (uint8_t)(b->sel < NTRACK ? b->sel : 0);
+    ses_muq = (uint8_t)(b->muq == 1u);
 }
 static int prj_save(uint32_t k)              /* the loops into the store, the pattern playing into its slot, then the
                                              * whole project */
@@ -1558,9 +1564,10 @@ static int prj_delete(uint32_t k)
 
 /* -------------------------------------------------------------- the pages --- */
 /* the rows of a session's page: the operations, then the values */
-enum { PR_BACK, PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_ROOT, PR_SCALE, PR_N };   /* (BACK at the top:
+enum { PR_BACK, PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_MUQ, PR_N };   /* (BACK at the top:
                                                   * SAVE on it, the list again; build 48) */
-static const char *const PR_NAME[PR_N] = {"BACK", "LOAD", "SAVE", "COPY", "DELETE", "TEMPO", "ROOT", "SCALE"};
+static const char *const PR_NAME[PR_N] = {"BACK", "LOAD", "SAVE", "COPY", "DELETE", "TEMPO", "MUTE QT"};   /* (ROOT
+                                                  * and SCALE: the SCALE page's, ARP -- build 78) */
 enum { PQ_NONE, PQ_LOAD, PQ_SAVE, PQ_DELETE, PQ_COPYTO, PQ_COPYOVER, PQ_SAVENEW, PQ_NEW };
 static struct {
     uint8_t slot[2];             /* the slot chosen on each list (projects, patterns) */
@@ -1570,7 +1577,6 @@ static struct {
     uint8_t edit;                /* the focus on the value of the row chosen */
     int16_t val;                 /* .. the value as it is being set */
     int32_t shown;               /* (what was drawn, folded into one number) */
-    uint32_t scrolled;           /* when the scale's row was last drawn scrolling */
 } pj;
 #define C_PRJ RGB(120, 255, 200)
 #define C_PAT RGB(255, 210, 120)
@@ -1663,10 +1669,8 @@ static void prj_press(int sh)
         pj.edit = 0;
         if (pj.row == PR_TEMPO)
             ui.tempo = pj.val;
-        else if (pj.row == PR_ROOT)
-            ui.root = (uint8_t)pj.val;
         else
-            ui.scale = (uint8_t)pj.val;
+            ses_muq = (uint8_t)pj.val;
         prj_dirty = 1;
         tempo_apply();
         return;
@@ -1753,9 +1757,9 @@ static void prj_press(int sh)
         pj.ask = PQ_DELETE;
         pj.yes = 0;
         break;
-    default:                                     /* TEMPO, ROOT, SCALE: the focus on the value */
+    default:                                     /* TEMPO, MUTE QT: the focus on the value */
         pj.edit = 1;
-        pj.val = pj.row == PR_TEMPO ? ui.tempo : pj.row == PR_ROOT ? ui.root : ui.scale;
+        pj.val = pj.row == PR_TEMPO ? ui.tempo : ses_muq;
         break;
     }
 }
@@ -1770,8 +1774,7 @@ static void prj_preset(int32_t s)
     else if (pj.ask)
         pj.yes = (uint8_t)(s > 0);
     else if (pj.edit)
-        pj.val = (int16_t)(pj.row == PR_TEMPO ? clampi(pj.val + s, TEMPO_MIN, TEMPO_MAX)
-                           : pj.row == PR_ROOT ? (pj.val + s % 12 + 12) % 12 : clampi(pj.val + s, 0, NSCALE - 1));
+        pj.val = (int16_t)(pj.row == PR_TEMPO ? clampi(pj.val + s, TEMPO_MIN, TEMPO_MAX) : s > 0);
     else
         pj.row = (uint8_t)clampi((int32_t)pj.row + s, 0, (int32_t)pg_rows() - 1);
 }
@@ -1781,6 +1784,7 @@ static void pat_switch(uint32_t k)
 {
     if (k >= PAT_SLOTS)
         return;
+    seq_mq = 0;                                  /* (MUTE QT: mutes waiting, dropped -- the pattern brings its own) */
     if (mcfg.pc_out)                             /* (PROG CH OUT: the pattern asked for, 0 .. 15; build 46) */
         midi_main_send(0xC0u | (mcfg.pc_out_ch - 1u), k, 0);
     pj.slot[1] = (uint8_t)k;
@@ -1970,33 +1974,29 @@ static void draw_pat_grid(void)
     cv_begin(240, 240 - 55 - 4 * 46, C_BLACK);
     cv_blit(0, 55 + 4 * 46);
 }
-/* a page's row: every name and value in the one size (S); the value in a field of its own at the right, scrolling
- * round when longer than the field (a scale's name). The operations above, the values below, a line between; DELETE
- * in red */
-#define FIELD_X 138                /* (past SCALE, TEMPO and ROOT, with a gap) */
-#define FIELD_W (232 - FIELD_X)
-static int prj_scrolls(const char *val) { return text_w(&FONT_S, val) > FIELD_W; }
+/* a page's row: every name and value in the one size (S); the value in a field of its own at the right. The operations
+ * above, the values below, a line between; DELETE in red */
+#define FIELD_X 138                /* (past TEMPO and MUTE QT, with a gap) */
 static void prj_field(uint32_t r, uint32_t k, const char *val, uint16_t fg, int chosen, int focus)
 {
     int32_t y = (37 - (int32_t)FONT_S.h) / 2, w = text_w(&FONT_S, val);
     uint16_t bg = chosen && !focus ? C_WHITE : C_BLACK, vf = focus || chosen ? C_BLACK : pg_pat() ? C_PAT : C_PRJ;
     cv_begin(240, 37, bg);
-    if (focus) {                                 /* (the value being set: its field in white) */
-        cv_rect(FIELD_X - 6, 1, 240 - FIELD_X + 6, 35, C_WHITE);
-        bg = C_WHITE;
+    if (focus) {                                 /* (the value being set: a white field round it, clear of the name) */
+        int32_t fx = clampi(224 - w, FIELD_X - 6, 232);
+        cv_rect((uint32_t)fx, 1, 240u - (uint32_t)fx, 35, C_WHITE);
     }
-    if (val[0] && w <= FIELD_W)
+    if (val[0])
         cv_text(232 - w, y, &FONT_S, val, vf);
-    else if (val[0]) {                           /* (round and round: the text, a gap, the text again, 40 px a second) */
-        int32_t span = w + 40, x = FIELD_X - (int32_t)((fm1_ms / 25u) % (uint32_t)span);
-        cv_text(x, y, &FONT_S, val, vf);
-        cv_text(x + span, y, &FONT_S, val, vf);
-        cv_rect(0, 0, FIELD_X, 37, focus ? C_BLACK : bg);
-        if (focus)
-            cv_rect(FIELD_X - 6, 1, 6, 35, C_WHITE);
-        cv_rect(234, 0, 6, 37, bg);
+    {   /* the name; one too long for the field's gap (MUTE QT) a little closer set */
+        const char *s = PR_NAME[k];
+        int32_t x = 8, sq = text_w(&FONT_S, s) > FIELD_X - 8 ? 2 : 0;
+        uint16_t c = chosen && !focus ? (k == PR_DELETE ? C_BAD : C_BLACK) : fg;
+        for (; *s; s++) {
+            char one[2] = {*s, 0};
+            x = cv_text(x, y, &FONT_S, one, c) - sq;
+        }
     }
-    cv_text(8, y, &FONT_S, PR_NAME[k], chosen && !focus ? (k == PR_DELETE ? C_BAD : C_BLACK) : fg);
     cv_rect(0, 36, 240, 1, RGB(50, 50, 50));
     if (k == PR_DELETE)                          /* (the operations' section ends: a line across) */
         cv_rect(0, 33, 240, 4, pg_pat() ? C_PAT : C_PRJ);
@@ -2005,20 +2005,12 @@ static void prj_field(uint32_t r, uint32_t k, const char *val, uint16_t fg, int 
 /* row k's value as it reads (the value being set, while the focus is on it) */
 static void prj_value(uint32_t k, char *v, uint32_t n)
 {
-    int32_t x = pj.edit && pj.row == k ? pj.val
-                : k == PR_TEMPO ? ui.tempo : k == PR_ROOT ? ui.root : ui.scale;
+    int32_t x = pj.edit && pj.row == k ? pj.val : k == PR_TEMPO ? ui.tempo : ses_muq;
     v[0] = 0;
     if (k == PR_TEMPO)
         fmt_int(v, x);
-    else if (k == PR_ROOT)
-        str_cpy(v, NOTE_NAME[x % 12], n);
-    else if (k == PR_SCALE) {
-        str_cpy(v, SCALE_L1[x % NSCALE], n);
-        if (SCALE_L2[x % NSCALE][0]) {
-            str_cpy(v + str_len(v), " ", 2);
-            str_cpy(v + str_len(v), SCALE_L2[x % NSCALE], n - str_len(v));
-        }
-    }
+    else if (k == PR_MUQ)
+        str_cpy(v, x ? "YES" : "NO", n);
 }
 static void draw_noyes_rows(const char *q, uint16_t col)
 {
@@ -2078,28 +2070,18 @@ static void draw_prj_page(void)
                   i == pj.row, pj.edit && i == pj.row);
     }
 }
-/* the page, drawn again when what it shows has changed (and the scale's name, scrolling, ~25 times a second) */
+/* the page, drawn again when what it shows has changed */
 static void prj_draw(void)
 {
     uint32_t kind = pg_kind();
     int32_t key = ui.page * 1000000 + pj.slot[kind] * 10000 + pj.row * 1000 + pj.ask * 100 + pj.yes * 50 + pj.to +
-                  ui.tempo * 7 + ui.root * 131 + ui.scale * 977 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 +
+                  ui.tempo * 7 + ses_muq * 131 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 +
                   pj.val * 31 + pat_cur * 17 + pat_tempo * 11 + pat_dirty * 5 + pat_store[pj.slot[1]].used * 23 +
                   (pat_clip_from + 1) * 41 + (pat_clip_from >= 0 ? (int32_t)((fm1_ms / 400u) & 1u) * 7777 : 0) +
                   (ui.page == PG_PAT && ui.mute_mode ? (int32_t)(64u + px_mutes()) * 100003 : 0) +
                   (ui.page == PG_PAT && ui.brk ? (int32_t)ui.brk_shown * 3001 + 7 : 0);
-    if (!ui.force && ui.shown_page == ui.page && key == pj.shown) {
-        uint32_t top = prj_top();
-        char v[20];
-        if (ui.page != PG_PRJD || pj.ask || PR_SCALE < top || PR_SCALE >= top + 5u)
-            return;
-        prj_value(PR_SCALE, v, sizeof v);
-        if (prj_scrolls(v) && (uint32_t)(fm1_ms - pj.scrolled) >= 40u) {
-            prj_field(PR_SCALE - top, PR_SCALE, v, C_WHITE, pj.row == PR_SCALE, pj.edit && pj.row == PR_SCALE);
-            pj.scrolled = fm1_ms;
-        }
+    if (!ui.force && ui.shown_page == ui.page && key == pj.shown)
         return;
-    }
     if (ui.page == PG_PRJ)
         draw_prj_list();
     else if (ui.page == PG_PAT)

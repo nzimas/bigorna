@@ -166,7 +166,7 @@ that play the root glow dimly. USB and TRS MIDI notes play the chosen track as t
 
 **ARP** opens the SCALE page: **SELECT** sets the root, **ALGORITHM** the scale. ARP again, or a track button, leaves
 it. **SHIFT + ARP** draws a scale and a root at random and shows them for 1.5 s over any page. The scale and root
-belong to the session; they can also be set on the session's page. A new session draws them at random.
+belong to the session. A new session draws them at random.
 
 The scales: CHROMATIC (the black keys play too, except the first five and the last three), MAJOR, MINOR NATURAL,
 MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, JAPANESE IN, MINOR MELODIC, ENIGMATIC,
@@ -222,6 +222,11 @@ of choosing:
 
 A muted track fades out, its sends with it; its steps keep running silently. The mutes stay when MUTE mode is
 turned off. They are saved with the pattern. MUTE mode also works on the PATTERNS grid.
+
+**MUTE QT** (on the session's page, saved with the session): with YES, a mute, unmute or solo waits for the start of
+the pattern's next cycle, the moment the chosen track begins its steps again (as a pattern switch does), and its
+button blinks until then. Stopped, it happens at once. Choosing a pattern drops mutes still waiting: the pattern
+brings its own. With NO (at first), they happen at once.
 
 ### BREAK
 
@@ -393,7 +398,7 @@ program changes 0 to 15 choose patterns 1 to 16 ([MIDI](#midi)).
 the tempo, the scale and root, the 16 patterns with their loops, and the pattern playing.
 
 **SHIFT + SAVE** opens the SESSIONS list; SHIFT + SAVE again leaves it. **PRESETS** chooses a slot and **SAVE** opens
-its page: BACK, LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE. SAVE runs the row chosen, or moves to its value (PRESETS
+its page: BACK, LOAD, SAVE, COPY, DELETE, TEMPO, MUTE QT ([MUTE mode](#mute-mode)). SAVE runs the row chosen, or moves to its value (PRESETS
 changes it, SAVE sets it, SHIFT + SAVE leaves it as it was). Loading over changes not saved, saving over another
 session, copying over one and deleting ask first: NO or YES on PRESETS.
 

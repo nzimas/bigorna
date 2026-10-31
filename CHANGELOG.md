@@ -1,5 +1,16 @@
 # Changelog
 
+## Build 78
+
+Added
+- MUTE QT, a session setting on the session's page (YES / NO, saved with the session). With YES, MUTE mode's mutes,
+  unmutes and solos wait for the start of the pattern's next cycle, the moment the chosen track begins its steps again
+  (as a pattern switch does); the track's button blinks until then. With the sequencer stopped they happen at once,
+  and choosing a pattern drops mutes still waiting. NO (the default, and every session saved before) works as before.
+
+Removed
+- ROOT and SCALE from the session's page: the SCALE page (ARP) sets them.
+
 ## Build 77
 
 Added

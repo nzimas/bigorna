@@ -1489,6 +1489,37 @@ static void step_copy_hold(uint32_t i)
     ui.force = 1;
 }
 
+/* (build 78) MUTE mode's mutes: as they will be (those waiting, MUTE QT), a bit a track; set -- with MUTE QT on and the
+ * sequencer playing, waiting for the chosen track to begin its time through again (the sequencer applies them: tracks.c),
+ * otherwise at once */
+static uint8_t ses_muq;                          /* (the session's MUTE QT: its page, projects.c) */
+static uint32_t mute_to(void)
+{
+    uint32_t q = seq_mq, m = 0, j;
+    if (q & 0x80u)
+        return q & 0x3Fu;
+    for (j = 0; j < NTRACK; j++)
+        m |= (uint32_t)(trk_mute[j] != 0) << j;
+    return m;
+}
+static void mute_set(uint32_t m)
+{
+    uint32_t j, now = 0;
+    for (j = 0; j < NTRACK; j++)
+        now |= (uint32_t)(trk_mute[j] != 0) << j;
+    seq_mq = 0;
+    RING_PUBLISH();
+    if (ses_muq && seq_run) {
+        if (m != now) {
+            seq_mq_t = ui.sel;
+            RING_PUBLISH();
+            seq_mq = (uint8_t)(0x80u | m);
+        }
+        return;
+    }
+    for (j = 0; j < NTRACK; j++)
+        trk_mute[j] = (uint8_t)(m >> j & 1u);
+}
 static void ui_input(void)
 {
     uint32_t rel, press = fm1_input_edges(&rel), keys, ch, k, t, j;
@@ -1515,6 +1546,13 @@ static void ui_input(void)
     if (ui.mute_mode && ui.page != PG_PAT && (ui.page != PG_MAIN || step_view()))
         ui.mute_mode = 0;                            /* (MUTE mode: the track's view and the PATTERNS grid only, build
                                                       * 63) */
+    if ((seq_mq & 0x80u) && !seq_run) {             /* (MUTE QT: stopped with mutes waiting -- now) */
+        uint32_t j, q = seq_mq;
+        seq_mq = 0;
+        for (j = 0; j < NTRACK; j++)
+            trk_mute[j] = (uint8_t)(q >> j & 1u);
+        ui.force = 1;
+    }
     for (t = 0; ui.mute_mode && t < NTRACK; t++) {   /* MUTE mode: a track's button let go soon, muted or not; held
                                                       * 1 s, soloed (every other muted) */
         uint32_t b = 1u << t;
@@ -1527,8 +1565,8 @@ static void ui_input(void)
             ui.tb_down &= (uint8_t)~b;
             if (!(ui.tb_long & b)) {
                 ui.solo = 0xFF;                  /* (a mute changed by hand: no solo to undo) */
-                trk_mute[t] = (uint8_t)!trk_mute[t];
-                if (!trk_mute[t])
+                mute_set(mute_to() ^ b);
+                if (!(mute_to() & b))
                     str_cpy(m, "PLAY  ", 7);
                 m[5] = (char)('1' + t);
                 say(m, 900);
@@ -1540,17 +1578,15 @@ static void ui_input(void)
             uint32_t j;
             ui.tb_long |= (uint8_t)b;
             if (ui.solo == t) {                  /* (the soloed track held again: the mutes as they were before) */
-                for (j = 0; j < NTRACK; j++)
-                    trk_mute[j] = (uint8_t)((ui.pre_solo >> j) & 1u);
+                mute_set(ui.pre_solo);
                 ui.solo = 0xFF;
                 say("SOLO OFF", 1200);
             } else {
                 if (ui.solo == 0xFFu)            /* (another soloed after one: the mutes before the first kept) */
-                    for (j = 0, ui.pre_solo = 0; j < NTRACK; j++)
-                        ui.pre_solo |= (uint8_t)((trk_mute[j] != 0) << j);
+                    ui.pre_solo = (uint8_t)mute_to();
                 ui.solo = (uint8_t)t;
-                for (j = 0; j < NTRACK; j++)
-                    trk_mute[j] = (uint8_t)(j != t);
+                mute_set(0x3Fu & ~b);
+                (void)j;
                 m[5] = (char)('1' + t);
                 say(m, 1200);
             }
@@ -2285,8 +2321,11 @@ static void ui_leds(void)
     uint32_t t, k;
     for (t = 0; t < NTRACK; t++) {
         if (ui.mute_mode) {                          /* (MUTE mode: playing lit, muted dim) */
-            fm1_led_key(PANEL_BTN[TRACK_BTN[t]], !trk_mute[t]);
-            led_dim_key(PANEL_BTN[TRACK_BTN[t]], trk_mute[t]);
+            uint32_t mu = trk_mute[t] != 0;
+            if ((seq_mq & 0x80u) && (seq_mq >> t & 1u) != mu)   /* (MUTE QT: waiting to change, blinking) */
+                mu = (fm1_ms / 150u) & 1u;
+            fm1_led_key(PANEL_BTN[TRACK_BTN[t]], !mu);
+            led_dim_key(PANEL_BTN[TRACK_BTN[t]], mu);
             continue;
         }
         fm1_led_key(PANEL_BTN[TRACK_BTN[t]], t == ui.sel);

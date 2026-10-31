@@ -1355,6 +1355,8 @@ static volatile uint8_t seq_pend, seq_pend_t;
 static volatile uint8_t seq_pend_mu;             /* (build 65: the pattern waiting's mutes, a bit a track, bit 7 set: it has
                                                   * them -- applied as it is taken in) */
 static volatile uint8_t seq_mu_was;              /* (.. and the mutes it found, bit 7 set: for the main loop) */
+static volatile uint8_t seq_mq, seq_mq_t;        /* (build 78, MUTE QT: MUTE mode's mutes waiting, a bit a track, bit 7
+                                                  * set: waiting -- applied as track seq_mq_t begins its time through) */
 static int seq_wraps(uint32_t t)                 /* track t's next step begins its time through again */
 {
     uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, pos = seq_pos[t];
@@ -1626,6 +1628,18 @@ static void seq_block(void)
         }
         RING_PUBLISH();
         seq_pend = 2;
+    }
+    if ((seq_mq & 0x80u) && seq_tacc[seq_mq_t] >= SEQ_STEP8 && seq_wraps(seq_mq_t)) {   /* (MUTE QT: the mutes waiting,
+                                                  * now, with the track's first step -- a track unmuted, its notes from
+                                                  * the muted time let go) */
+        for (t = 0; t < NTRACK; t++) {
+            uint32_t mu = seq_mq >> t & 1u;
+            if (trk_mute[t] && !mu)
+                trk_hush(t);
+            trk_mute[t] = (uint8_t)mu;
+        }
+        RING_PUBLISH();
+        seq_mq = 0;
     }
     if (seq_acc >= SEQ_16TH) {
         seq_acc -= SEQ_16TH;

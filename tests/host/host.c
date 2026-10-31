@@ -662,21 +662,20 @@ static int cmd_projects(const char *dir)
     EXPECT(ui.tempo == 120, "the value is not set before SAVE");
     btn(B_SAVE, 0);
     EXPECT(!pj.edit && ui.tempo == 137 && fx_bpm10 == 1370, "SAVE sets the tempo (and the delay follows)");
-    turn(EN_PRESET, 1);
+    turn(EN_PRESET, 1);                          /* MUTE QT (build 78: ROOT and SCALE gone, the SCALE page's) */
+    EXPECT(pj.row == PR_MUQ && pg_rows() == 7u, "the page's last row: MUTE QT");
     btn(B_SAVE, 0);
-    turn(EN_PRESET, 3);                          /* ROOT D# */
-    btn(B_SAVE, 0);
-    turn(EN_PRESET, 1);
-    btn(B_SAVE, 0);
-    turn(EN_PRESET, 4);                          /* SCALE: dorian, then left as it was */
+    turn(EN_PRESET, 1);                          /* YES, then left as it was */
     btn(B_SAVE, 1);
-    EXPECT(!pj.edit && ui.scale == 6 && ui.page == PG_PRJD, "SHIFT + SAVE leaves the value as it was");
+    EXPECT(!pj.edit && !ses_muq && ui.page == PG_PRJD, "SHIFT + SAVE leaves the value as it was");
     btn(B_SAVE, 0);
-    turn(EN_PRESET, -2);
+    turn(EN_PRESET, 1);
     btn(B_SAVE, 0);
-    EXPECT(ui.root == 3 && ui.scale == 4, "ROOT and SCALE set");
+    EXPECT(ses_muq == 1u && prj_dirty, "MUTE QT: YES");
+    ui.root = 3;                                 /* (the root and scale, as the SCALE page sets them) */
+    ui.scale = 4;
     shot(dir, "prj_page_values");
-    turn(EN_PRESET, -5);                         /* SAVE */
+    turn(EN_PRESET, -4);                         /* SAVE */
     EXPECT(pj.row == PR_SAVE, "PRESETS back to SAVE");
     btn(B_SAVE, 0);
     EXPECT(prj_has[2] && prj_cur == 2 && !prj_dirty, "SAVE into an empty slot, at once");
@@ -687,6 +686,7 @@ static int cmd_projects(const char *dir)
     btn(B_HOME, 0);                              /* a new sound on track 6, and other changes */
     ui.tempo = 90;
     ui.root = 0;
+    ses_muq = 0;
     EXPECT(prj_dirty, "a change marks the project");
     shot(dir, "prj_main_dirty");
     btn(B_SAVE, 1);
@@ -702,7 +702,7 @@ static int cmd_projects(const char *dir)
     shot(dir, "prj_ask_load");
     turn(EN_PRESET, 1);                          /* YES */
     btn(B_SAVE, 0);
-    EXPECT(ui.tempo == 137 && ui.root == 3 && ui.page == PG_MAIN && !prj_dirty, "LOAD brings the project back as saved");
+    EXPECT(ui.tempo == 137 && ui.root == 3 && ses_muq == 1u && ui.page == PG_MAIN && !prj_dirty, "LOAD brings the project back as saved");
     EXPECT(!memcmp(&keep, &ui.snd[1][ui.eng[1]], sizeof keep), "LOAD brings the sounds back");
     btn(B_SAVE, 1);
     btn(B_SAVE, 0);
@@ -4573,6 +4573,63 @@ static int cmd_pstate(const char *dir)
     PEXPECT(ui.page == PG_PAT && ui.mute_mode, "the step view on: MUTE mode on the grid all the same");
     tap(KEY_TRK);
     ui.sv = 0;
+    {   /* (build 78) MUTE QT, the session's: MUTE mode's mutes and solos wait for the chosen track's next time through */
+        int32_t out[2 * CTL];
+        uint32_t n, at = 0xFFu, b0 = 1u << PANEL_BTN[TRACK_BTN[0]];
+        int l0, l1;
+        ui.page = PG_MAIN;
+        ui.mute_mode = 0;
+        memset((void *)trk_mute, 0, NTRACK);
+        ses_muq = 1;
+        ui.sel = 1;
+        seq_pend = 0;
+        seq_len[1] = 8;
+        seq_run = 1;
+        for (n = 0; n < 20000u && seq_pos[1] != 2u; n++)
+            mix_block(out);
+        tap(KEY_TRK);
+        PEXPECT(ui.mute_mode, "(MUTE mode on)");
+        btn((uint32_t)TRACK_BTN[3], 0);
+        ui_input();
+        PEXPECT(!trk_mute[3] && seq_mq == (0x80u | 0x08u) && seq_mq_t == 1u, "MUTE QT: track 4's mute waits");
+        fm1_ms = 1500;
+        ui_leds();
+        l0 = host_led[PANEL_BTN[TRACK_BTN[3]]];
+        fm1_ms = 1650;
+        ui_leds();
+        l1 = host_led[PANEL_BTN[TRACK_BTN[3]]];
+        PEXPECT(l0 != l1, "its button blinks while it waits");
+        for (n = 0; n < 20000u && seq_mq; n++)
+            mix_block(out);
+        at = seq_pos[1];
+        PEXPECT(!seq_mq && trk_mute[3] && at == 0u, "muted as track 2 (the chosen one) plays its first step");
+        fm1_in.buttons |= b0;                    /* track 1 held 1 s: soloed, waiting too */
+        host_press = b0;
+        ui_input();
+        fm1_ms += 1100;
+        ui_input();
+        fm1_in.buttons = 0;
+        ui_input();
+        PEXPECT(seq_mq == (0x80u | 0x3Eu) && !trk_mute[1] && trk_mute[3], "a solo waits too");
+        seq_run = 0;
+        ui_input();
+        PEXPECT(!seq_mq && !trk_mute[0] && trk_mute[1] && trk_mute[5], "stopped: the mutes waiting, at once");
+        seq_run = 1;
+        btn((uint32_t)TRACK_BTN[0], 0);
+        ui_input();
+        PEXPECT(seq_mq & 0x80u, "(track 1's mute waiting)");
+        pat_switch(pat_cur);
+        PEXPECT(!seq_mq, "a pattern chosen: the mutes waiting dropped, the pattern brings its own");
+        seq_pend = 0;
+        seq_run = 0;
+        ses_muq = 0;
+        btn((uint32_t)TRACK_BTN[0], 0);
+        ui_input();
+        PEXPECT(trk_mute[0] && !seq_mq, "MUTE QT off: at once");
+        tap(KEY_TRK);
+        memset((void *)trk_mute, 0, NTRACK);
+        seq_len[1] = 0;
+    }
     printf("pstate: %d failures\n", fails);
     return fails != 0;
 }
