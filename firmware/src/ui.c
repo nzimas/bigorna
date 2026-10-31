@@ -75,13 +75,14 @@
  *   the black key before it   EDIT: the parameter pages of the track's sound -- SYN 1 .. 4, FLTR 1, FLTR 2, AMP,
  *                             FX -- eight parameters a page: KNOB 1 .. 4 its A .. D, or (PRESETS turned right; left
  *                             back) its E .. H; OCT- / OCT+ the page before / after
- *   ARP                       the patterns (projects.c)
+ *   ARP                       the SCALE page: SELECT the root, ALGORITHM the scale; ARP again, back (Tonitor's)
  *   SEQ                       the effects' pages: CHORUS, COMP (the master compressor), DELAY, REVERB in turn, then
  *                             back (OCT- / OCT+ too; a track's button: back to its view; SHIFT and it, the track
  *                             chosen, the page kept -- COMP's SC SOURCE and SC LEVEL are the chosen track's);
  *                             KNOB 1 .. 4 the first four of the page, or (PRESETS turned right; left back) the next
- *   SAVE                      the sessions (projects.c); held 0.8 s, the session saved -- never saved, the first
- *                             empty slot's page, SAVE NEW? (YES chosen). SHIFT + SAVE: GLOBAL SETUP (setup.c: MIDI)
+ *   SAVE                      the patterns (projects.c); held 0.8 s, the session saved -- never saved, the first
+ *                             empty slot's page, SAVE NEW? (YES chosen). SHIFT + SAVE: the sessions; held 0.8 s,
+ *                             GLOBAL SETUP (setup.c: MIDI). As Tonitor's, its snapshots the patterns (build 76)
  *   SELECT (knob)             the track's level; ALGORITHM (knob) its pan
  *   KNOB 1 .. 4               the track's filter FREQ and RESO, its delay and reverb sends; with SHIFT, KNOB 3 the
  *                             chorus send and KNOB 4 the overdrive. While one turns (and a second after) the whole
@@ -113,7 +114,7 @@ static const char *const DIR_NAME[NDIR] = {"FORWARD", "REVERSE", "PING-PONG", "R
 
 static const uint16_t TRACK_COL[NTRACK] = {RGB(255, 214, 0), RGB(0, 214, 255), RGB(255, 92, 210),
                                            RGB(96, 255, 96), RGB(255, 140, 0), RGB(190, 160, 255)};
-enum { PG_MAIN, PG_EDIT, PG_FXP, PG_TRK, PG_GEN, PG_TEMPO, PG_PRJ, PG_PRJD, PG_PAT, PG_SET };   /* (the sessions' list and page, the patterns' grid:
+enum { PG_MAIN, PG_EDIT, PG_FXP, PG_TRK, PG_GEN, PG_TEMPO, PG_SCALE, PG_PRJ, PG_PRJD, PG_PAT, PG_SET };   /* (the sessions' list and page, the patterns' grid:
                                                               * projects.c) */
 
 static struct {
@@ -188,8 +189,8 @@ static struct {
     uint32_t keys;
     char msg[16];
     uint32_t msg_until, home_until;
-    uint32_t home_t0, arp_t0, save_t0;   /* HOME, ARP, SAVE pressed at (held 0.8 s: a save; let go sooner: a press) */
-    uint8_t home_down, home_long, arp_down, arp_long, save_down, save_long;
+    uint32_t home_t0, ssv_t0, save_t0;   /* HOME, SHIFT + SAVE, SAVE pressed at (held 0.8 s; let go sooner: a press) */
+    uint8_t home_down, home_long, ssv_down, ssv_long, save_down, save_long;
     uint32_t seed;
     uint8_t scale, root;
     int16_t tempo;               /* the project's, BPM */
@@ -250,6 +251,7 @@ static const char *const LMN[NLM] = {"FREE", "TRIG", "HOLD", "ONE", "HALF"};
 static uint8_t prj_dirty, pat_cur, pat_dirty;
 static int8_t prj_cur;
 static void prj_press(int sh);
+static void pat_save_cursor(void);
 static void prj_preset(int32_t s);
 static void prj_draw(void);
 static void prj_quick_save(void);
@@ -267,7 +269,6 @@ static void learn_save(int sh);
 static void midi_poll(void);
 static void pat_switch(uint32_t k);
 static void phrase_brk_roles(void);   /* (phrase.c: BREAK's kicks, drums and drones, from the tracks' sounds) */
-static void pat_quick_save(void);
 static void pat_switch(uint32_t k);
 static void pat_copy_hold(uint32_t k);
 static void pat_brk_save(uint32_t k);
@@ -1552,7 +1553,7 @@ static void ui_input(void)
     for (t = 0; !ui.mute_mode && t < NTRACK; t++)
         if (btn_bit(press, TRACK_BTN[t])) {
             ui.sel = (uint8_t)t;
-            if (ui.page == PG_TEMPO || pg_any() || (ui.page == PG_FXP && !sh))   /* (the effects' pages: back to the
+            if (ui.page == PG_TEMPO || ui.page == PG_SCALE || pg_any() || (ui.page == PG_FXP && !sh))   /* (the effects' pages: back to the
                                                       * track; SHIFT: they stay, COMP's sidechain the chosen track's) */
                 ui.page = PG_MAIN;
             if (ui.page == PG_EDIT && ui.edit_pg >= pages_n(cur()))
@@ -1573,44 +1574,63 @@ static void ui_input(void)
         ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
         ui.force = 1;
     }
-    /* SAVE: on the sessions' pages, their own at once, as pressed (held, nothing more: a long press must not save in
-     * place of LOAD -- build 39). Elsewhere: let go soon, the sessions' list; held 0.8 s, the session saved (none:
-     * the first empty slot, asked) */
+    /* SAVE, as Tonitor's (build 76; the patterns its snapshots): let go soon, the PATTERNS grid (on it: back); held 0.8 s,
+     * the session saved (on the grid: the pattern playing saved into the slot under the cursor). SHIFT + SAVE let go
+     * soon, the sessions' list (on it: back); held 0.8 s, GLOBAL SETUP. On the sessions' pages and in GLOBAL SETUP,
+     * their own at once, as pressed (held, nothing more: a long press must not save in place of LOAD -- build 39) */
     if (btn_bit(press, B_SAVE)) {
         if (ui.page == PG_PRJ || ui.page == PG_PRJD) {
             prj_press(sh);
-            ui.save_down = 0;
+            ui.save_down = ui.ssv_down = 0;
         } else if (ui.page == PG_SET) {          /* GLOBAL SETUP's own (setup.c) */
             setup_press(sh);
-            ui.save_down = 0;
+            ui.save_down = ui.ssv_down = 0;
         } else if (ui.learn && (ui.page == PG_EDIT || ui.page == PG_FXP)) {   /* MIDI LEARN: the row's CC (build 48) */
             learn_save(sh);
-            ui.save_down = 0;
-        } else if (sh) {                         /* SHIFT + SAVE: GLOBAL SETUP (build 46) */
-            setup_open();
-            ui.save_down = 0;
+            ui.save_down = ui.ssv_down = 0;
+        } else if (sh) {
+            ui.ssv_down = 1;
+            ui.ssv_long = 0;
+            ui.ssv_t0 = fm1_ms;
         } else {
             ui.save_down = 1;
             ui.save_long = 0;
             ui.save_t0 = fm1_ms;
         }
     }
+    if (ui.ssv_down) {
+        if (!btn_bit(fm1_in.buttons, B_SAVE)) {
+            ui.ssv_down = 0;
+            if (!ui.ssv_long) {
+                ui.page = PG_PRJ;
+                ui.force = 1;
+            }
+        } else if (!ui.ssv_long && (uint32_t)(fm1_ms - ui.ssv_t0) >= 800u) {
+            ui.ssv_long = 1;
+            setup_open();
+        }
+    }
     if (ui.save_down) {
         if (!btn_bit(fm1_in.buttons, B_SAVE)) {
             ui.save_down = 0;
-            if (ui.save_long)
-                ;
-            else if (!sh) {
-                ui.page = PG_PRJ;
+            if (!ui.save_long) {
+                if (ui.page == PG_PAT)
+                    ui.page = PG_MAIN;
+                else {
+                    ui.page = PG_PAT;
+                    pat_grid_open();
+                }
                 ui.force = 1;
             }
         } else if (!ui.save_long && (uint32_t)(fm1_ms - ui.save_t0) >= 800u) {
             ui.save_long = 1;
-            prj_quick_save();
+            if (ui.page == PG_PAT)
+                pat_save_cursor();
+            else
+                prj_quick_save();
         }
     }
-    /* HOME: let go soon, a new sound (SHIFT: of the same family); held 0.8 s, the project saved. ARP: let go soon, the
-     * PATTERNS page up or down; held, the pattern saved */
+    /* HOME: let go soon, a new sound (SHIFT: of the same family); held 0.8 s, the project saved */
     if (btn_bit(press, B_HOME)) {
         ui.home_down = 1;
         ui.home_long = 0;
@@ -1626,27 +1646,10 @@ static void ui_input(void)
             prj_quick_save();
         }
     }
-    if (btn_bit(press, B_ARP)) {
-        ui.arp_down = 1;
-        ui.arp_long = 0;
-        ui.arp_t0 = fm1_ms;
-    }
-    if (ui.arp_down) {
-        if (!btn_bit(fm1_in.buttons, B_ARP)) {
-            ui.arp_down = 0;
-            if (!ui.arp_long) {                      /* (the grid up; on it, the pattern chosen loaded) */
-                if (ui.page == PG_PAT)
-                    prj_press(0);
-                else {
-                    ui.page = PG_PAT;
-                    pat_grid_open();
-                }
-                ui.force = 1;
-            }
-        } else if (!ui.arp_long && (uint32_t)(fm1_ms - ui.arp_t0) >= 800u) {
-            ui.arp_long = 1;
-            pat_quick_save();
-        }
+    if (btn_bit(press, B_ARP)) {                     /* ARP: the SCALE page, or back (Tonitor's; build 76) */
+        ui.page = ui.page == PG_SCALE ? PG_MAIN : PG_SCALE;
+        ui.touch_until = fm1_ms;
+        ui.force = 1;
     }
     ui.half = ui.page == PG_EDIT || ui.page == PG_FXP || step_page() ? ui.ehalf : (uint8_t)sh;   /* (the pages' half:
                                                                                               * PRESETS's) */
@@ -1796,6 +1799,21 @@ static void ui_input(void)
             setup_preset(e_pre);
         else if (e_pre)
             prj_preset(e_pre);
+        e_pre = e_sel = e_alg = 0;
+    }
+    if (ui.page == PG_SCALE) {                       /* the SCALE page: SELECT the root, ALGORITHM the scale (Tonitor's) */
+        if (e_sel) {
+            ui.root = (uint8_t)(((int32_t)ui.root + e_sel % 12 + 12) % 12);   /* (round the octave) */
+            ui.touched = 0;
+        }
+        if (e_alg) {
+            ui.scale = (uint8_t)clampi((int32_t)ui.scale + e_alg, 0, NSCALE - 1);
+            ui.touched = 1;
+        }
+        if (e_sel || e_alg) {
+            ui.touch_until = fm1_ms + 1500u;
+            prj_dirty = 1;
+        }
         e_pre = e_sel = e_alg = 0;
     }
     if (step_view() && ui.step_key != KEY_NONE) {   /* a step held: SELECT its level, ALGORITHM its pan, locked */
@@ -2261,8 +2279,8 @@ static void ui_leds(void)
     }
     fm1_led_key(PANEL_BTN[B_HOME], (int32_t)(ui.home_until - fm1_ms) > 0);
     fm1_led_key(PANEL_BTN[B_SEQ], ui.page == PG_FXP && !fx_arp());
-    fm1_led_key(PANEL_BTN[B_ARP], ui.page == PG_PAT);
-    fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD || ui.page == PG_SET);
+    fm1_led_key(PANEL_BTN[B_ARP], ui.page == PG_SCALE);
+    fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD || ui.page == PG_SET || ui.page == PG_PAT);
     fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || (step_view() ? ui.trn[ui.sel] < 0 : ui.oct[ui.sel] < 0));
     fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || (step_view() ? ui.trn[ui.sel] > 0 : ui.oct[ui.sel] > 0));
     fm1_led_key(PANEL_BTN[B_REC], ui.rec == REC_ON || ui.lrec == 2 ||
@@ -2851,6 +2869,33 @@ static void draw_tempo_page(void)
     ui.shown_rows[0] = v + ext * 1000;
 }
 
+#define C_SCALE RGB(255, 196, 90)
+/* the SCALE page (ARP; Tonitor's): the root, as large as the screen takes it, the scale under it; the one turned
+ * last, for 1.5 s, white behind it */
+static void draw_scale_page(void)
+{
+    int32_t tc = (int32_t)(ui.touch_until - fm1_ms) > 0 ? ui.touched : -1, key = ui.root * 100 + ui.scale * 3 + tc + 1;
+    uint16_t bg, fg;
+    if (!ui.force && ui.shown_page == PG_SCALE && ui.shown_rows[0] == key)
+        return;
+    CV_AREA(0, 0, 240, 50, C_BLACK)
+        cv_text_c(6, &FONT_M, "SCALE", C_SCALE);
+    bg = tc == 0 ? C_WHITE : C_BLACK;
+    fg = tc == 0 ? C_BLACK : C_WHITE;
+    CV_AREA(0, 50, 240, 100, bg)
+        cv_text_c(4, &FONT_XL, NOTE_NAME[ui.root], fg);
+    bg = tc == 1 ? C_WHITE : C_BLACK;
+    fg = tc == 1 ? C_BLACK : C_SCALE;
+    CV_AREA(0, 150, 240, 90, bg) {
+        if (SCALE_L2[ui.scale][0]) {
+            cv_text_fit(4, &FONT_M, SCALE_L1[ui.scale], fg);
+            cv_text_fit(46, &FONT_M, SCALE_L2[ui.scale], fg);
+        } else
+            cv_text_fit(26, &FONT_M, SCALE_L1[ui.scale], fg);
+    }
+    ui.shown_rows[0] = key;
+}
+
 /* the PHRASE page (the phrase key held): the track's DENSITY and COMPLEXITY, as rows */
 static void draw_gen_page(void)
 {
@@ -3077,6 +3122,12 @@ static void ui_draw(void)
     if (ui.page == PG_TEMPO) {
         draw_tempo_page();
         ui.shown_page = PG_TEMPO;
+        ui.force = 0;
+        return;
+    }
+    if (ui.page == PG_SCALE) {
+        draw_scale_page();
+        ui.shown_page = PG_SCALE;
         ui.force = 0;
         return;
     }

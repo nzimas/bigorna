@@ -1,5 +1,28 @@
 # Changelog
 
+## Build 76
+
+Changed
+- The patterns, the sessions and GLOBAL SETUP are reached as in Tonitor, with Bigorna's patterns in place of
+  Tonitor's snapshots:
+  - SAVE opens the PATTERNS grid; SAVE again takes it down. Before, ARP opened it.
+  - SAVE held 0.8 s saves the session, as before. On the PATTERNS grid it saves the pattern playing into the slot
+    under the cursor, as a white key held does.
+  - SHIFT + SAVE opens the sessions' list; SHIFT + SAVE again takes it down. Before, SAVE opened it.
+  - SHIFT + SAVE held 0.8 s opens GLOBAL SETUP. Before, SHIFT + SAVE opened it at once.
+  - On the sessions' pages and in GLOBAL SETUP, SAVE and SHIFT + SAVE work as before.
+- ARP opens the SCALE page, as in Tonitor: SELECT sets the root, ALGORITHM the scale, and ARP again goes back. The
+  root and scale can still be set on the session's page.
+
+Removed
+- ARP held no longer saves the pattern playing, and ARP on the grid no longer loads the pattern under the cursor. On
+  the grid, SAVE held saves the pattern playing into the slot under the cursor, and a white key loads its pattern.
+
+Fixed
+- The manual's text for builds 72 to 74 (patterns, loops, sessions, the dimmed root keys) was written into the
+  website's manual page only, so publishing build 74 put the older text back. It is now in the README, which the page
+  is made from.
+
 ## Build 75
 
 Changed

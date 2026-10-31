@@ -53,9 +53,9 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | ALGORITHM (knob) | The track's pan |
 | PLAY | The sequencer plays or stops; held 0.8 s, the TEMPO page; SHIFT + PLAY: the metronome on or off |
 | REC | Records the keys into the track's steps; SHIFT + REC: the looper |
-| ARP | The patterns |
+| ARP | The SCALE page: SELECT the root, ALGORITHM the scale; ARP again goes back |
 | SEQ | The effects' pages, then the track's LFOs; SHIFT + SEQ: the track's LFOs thrown anew (LFO RANDOM) |
-| SAVE | The sessions; held 0.8 s, the session saved; SHIFT + SAVE: GLOBAL SETUP (MIDI) |
+| SAVE | The PATTERNS grid (SAVE again goes back); held 0.8 s, the session saved (on the grid: the pattern playing saved into the slot under the cursor). SHIFT + SAVE: the sessions (SHIFT + SAVE again goes back); held 0.8 s, GLOBAL SETUP (MIDI) |
 | MASTER | The output level |
 
 While a knob turns, the screen shows its value as a large dial for a second.
@@ -155,29 +155,26 @@ Per track, on the track's sound before its level:
 
 ## Playing
 
-The white keys play the track in the scale chosen: the first key is the root, each the next degree. The scale and
-root are set on the session's page (SAVE): CHROMATIC (the black keys play too, but for the first five),
-MAJOR, MINOR NATURAL, MINOR
-HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, JAPANESE IN, MINOR MELODIC, ENIGMATIC, LYDIAN,
-MIXOLYDIAN, LOCRIAN, BLUES, HUNGARIAN MINOR, DOUBLE HARMONIC, PHRYGIAN DOMINANT, JAPANESE HIRAJOSHI, JAPANESE IWATO,
-PELOG, OCTATONIC, PROMETHEUS (the list from Tonitor's). OCT− and OCT+ move the track's octave. USB
-MIDI notes play the chosen track as the keys do.
+The white keys play the track in the scale chosen: the first key is the root, each the next degree. The keys that play
+the root are lit dimly, so the root can be found in any scale (in CHROMATIC, the key whose note is the root, in each
+octave). The scale and root are set on the SCALE page (ARP) or on the session's page (SHIFT + SAVE): CHROMATIC (the black keys play too, but for the
+first five), MAJOR, MINOR NATURAL, MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, JAPANESE
+IN, MINOR MELODIC, ENIGMATIC, LYDIAN, MIXOLYDIAN, LOCRIAN, BLUES, HUNGARIAN MINOR, DOUBLE HARMONIC, PHRYGIAN DOMINANT,
+JAPANESE HIRAJOSHI, JAPANESE IWATO, PELOG, OCTATONIC, PROMETHEUS (the list from Tonitor's). OCT− and OCT+ move the
+track's octave. USB MIDI notes play the chosen track as the keys do.
 
 ### Transposition
 
-In the step view, OCT− and OCT+ transpose the chosen track's steps and its loops; SHIFT + OCT− or OCT+ (in the
-track's view or the step view) transposes every track's steps and loops at once. Steps and loops move by the same
-amount, each from the notes it plays. Each press moves every note one step of the scale and root
-chosen, down or up (in CHROMATIC, a semitone), so the notes stay in the scale; a note that is not in it moves to the
-scale's next. The transposition shows at the top right, under the octave, in the track's colour (T+2, T−1), up to 24 steps each way,
-and TRN with its value on the screen as it changes. It is part of the pattern: the moved notes and the count are
-saved with it and with the session, and a copied pattern takes them along. A loop's notes are moved in place and
-saved with the session (loops belong to the session, not to a pattern; a loop being recorded is left as it is). The
-loops follow the transposition of the pattern playing: when another pattern comes in, each track's loops play moved
-by the difference between its transposition and the one their notes were recorded at, from the step the pattern
-comes in on, so a pattern saved without transposition plays its loops as they were before the transposition. (In
-RAM a loop keeps its notes as recorded and is moved as it plays; a saved session holds its loops as they play in the
-pattern it was saved playing.) The keys' octave is left as it is.
+In the step view, OCT− and OCT+ transpose the chosen track's steps and its loops; SHIFT + OCT− or OCT+ (in the track's
+view or the step view) transposes every track's steps and loops at once. Steps and loops move by the same amount, each
+from the notes it plays. Each press moves every note one step of the scale and root chosen, down or up (in CHROMATIC,
+a semitone), so the notes stay in the scale; a note that is not in it moves to the scale's next. The transposition
+shows at the top right, under the octave, in the track's colour (T+2, T−1), up to 24 steps each way, and TRN with its
+value on the screen as it changes. It is part of the pattern: the moved notes and the count are saved with it and with
+the session, and a copied pattern takes them along. A loop belongs to its pattern (see the looper), so the
+transposition moves the pattern playing's loops only; a loop being recorded is left as it is. (In RAM a loop keeps its
+notes as recorded and is moved as it plays; a saved session holds each loop as it plays in its own pattern.) The keys'
+octave is left as it is.
 
 ### CHORD mode
 
@@ -225,10 +222,10 @@ fades out over ~9 ms, its sends with it; its steps keep playing silently. The ch
 while it is muted. Mutes are kept with the pattern (and with the session): saving a pattern saves them, and loading
 a pattern gives them back (see Patterns).
 
-MUTE mode also works on the PATTERNS grid (ARP). It stays on when the grid opens, and the 2nd black key turns it on
-or off there, with the step view on or off. While it is on, the grid's title shows the six tracks (in their colour
+MUTE mode also works on the PATTERNS grid (SAVE). It stays on when the grid opens, and the 2nd black key turns it on or
+off there, with the step view on or off. While it is on, the grid's title shows the six tracks (in their colour
 playing, dark grey muted), the track buttons mute and solo as above, and the grid stays up; the white keys still load,
-copy and empty patterns. With MUTE mode off, a track button goes back to the track as before.
+save, copy and empty patterns. With MUTE mode off, a track button goes back to the track as before.
 
 ### BREAK
 
@@ -259,20 +256,19 @@ Over the way, some of these are drawn too:
 - a gap: every track but the kick silent for the last 2 or 4 steps of each bar;
 - accents: the steps on the beat full, the ones between softer.
 
-BREAK also works on the PATTERNS grid (ARP), with the step view on or off: the 3rd black key breaks up the chosen
+BREAK also works on the PATTERNS grid (SAVE), with the step view on or off: the 3rd black key breaks up the chosen
 track, SHIFT and it every track, and the grid's title shows the way playing.
 
 **Saving a break as a pattern.** On the grid, with the 3rd black key held (with SHIFT or without) and the sequencer
-playing, hold a white key for 0.8 s: the break is saved into that pattern slot, empty or not (BREAK SAVED, PATTERN
-n). Each track under the break gets, at each of its steps, the step the break plays there, with one draw of its
-ratchets, octave leaps, flams (as the MIDI FX FLAM), accents and gap. The other tracks, and the drones the break
-leaves alone, are saved as written. The pattern also takes the tracks' state as it plays (mutes and the rest, as ARP
-held saves it) and is written to the flash if the session has a slot. The pattern playing goes on. Saving over the
-pattern playing replaces its steps at the end of the chosen track's time through. With the sequencer stopped there is
-no break, and NOT PLAYING shows. While the 3rd black key is held, a white key held saves the break instead of copying a
-pattern or saving the pattern playing.
-A track saves the break's plan from the step it went into the break on; if it has not gone in yet (the break starts
-on the next beat), from its first step.
+playing, hold a white key for 0.8 s: the break is saved into that pattern slot, empty or not (BREAK SAVED, PATTERN n).
+Each track under the break gets, at each of its steps, the step the break plays there, with one draw of its ratchets,
+octave leaps, flams (as the MIDI FX FLAM), accents and gap. The other tracks, and the drones the break leaves alone,
+are saved as written. The pattern also takes the tracks' state as it plays (mutes and the rest, as saving the pattern playing does)
+and is written to the flash if the session has a slot. The pattern playing goes on. Saving over the pattern playing
+replaces its steps at the end of the chosen track's time through. With the sequencer stopped there is no break, and
+NOT PLAYING shows. While the 3rd black key is held, a white key held saves the break instead of saving the pattern
+playing (with the sequencer stopped, nothing is saved). A track saves the break's plan from the step it went into the
+break on; if it has not gone in yet (the break starts on the next beat), from its first step.
 
 The role of each track's sound (as the phrase generator reads it) keeps the result coherent: a kick keeps the
 bar's first step and takes no leaps, no gap and few ratchets; a drone (HIVE's pads and drones, dark washes) is
@@ -396,6 +392,14 @@ from the patterns: it plays round in that length over the track's steps, its fir
 carrying on from where it is (LOOP 1  4 BARS shows). Three loops a track, up to 256 notes each (a
 chord counts its three notes). A note can be held for the whole loop.
 
+A loop belongs to the pattern it was recorded in, like the pattern's steps (from build 73; before, the loops belonged
+to the session and played in every pattern). Another pattern does not play it: an empty pattern plays nothing at all.
+When a pattern comes in, its loops start from their first step together with its steps, and the loops of the pattern
+it replaces stop. Saving the pattern playing into another slot (a white key held on the PATTERNS grid), pasting a
+pattern, or saving a break copies its loops with it; emptying a pattern removes its loops. All the patterns' loops
+share one memory: 40 loops and 4608 notes in all. When it is full, arming a loop shows NO ROOM, and saving a pattern
+into another slot saves its steps but shows LOOPS LOST for the loops that did not fit.
+
 SHIFT + REC held shows the track's loops on the first three white keys (lit: playing; dim: muted): a key let go soon
 mutes its loop or plays it again; held 0.8 s, empties it. SHIFT + REC held 1.5 s with no key touched empties every
 loop of the track.
@@ -405,39 +409,38 @@ loop of the track.
 PLAY held 0.8 s shows the TEMPO page: PRESETS sets the session's tempo (10 to 300 BPM). A track's button or another
 page takes it down.
 
-## Patterns (ARP)
+## Patterns (SAVE)
 
-A session has 16 patterns: every track's steps, lengths, clocks and directions, and (from build 62) each track's
-state when the pattern was saved: muted or not, machine, octave, level, pan, sidechain (SC SOURCE and amount), CHORD
-mode and form, and the arpeggiator (on or off and its settings). Loading a pattern gives that state back with its
-steps; while the sequencer plays, at the moment the pattern starts. Changing any of these marks the pattern as
-changed (its number orange), like editing a step. A pattern saved by build 61 or earlier, or an empty one, has no
-state: loading it leaves the state as it is. The sounds, the send effects, the compressor, the tempo, root and scale,
-and the loops belong to the session, not to a pattern. The state takes 54 bytes of the pattern's 644 for steps
-(590 are left: a step with a note takes 6 bytes, 3 more for each lock and 3 for its MOD settings, so all 96 steps
-can hold a note). ARP shows the PATTERNS grid; the
-white keys are the 16 patterns (dim; the one playing brighter). On the screen the white square is the cursor: it
-opens on the pattern playing (or the one waiting to play), follows the pattern playing when that changes (a session
-loaded, a switch, a program change), and PRESETS moves it; ARP loads the pattern under it. The pattern playing has a
-green frame (orange with changes not saved); saved patterns are white, empty ones grey. A key let go soon loads its pattern — while the
-sequencer plays, at the end of the chosen track's steps. Held 0.8 s, copies it; another held 0.8 s pastes it there;
-SHIFT and held 0.8 s saves the pattern playing there (its changes and its state, as ARP held saves it), whether the
-slot is empty or not; SAVED, PATTERN n shows and the pattern playing plays on (SHIFT and its own key held saves it
-in its own slot). With SHIFT and the 1st black key held, pressing a white key empties its pattern (EMPTY, PATTERN n;
-emptying the pattern playing empties its steps too). ARP held saves the pattern playing. A pattern keeps its edits when another is
-loaded, until the session is saved or loaded.
+A session has 16 patterns: every track's steps, lengths, clocks and directions, and (from build 62) each track's state
+when the pattern was saved: muted or not, machine, octave, level, pan, sidechain (SC SOURCE and amount), CHORD mode
+and form, and the arpeggiator (on or off and its settings). Loading a pattern gives that state back with its steps;
+while the sequencer plays, at the moment the pattern starts. Changing any of these marks the pattern as changed (its
+number orange), like editing a step. A pattern saved by build 61 or earlier, or an empty one, has no state: loading it
+leaves the state as it is. The pattern also holds its loops (from build 73; see the looper). The sounds, the send
+effects, the compressor, the tempo, root and scale belong to the session, not to a pattern. The state takes 54 bytes
+of the pattern's 644 for steps (590 are left: a step with a note takes 6 bytes, 3 more for each lock, 3 for its MOD
+settings and 1 for a chord). Every step with a note on every track is always saved (all 96 fit). The room left goes to
+the chords, then the MOD settings, then the locks, which are shared out one per step in turn across all six tracks;
+when the room runs out, the remaining locks are left out. SAVE shows the PATTERNS grid, and SAVE again takes it down (as Tonitor's SNAPSHOTS page: the patterns are Bigorna's snapshots); the white keys are the 16
+patterns (dim; the one playing brighter). On the screen the white square is the cursor: it opens on the pattern
+playing (or the one waiting to play), follows the pattern playing when that changes (a session loaded, a switch, a
+program change), and PRESETS moves it; SAVE held 0.8 s saves the pattern playing into the slot under it, as a white key held does. The pattern playing has its number in green
+(orange with changes not saved); saved patterns are white, empty ones grey. A key let go soon loads its pattern —
+while the sequencer plays, at the end of the chosen track's steps. Held 0.8 s, it saves the pattern playing there —
+all six tracks' steps, its loops, its changes and its state, — whether the slot is empty or not;
+SAVED, PATTERN n shows and the pattern playing plays on (its own key held saves it in its own slot). SHIFT and a key
+held 0.8 s copies its pattern; SHIFT and another held 0.8 s pastes it there, its loops with it. With SHIFT and the 1st
+black key held, pressing a white key empties its pattern and its loops (EMPTY, PATTERN n; emptying the pattern playing
+empties its steps too). A pattern keeps its edits when another is loaded, until
+the session is saved or loaded.
 
-**A pattern that unmutes a track with loops.** While the sequencer plays, a pattern's mutes take effect at the moment
-it comes in. A track muted before and unmuted by the new pattern has its notes from the muted time cut, so nothing
-left over is heard as it opens. Its sequencer steps play at once, but each of its loops stays silent until it comes
-round to its first step, and from there plays on in its place: the loop starts at its beginning, in time with the
-sequencer, however many bars away that is. A loop at its first step just as the pattern comes in plays it at once.
-Loading such a pattern while stopped does the same from the moment the sequencer starts. Only pattern changes do
-this: a track unmuted by hand (MUTE mode) or by MIDI plays its loops from where they are.
+**A pattern that unmutes a track.** While the sequencer plays, a pattern's mutes take effect at the moment it comes
+in. A track muted before and unmuted by the new pattern has its notes from the muted time cut, so nothing left over is
+heard as it opens. Its steps and its loops start with the pattern.
 
-## Sessions (SAVE)
+## Sessions (SHIFT + SAVE)
 
-16 sessions are kept in the FM-1's flash. SAVE shows the list; PRESETS moves through it, SAVE opens a session's page:
+16 sessions are kept in the FM-1's flash. SHIFT + SAVE shows the list, and SHIFT + SAVE again takes it down; PRESETS moves through it, SAVE opens a session's page:
 BACK, LOAD, SAVE, COPY, DELETE, TEMPO, ROOT, SCALE (it opens on LOAD; SAVE on BACK goes back to the list). SAVE runs the row chosen, or moves the focus to its value (PRESETS
 changes it, SAVE sets it, SHIFT + SAVE leaves it). Loading over changes not saved, saving over another session,
 copying over one and deleting ask first (NO / YES on PRESETS).
@@ -450,18 +453,22 @@ not saved, NEW SESSION? is asked first (they would be lost: save them first). Wi
 the FM-1 starts in, or a session just deleted — SAVE on an empty slot saves what is playing there instead. To start
 a new session from a copy of another, use COPY.
 
-SAVE held 0.8 s (or HOME held), outside the sessions' pages, saves the session playing into its slot at once. If it has never been saved, the
+SAVE held 0.8 s (or HOME held), outside the sessions' pages and the PATTERNS grid, saves the session playing into its slot at once. If it has never been saved, the
 first empty slot's page shows SAVE NEW? with YES chosen: SAVE saves it there and goes back to the track (PRESETS
 left: NO). With all 16 slots taken, NO FREE SLOT shows.
 
 A session holds the whole state of the machine: every track's machine, sounds, octave, level, pan, chord mode and
-mutes (as they were when it was saved; the pattern playing's own state is applied after it), the track chosen, the effects, the tempo, the root and scale, its 16 patterns and the pattern playing, and
-every loop on every track (notes, length, mute). Loading a session gives all of it back; its loops start at the
-next bar if the sequencer is playing. A session saved by build 37 or earlier has no loops: loading it empties them.
+mutes (as they were when it was saved; the pattern playing's own state is applied after it), the track chosen, the
+effects, the tempo, the root and scale, its 16 patterns and the pattern playing, and every pattern's loops (notes,
+length, mute). Loading a session gives all of it back; its loops start at the next bar if the sequencer is playing. A
+session saved by build 37 or earlier has no loops: loading it empties them. A session saved by builds 38 to 72 had its
+loops in every pattern: loading it gives each loop to every saved pattern, so they play where they played before
+(empty patterns get none; if the loop memory runs out, LOOPS LOST shows and the remaining patterns get none). Saved
+again, each pattern keeps its own copy.
 
-The loops are kept in a loop store shared by the 16 sessions (31 sectors of flash, about 125 KB). A session takes
-what its loops need: up to 7 sectors with all 18 loops full (256 notes each). If the store has no room left,
-nothing is saved and NO ROOM FOR LOOPS shows; deleting a session, or saving one with fewer loops, frees room.
+The loops are kept in a loop store shared by the 16 sessions (31 sectors of flash, about 125 KB). A session takes what
+its loops need: up to 7 sectors with the loop memory full (4608 notes). If the store has no room left, nothing is
+saved and NO ROOM FOR LOOPS shows; deleting a session, or saving one with fewer loops, frees room.
 
 The FM-1 starts with the last session loaded or saved (SESSION n shows for a moment). Changes not saved before it
 was switched off are not kept.
@@ -476,9 +483,9 @@ came from (the others on the FM-1 are kept), each part checked before it is writ
 on the screen as each lands. The session playing is not changed: load it to hear what was restored. Build 55 or
 later.
 
-## GLOBAL SETUP (SHIFT + SAVE)
+## GLOBAL SETUP (SHIFT + SAVE held)
 
-SHIFT + SAVE (outside the sessions' pages) opens GLOBAL SETUP: the settings of the machine rather than of a session.
+SHIFT + SAVE held 0.8 s (outside the sessions' pages) opens GLOBAL SETUP: the settings of the machine rather than of a session.
 They are kept in the FM-1's flash and read at every start. PRESETS moves through a list and SAVE goes into the entry
 chosen; on a setting, SAVE moves the focus to its value, PRESETS changes it and SAVE sets it. SHIFT + SAVE leaves a
 value as it was, or goes back a level; from the top it leaves GLOBAL SETUP, as a track's button does. Every level

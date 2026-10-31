@@ -10,18 +10,18 @@
  * in the sequencer's (tracks.c) as they are edited.
  * (In the code a session is a "project".)
  *
- *   SAVE              the SESSIONS page: SESSION 1 .. 16; PRESETS moves through them, SAVE opens one's page. On the
+ *   (the gestures as Tonitor's, build 76: its snapshots are the patterns here)
+ *   SHIFT + SAVE      the SESSIONS page: SESSION 1 .. 16; PRESETS moves through them, SAVE opens one's page. On the
  *                     page SAVE runs LOAD, SAVE, COPY or DELETE, or moves the focus to a value: PRESETS changes it,
- *                     SAVE sets it, SHIFT + SAVE leaves it as it was; SHIFT + SAVE goes back a page
- *   ARP               the PATTERNS grid, 1 .. 16 in four rows of four: PRESETS moves through them, ARP loads the one
- *                     chosen. The white keys are the 16 patterns there, lit dimly (the one playing brighter): a white
+ *                     SAVE sets it, SHIFT + SAVE leaves it as it was; SHIFT + SAVE goes back a page (from the list:
+ *                     out). SHIFT + SAVE held 0.8 s: GLOBAL SETUP (setup.c)
+ *   SAVE              the PATTERNS grid, 1 .. 16 in four rows of four (SAVE again: out): PRESETS moves the cursor,
+ *                     SAVE held saves the pattern playing into the slot under it. The white keys are the 16 patterns there, lit dimly (the one playing brighter): a white
  *                     key let go soon loads its pattern (the grid stays); held 0.8 s, the pattern playing saved there,
  *                     empty or not (build 72); SHIFT and held 0.8 s, copies it (COPY P5 above the grid, blinking, and
  *                     its key) -- then SHIFT and another held 0.8 s pastes it there, saved and loaded (the same again,
  *                     or off the grid: let go); SHIFT and the 1st black key held, pressed, empties it
- *   HOME held         the session playing saved, into its slot
- *   ARP held          the pattern playing saved, into its slot of the session (and into the flash if the session has
- *                     a slot)
+ *   SAVE held, HOME held   the session playing saved, into its slot
  *   a track's button  back to playing
  * A session loads at the pattern it was saved playing; the start, at the last session's (or pattern 1).
  * LOAD with changes not saved, SAVE over another, DELETE, and COPY over another ask first: NO / YES on PRESETS, SAVE
@@ -1183,7 +1183,7 @@ static void pat_clear(uint32_t k)
 }
 
 /* (build 66; build 72 without SHIFT) the PATTERNS grid, a white key held: the pattern playing (its changes too, its state) saved as
- * pattern k, empty or not; the one playing plays on (k itself: as ARP held) */
+ * pattern k, empty or not; the one playing plays on (k itself: saved in its own slot) */
 static void pat_save_as(uint32_t k)
 {
     char n[12] = "PATTERN ";
@@ -1254,7 +1254,7 @@ static void pat_copy_hold(uint32_t k)
  * as pattern k. Each track under it takes, at each of its steps, the step the break plays there (its plan: the way,
  * from where the track went into it), with one throw of its layers -- a ratchet, an octave leap, a flam (MIDI FX
  * FLAM), an accent, the gap emptying the bar's last steps; the other tracks, and the drones, as written. The pattern
- * holds the tracks' state playing, as ARP held does; the one playing saved over: the break's steps play at the end
+ * holds the tracks' state playing, as SAVE held on the grid does; the one playing saved over: the break's steps play at the end
  * of the chosen track's time through */
 static uint32_t rtg_of(uint32_t n)               /* (the ratchet nearest n hits, not more) */
 {
@@ -1632,11 +1632,11 @@ static void do_new(uint32_t k)                   /* (an empty slot: a new sessio
     ui.page = PG_MAIN;
 }
 
-/* SAVE pressed on a sessions' page; ARP on the patterns' grid */
+/* SAVE pressed on a sessions' page */
 static void prj_press(int sh)
 {
     uint32_t kind = pg_kind(), k = pj.slot[kind];
-    int list = ui.page == PG_PRJ || ui.page == PG_PAT;
+    int list = ui.page == PG_PRJ;
     if (sh) {                                    /* SHIFT + SAVE: back a page (or a value left as it was) */
         if (list)
             ui.page = PG_MAIN;
@@ -1650,14 +1650,6 @@ static void prj_press(int sh)
         return;
     }
     ui.force = 1;
-    if (kind) {                                  /* the patterns' grid: the one chosen loaded */
-        char n[12] = "PATTERN ";
-        pat_switch(k);
-        fmt_int(n + 8, (int32_t)k + 1);
-        ui.page = PG_MAIN;
-        say(n, 900);
-        return;
-    }
     if (list) {                                  /* a slot: its page */
         ui.page = PG_PRJD;
         pj.row = PR_LOAD;                        /* (the page opens on LOAD, BACK above it) */
@@ -1810,6 +1802,9 @@ static void pat_switch(uint32_t k)
 /* each pass of the main loop: a pattern taken in by the sequencer, its switch finished (the one it left kept in the
  * store as it was, changes and all); stopped with one waiting, at once */
 static uint8_t pat_noted = 0xFF;                 /* (the pattern playing as the grid's cursor last followed it) */
+/* (build 76) the PATTERNS grid, SAVE held: the pattern playing saved into the slot under the cursor, as a white key
+ * held saves it (Tonitor's SAVE held on its SNAPSHOTS page) */
+static void pat_save_cursor(void) { pat_save_as(pj.slot[1]); }
 /* (build 69) the PATTERNS grid opened: its cursor (white) on the pattern playing -- or the one waiting to */
 static void pat_grid_open(void)
 {
@@ -1860,7 +1855,7 @@ static void pat_poll(void)
     ui.force = 1;
 }
 /* SAVE or HOME held: the session playing saved into its slot -- never saved, the first empty slot's page with SAVE
- * NEW? (YES chosen; SAVE answers). ARP held: the pattern playing into its slot */
+ * NEW? (YES chosen; SAVE answers) */
 static void prj_quick_save(void)
 {
     if (ui.page == PG_PRJD && pj.ask)            /* (a question up: answered by SAVE let go, not held) */
@@ -1885,14 +1880,6 @@ static void prj_quick_save(void)
     flash("SAVING", "", C_PRJ);
     ui_draw();
     prj_done(prj_save((uint32_t)prj_cur), "SAVED", (uint32_t)prj_cur);
-}
-static void pat_quick_save(void)
-{
-    char n[12] = "PATTERN ";
-    int rc = pat_save(pat_cur);
-    fmt_int(n + 8, pat_cur + 1);
-    flash(rc ? "FAILED" : "SAVED", rc ? "" : n, rc ? C_BAD : C_OK);
-    ui.force = 1;
 }
 
 /* ------------------------------------------------------------------ drawing --- */

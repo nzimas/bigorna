@@ -583,6 +583,26 @@ static void btn(uint32_t b, int sh)
     fm1_in.notes &= ~(1u << KEY_SHIFT);
     fm1_ms += 2000;
 }
+/* (build 76) SAVE: the PATTERNS grid, unless it is up; SAVE (SHIFT: and SHIFT) held 0.8 s */
+static void grid_open(void)
+{
+    if (ui.page != PG_PAT)
+        btn(B_SAVE, 0);
+}
+static void save_held(int sh)
+{
+    if (sh)
+        fm1_in.notes |= 1u << KEY_SHIFT;
+    fm1_in.buttons |= 1u << PANEL_BTN[B_SAVE];
+    host_press = 1u << PANEL_BTN[B_SAVE];
+    ui_input();
+    fm1_ms += 900;
+    ui_input();
+    fm1_in.buttons = 0;
+    ui_input();
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    fm1_ms += 2000;
+}
 static int host_dim_on(uint32_t id)             /* a key's LED lit dimly */
 {
     uint32_t p, r;
@@ -625,8 +645,8 @@ static int cmd_projects(const char *dir)
     fm1_ms = 5000;
     EXPECT(prj_cur == -1 && !prj_has[6], "a slot with another firmware's data reads empty");
     shot(dir, "prj_main_none");
-    btn(B_SAVE, 0);
-    EXPECT(ui.page == PG_PRJ, "SAVE opens the list");
+    btn(B_SAVE, 1);
+    EXPECT(ui.page == PG_PRJ, "SHIFT + SAVE opens the list");
     turn(EN_PRESET, 2);                          /* SESSION 3 */
     shot(dir, "prj_list");
     btn(B_SAVE, 0);
@@ -667,7 +687,7 @@ static int cmd_projects(const char *dir)
     ui.root = 0;
     EXPECT(prj_dirty, "a change marks the project");
     shot(dir, "prj_main_dirty");
-    btn(B_SAVE, 0);
+    btn(B_SAVE, 1);
     btn(B_SAVE, 0);                              /* slot 3's page (the list stays on it) */
     EXPECT(pj.row == PR_LOAD, "a session's page opens on LOAD");
     turn(EN_PRESET, -9);                         /* (BACK, at the top) */
@@ -682,7 +702,7 @@ static int cmd_projects(const char *dir)
     btn(B_SAVE, 0);
     EXPECT(ui.tempo == 137 && ui.root == 3 && ui.page == PG_MAIN && !prj_dirty, "LOAD brings the project back as saved");
     EXPECT(!memcmp(&keep, &ui.snd[1][ui.eng[1]], sizeof keep), "LOAD brings the sounds back");
-    btn(B_SAVE, 0);
+    btn(B_SAVE, 1);
     btn(B_SAVE, 0);
     turn(EN_PRESET, -9);
     turn(EN_PRESET, 3);                          /* COPY (BACK, LOAD, SAVE, COPY) */
@@ -837,9 +857,12 @@ static int cmd_projects(const char *dir)
             seq_note[0][0] = 0;
             pat_dirty = 1;
         }
-        /* ARP held: the pattern (1) saved, its steps with it; the grid: ARP loads the one chosen */
-        fm1_in.buttons |= 1u << PANEL_BTN[B_ARP];
-        host_press = 1u << PANEL_BTN[B_ARP];
+        /* SAVE: the grid; SAVE held there, the pattern (1) saved, its steps with it (the cursor on it); a white key loads
+         * its pattern (build 76: as Tonitor's snapshots) */
+        btn(B_SAVE, 0);
+        EXPECT(ui.page == PG_PAT && pj.slot[1] == 0u, "SAVE opens the patterns, the cursor on the one playing");
+        fm1_in.buttons |= 1u << PANEL_BTN[B_SAVE];
+        host_press = 1u << PANEL_BTN[B_SAVE];
         ui_input();
         fm1_ms += 900;
         ui_input();
@@ -848,28 +871,34 @@ static int cmd_projects(const char *dir)
         fm1_ms += 2000;
         EXPECT(pat_cur == 0u && pat_store[0].used && !pat_dirty && pat_store[0].seq[SEQ_FMT] == SEQ_V4 &&
                pat_store[0].seq[SEQ_NREC] == 2u && pat_store[0].seq[SEQ_REC4 + 6u + 1u] == n0,
-               "ARP held saves the pattern playing, its steps");
+               "SAVE held on the grid saves the pattern playing, its steps");
+        EXPECT(ui.page == PG_PAT, "the grid stays");
         {   /* (written into session 3's flash) */
             int rc = prj_read(2, 1u);
             const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
             EXPECT(!rc && pp[0].used && pp[0].seq[SEQ_REC4] == 5u * NSTEP && pp[0].seq[SEQ_REC4 + 1u] == n1,
                    "the steps are in the session's flash");
         }
-        btn(B_ARP, 0);
-        EXPECT(ui.page == PG_PAT, "ARP opens the patterns");
+        btn(B_SAVE, 0);
+        EXPECT(ui.page == PG_MAIN, "SAVE on the grid: back");
+        btn(B_SAVE, 0);
+        EXPECT(ui.page == PG_PAT, "SAVE opens the patterns again");
         turn(EN_PRESET, 11);                     /* PATTERN 12 */
         shot(dir, "pat_grid");
-        btn(B_ARP, 0);
-        EXPECT(ui.page == PG_MAIN && pat_cur == 11u && !seq_note[5][0] && !seq_note[5][8], "ARP on the grid: pattern 12 loaded (empty)");
-        btn(B_ARP, 0);
-        turn(EN_PRESET, -11);
-        btn(B_ARP, 0);
+        fm1_in.notes |= 1u << kw[11];
+        ui_input();
+        fm1_in.notes &= ~(1u << kw[11]);
+        ui_input();
+        EXPECT(ui.page == PG_PAT && pat_cur == 11u && !seq_note[5][0] && !seq_note[5][8], "its white key: pattern 12 loaded (empty)");
+        fm1_in.notes |= 1u << kw[0];
+        ui_input();
+        fm1_in.notes &= ~(1u << kw[0]);
+        ui_input();
         EXPECT(pat_cur == 0u && seq_note[5][0] == n1 && seq_note[5][8] == n0, "and pattern 1 back, its steps");
         EXPECT(seq_cond[5][0] == CD_AB + 2 && seq_vel[5][0] == pct_raw(pct_disp(VEL_DEF) - 20) && seq_glen[5][0] == GLEN_DEF + 2,
                "with their velocity, length, condition");
         /* the PATTERNS grid: a white key loads its pattern; held, empties it */
-        btn(B_ARP, 0);
-        EXPECT(ui.page == PG_PAT, "ARP shows the patterns");
+        EXPECT(ui.page == PG_PAT, "the grid still up");
         fm1_in.notes |= 1u << kw[12];
         ui_input();
         fm1_in.notes &= ~(1u << kw[12]);
@@ -1199,7 +1228,7 @@ static int cmd_projects(const char *dir)
         memset((void *)seq_note, 0, sizeof seq_note);
         seq_note[1][0] = seq_note[1][4] = 50;
         pat_dirty = 1;                           /* (steps placed, not saved) */
-        btn(B_ARP, 0);
+        grid_open();
         fm1_in.notes |= 1u << KEY_SHIFT;
         fm1_in.notes |= 1u << kw[7];             /* copy 8 (SHIFT held: build 72) .. */
         ui_input();
@@ -2584,19 +2613,35 @@ static int cmd_projects(const char *dir)
         memcpy(fx_cp, CP0, NCP);
         fx_cook_all();
     }
-    /* the long presses: ARP held saves the pattern playing, HOME held the project */
+    /* the long presses: SAVE held on the grid saves the pattern playing (the cursor on it), HOME held the project */
     pat_tempo = 77;
     pat_dirty = 1;
-    fm1_in.buttons |= 1u << PANEL_BTN[B_ARP];
-    host_press = 1u << PANEL_BTN[B_ARP];
-    ui_input();
-    fm1_ms += 900;
-    ui_input();
-    fm1_in.buttons = 0;
-    ui_input();
-    fm1_ms += 2000;
-    EXPECT(ui.page == PG_MAIN && pat_store[pat_cur].tempo == 77 && pat_store[pat_cur].used && !pat_dirty,
-           "ARP held saves the pattern playing");
+    ui.page = PG_MAIN;
+    grid_open();
+    save_held(0);
+    EXPECT(ui.page == PG_PAT && pat_store[pat_cur].tempo == 77 && pat_store[pat_cur].used && !pat_dirty,
+           "SAVE held on the grid saves the pattern playing");
+    btn(B_SAVE, 0);
+    EXPECT(ui.page == PG_MAIN, "SAVE: the grid down");
+    {   /* ARP: the SCALE page (Tonitor's, build 76): SELECT the root, ALGORITHM the scale; ARP again, back */
+        uint8_t r0 = ui.root, s0 = ui.scale;
+        int8_t lv = ui.level[ui.sel], pn = ui.pan[ui.sel];
+        prj_dirty = 0;
+        btn(B_ARP, 0);
+        ui_leds();
+        EXPECT(ui.page == PG_SCALE && host_led[PANEL_BTN[B_ARP]], "ARP: the SCALE page, ARP lit");
+        turn(EN_SELECT, 13);
+        turn(EN_ALGO, s0 ? -1 : 1);
+        EXPECT(ui.root == (r0 + 1u) % 12u && ui.scale == (uint8_t)(s0 ? s0 - 1u : 1u) && prj_dirty,
+               "SELECT the root (round the octave), ALGORITHM the scale, the session changed");
+        EXPECT(ui.level[ui.sel] == lv && ui.pan[ui.sel] == pn, "the level and pan untouched");
+        ui_draw();
+        shot(dir, "scale_page");
+        btn(B_ARP, 0);
+        EXPECT(ui.page == PG_MAIN, "ARP again: back");
+        ui.root = r0;
+        ui.scale = s0;
+    }
     ui.tempo = 99;
     prj_dirty = 1;
     fm1_in.buttons |= 1u << PANEL_BTN[B_HOME];
@@ -2651,7 +2696,9 @@ static int cmd_projects(const char *dir)
         pat_dirty = 0;
         ui.page = PG_MAIN;
         prj_cur = -1;
-        for (x = 0; x < 2u; x++) {               /* (the list; the slot's page) */
+        for (x = 0; x < 2u; x++) {               /* (SHIFT + SAVE the list; SAVE the slot's page) */
+            if (!x)
+                fm1_in.notes |= 1u << KEY_SHIFT;
             fm1_in.buttons |= 1u << PANEL_BTN[B_SAVE];
             host_press = 1u << PANEL_BTN[B_SAVE];
             ui_input();
@@ -2659,11 +2706,12 @@ static int cmd_projects(const char *dir)
             ui_input();
             fm1_in.buttons = 0;
             ui_input();
+            fm1_in.notes &= ~(1u << KEY_SHIFT);
             fm1_ms += 300;
             if (!x)
                 pj.slot[0] = (uint8_t)k;
         }
-        EXPECT(ui.page == PG_PRJD, "SAVE tapped twice: the slot's page");
+        EXPECT(ui.page == PG_PRJD, "SHIFT + SAVE, then SAVE, tapped: the slot's page");
         pj.row = PR_LOAD;
         {   /* (SAVE held a second and more on LOAD, as a firm press: loaded, not saved) */
             uint32_t e0 = host_erases;
@@ -2926,7 +2974,11 @@ static int cmd_projects(const char *dir)
         mcfg = D;
         ui.page = PG_MAIN;
         btn(B_SAVE, 1);
-        EXPECT(ui.page == PG_SET && !set.lvl, "SHIFT + SAVE: GLOBAL SETUP");
+        EXPECT(ui.page == PG_PRJ, "SHIFT + SAVE tapped: the sessions, not GLOBAL SETUP");
+        btn(B_SAVE, 1);
+        EXPECT(ui.page == PG_MAIN, "SHIFT + SAVE on the list: back");
+        save_held(1);
+        EXPECT(ui.page == PG_SET && !set.lvl, "SHIFT + SAVE held: GLOBAL SETUP");
         ui_draw();
         shot(dir, "setup");
         btn(B_SAVE, 0);                          /* (MIDI) */
@@ -2994,7 +3046,7 @@ static int cmd_projects(const char *dir)
         }
         {   /* BACK at the top of GLOBAL SETUP's levels (build 48) */
             ui.page = PG_MAIN;
-            btn(B_SAVE, 1);
+            save_held(1);
             btn(B_SAVE, 0);                      /* (MIDI: on SYNC, BACK above) */
             EXPECT(set.lvl == 1u && set.pc == 1u, "MIDI opens on its first part");
             turn(EN_PRESET, -1);
@@ -4211,8 +4263,8 @@ static int cmd_bkserve(void)
 #define NEXPECT(c, what) do { if (!(c)) { printf("FAIL newses: %s\n", what); fails++; } } while (0)
 static void ns_slot_save(uint32_t k)             /* (the sessions' list, slot k, its page, SAVE) */
 {
-    ui.page = PG_MAIN;                           /* (from the track's view) */
-    btn(B_SAVE, 0);
+    ui.page = PG_MAIN;                           /* (from the track's view: SHIFT + SAVE) */
+    btn(B_SAVE, 1);
     turn(EN_PRESET, -20);
     turn(EN_PRESET, (int32_t)k);
     btn(B_SAVE, 0);                              /* (its page, on LOAD) */
@@ -4444,8 +4496,8 @@ static int cmd_pstate(const char *dir)
     ui.mute_mode = 0;
     memset((void *)trk_mute, 0, NTRACK);
     tap(KEY_TRK);
-    btn(B_ARP, 0);
-    PEXPECT(ui.page == PG_PAT && ui.mute_mode, "MUTE mode on, ARP: the grid, MUTE mode still on");
+    grid_open();
+    PEXPECT(ui.page == PG_PAT && ui.mute_mode, "MUTE mode on, SAVE: the grid, MUTE mode still on");
     btn((uint32_t)TRACK_BTN[3], 0);
     ui_input();
     ui_leds();
@@ -4463,7 +4515,7 @@ static int cmd_pstate(const char *dir)
     ui_input();
     PEXPECT(ui.page == PG_MAIN && ui.sel == 0u && trk_mute[3], "MUTE mode off: a track's button back to the track, the mutes stay");
     ui.sv = 1;                                   /* (the step view on: on the grid, MUTE mode all the same) */
-    btn(B_ARP, 0);
+    grid_open();
     tap(KEY_TRK);
     ui_input();
     PEXPECT(ui.page == PG_PAT && ui.mute_mode, "the step view on: MUTE mode on the grid all the same");
@@ -4542,7 +4594,7 @@ static int cmd_brksave(const char *dir)
     btn(B_PLAY, 0);
     for (i = 0; i < 40u; i++)
         mix_block(out);
-    btn(B_ARP, 0);
+    grid_open();
     cur0 = pat_cur;
     bs_break(1);
     ui_leds();
@@ -4825,11 +4877,11 @@ static int cmd_lptrn(const char *dir)
         pat_poll();
         XEXPECT(!prj_load(4) && pat_cur == 6u, "(session 5 loaded: pattern 7 playing)");
         pat_poll();
-        btn(B_ARP, 0);
+        grid_open();
         XEXPECT(ui.page == PG_PAT && pj.slot[1] == 6u, "the grid: its cursor on pattern 7, the one playing");
         ui_draw();
         shot(dir, "pat_grid_loaded7");
-        btn(B_ARP, 0);
+        btn(B_SAVE, 0);
     }
     printf("lptrn: %d failures\n", fails);
     return fails != 0;
@@ -4881,7 +4933,7 @@ static int cmd_patsave(void)
             all &= w.note[t][i] == seq_note[t][i];
     WEXPECT(all, "96 steps, track 1 locked on each: all 96 saved");
     /* the grid: a white key held, the pattern playing saved there, all six tracks */
-    btn(B_ARP, 0);
+    grid_open();
     key(kw[7], 1);
     fm1_ms += 900;
     ui_input();
