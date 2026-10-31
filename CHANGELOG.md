@@ -1,5 +1,12 @@
 # Changelog
 
+## Build 75
+
+Changed
+- The splash screen shows the Bigorna logo: the anvil over the lettering, in steel on black, with the build under
+  them. It is drawn from the website logo's shapes (the anvil's outline, BIGORNA in Michroma), made into bitmaps when
+  the firmware is built (tools/gen_logo.py); they take 9.5 KB of flash and no RAM.
+
 ## Build 74
 
 Fixed

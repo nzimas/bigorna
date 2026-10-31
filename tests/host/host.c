@@ -169,6 +169,7 @@ static void fm1_led_key(uint32_t id, int on) { if (id < 64u) host_led[id] = (uin
 #include "setup.c"
 #include "backup.c"
 #include "phrase.c"
+#include "logo.c"
 
 /* the flash, emulated: NOR (erased to 0xFF, programming only clears bits) */
 static uint8_t host_flash[0x100000];
@@ -382,6 +383,10 @@ static void key(uint32_t k, int down)
 }
 static int cmd_screens(const char *dir)
 {
+    char sp[256];
+    splash_draw("BUILD 75");                         /* the splash: the logo */
+    snprintf(sp, sizeof sp, "%s/splash.ppm", dir);
+    ppm(sp);
     tracks_init();
     ui_init();
     fm1_ms = 5000;
