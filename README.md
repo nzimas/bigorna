@@ -35,7 +35,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | Control | What it does |
 | --- | --- |
 | **6 top buttons** | choose track **1–6** (lit: chosen; glowing dimly: sounding). From any page, back to the track. In [MUTE mode](#mute-mode): mute and solo. |
-| **Track button held + white key 1–4** | on DRUM: its [subtrack](#subtracks) **ST-A**–**ST-D**. **SHIFT +**: give up a subtrack past ST-A. |
+| **Track button held + white key 1–4** | on DRUM: its [subtrack](#subtracks) **ST-A**–**ST-D**. **SHIFT +**: mute or unmute it; held 0.8 s, give up a subtrack past ST-A. |
 | **PRESETS** knob | chosen track's machine: **4-OP**, **DRUM**, **WAVY**, **HIVE**. Each track keeps 1 sound per machine. |
 | **SHIFT + PRESETS** | new sound of the family before or after. |
 | **HOME** | new sound for the chosen track ([Sounds](#sounds)). |
@@ -92,8 +92,10 @@ the other 5 are free for other parts. A track not on DRUM has none (ST-A is the 
 | To | Do this |
 | --- | --- |
 | Choose a subtrack | hold the track's button and press white key 1–4 (ST-A–ST-D); ST-B shows for a moment |
-| See them | hold the track's button: the chosen subtrack's key lit, ST-A and the other subtracks in use dim |
-| Give one up | hold SHIFT and the track's button, and press its white key (ST-B–ST-D): its steps go |
+| See them | hold the track's button: the chosen subtrack's key lit, the other 3 dim |
+| See the mutes | hold the track's button and SHIFT: each subtrack in use lit if playing, dim if muted; the others dark |
+| Mute or unmute one | hold SHIFT and the track's button, and press its white key and let go within 0.8 s (ST-A–ST-D) |
+| Give one up | hold SHIFT and the track's button, and hold its white key for 0.8 s (ST-B–ST-D): its steps go |
 
 - ST-A is the track's own sound; until another is chosen, everything acts on it.
 - A new subtrack gets the kit's next piece after the track's own: on a kick's track, ST-B a snare, ST-C a hat,
@@ -105,7 +107,11 @@ the other 5 are free for other parts. A track not on DRUM has none (ST-A is the 
   several tracks with 2 or 3. When none is left, NO SUBTRACK shows.
 - A track turned off DRUM puts its subtracks away: silent, kept, back as they were when it is on DRUM again.
   Another DRUM track can take one of them when none is free.
-- Patterns keep each subtrack's steps and settings; the session keeps its sound, level and pan. The looper notes
+- A muted subtrack fades out, its sends with it, and its steps keep running silently; it sends no MIDI notes and
+  ducks nothing. ST-A's mute is the track's own sound only, and holds only while the track is on DRUM. The track's
+  mute ([MUTE mode](#mute-mode)) still mutes all its subtracks; the two are separate, so a subtrack muted stays muted
+  when the track is unmuted. A subtrack given up loses its mute.
+- Patterns keep each subtrack's steps and settings; the session keeps its sound, level, pan and mute. The looper notes
   which subtrack each note was played on; SHIFT + OCT− / OCT+ moves every subtrack.
 
 ### Sounds

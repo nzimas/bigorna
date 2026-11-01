@@ -159,6 +159,8 @@ static track_t trk[NLANE];                       /* (a lane's: each lane mixed a
 /* each lane's level (Q14) and equal-power pan (Q15), set by the main loop */
 static volatile int32_t trk_gain[NLANE], trk_pl[NLANE], trk_pr[NLANE];
 static volatile uint8_t trk_mute[NTRACK];        /* each track muted (the MUTE mode's, the main loop's; build 35) */
+static volatile uint8_t ln_mu[NLANE];            /* (build 81) each lane muted as a subtrack (the main loop's: lmu_apply) */
+#define LANE_MU(l) (trk_mute[LANE_T(l)] || ln_mu[l])   /* (a lane silent: its track muted, or it) */
 static const int32_t zero_blk[CTL];
 
 /* the budget (as TONITOR's): each machine's voice cost measured as it renders, so a start that would overrun the
@@ -312,7 +314,7 @@ static void note_on(uint32_t t, uint32_t note, uint32_t src)
     track_t *y = &trk[t];
     uint32_t best;
     voice_t *v;
-    midi_note_out(LANE_T(t), note, note_vel, trk_mute[LANE_T(t)]);   /* (out on the track's channel, SEND NOTES:
+    midi_note_out(LANE_T(t), note, note_vel, LANE_MU(t));   /* (out on the track's channel, SEND NOTES:
                                                   * midi.c; a lane: its track's) */
     lfo_trig[t] = 1;                             /* (the track's LFOs: TRIG, HOLD, ONE, HALF and the FADE start again) */
     if (!y->xfade && ck_buf[t][ck_use[t]].mach == ENG_FMD) {   /* an DRUM track chokes, as a drum machine's: its
@@ -2158,7 +2160,8 @@ static void vr_block(void)
 FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *dlin, int32_t *rvin, int32_t *chin)
 {
     track_t *y = &trk[t];
-    uint32_t tr = LANE_T(t);                     /* (a lane: its track's mute and sidechain) */
+    uint32_t tr = LANE_T(t);                     /* (a lane: its track's sidechain; its track's mute and its own) */
+    int mu = LANE_MU(t);
     int32_t buf[CTL], pk = 0, sd1, sr1, sc1, pl1, pr1, dk_dg = 0, dk_next = Q16;
     int duck = 0;
     uint8_t mg[NM];
@@ -2272,7 +2275,7 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
         }
         dk_struck[t] = 0;
         dk_sent[t][0] = dk_sent[t][1] = dk_sent[t][2] = 0;
-        y->mg = trk_mute[tr] ? 0 : Q15;          /* (silent: muted or not at once) */
+        y->mg = mu ? 0 : Q15;          /* (silent: muted or not at once) */
         y->meter -= y->meter >> 4;
         y->g = (int32_t)(((int64_t)trk_gain[t] * y->mg) >> 15);
         y->pl = pl1;
@@ -2295,7 +2298,7 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
     }
     lim_block(&y->lim_env, &y->lim_g, buf);
     if (dk_mask >> t & 1u)                       /* (a source: its hits followed; muted, it ducks nothing) */
-        dk_feed(&dk[t], trk_mute[tr] ? zero_blk : buf, dk_struck[t] && !trk_mute[tr]);
+        dk_feed(&dk[t], mu ? zero_blk : buf, dk_struck[t] && !mu);
     dk_struck[t] = 0;
     {   /* this track ducked under its source's hits: by SC LEVEL (0 .. 100: up to 45 dB, near a gate) as the source's
          * level stands against its hit, coming down at ATTACK, back as the source's level falls (RELEASE) */
@@ -2315,7 +2318,7 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
         }
     }
     {   /* the level, the pan and the sends, gliding over the block */
-        int32_t mg1 = y->mg + clampi((trk_mute[tr] ? 0 : Q15) - y->mg, -Q15 / 12, Q15 / 12);   /* (the mute, gliding) */
+        int32_t mg1 = y->mg + clampi((mu ? 0 : Q15) - y->mg, -Q15 / 12, Q15 / 12);   /* (the mute, gliding) */
         int32_t g1 = (int32_t)(((int64_t)trk_gain[t] * mg1) >> 15);
         int32_t dg = (g1 - y->g) / CTL, dl = (pl1 - y->pl) / CTL, dr = (pr1 - y->pr) / CTL;
         int32_t dd = (sd1 - y->sd) / CTL, dv = (sr1 - y->sr) / CTL, dc = (sc1 - y->sc) / CTL;

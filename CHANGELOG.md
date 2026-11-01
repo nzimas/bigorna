@@ -1,5 +1,20 @@
 # Changelog
 
+## Build 81
+
+Added
+- Subtrack mutes. Hold a DRUM track's button and SHIFT: white keys 1 to 4 show its subtracks in use, lit if playing,
+  dim if muted. A white key let go within 0.8 s mutes or unmutes that subtrack (ST-A to ST-D). A muted subtrack
+  fades out, sends no MIDI notes and ducks nothing; its steps keep running. The track's own mute in MUTE mode still
+  mutes all its subtracks. Sessions keep the subtrack mutes.
+
+Changed
+- Holding a DRUM track's button lights all 4 subtrack keys dim (the chosen one lit), not only the ones in use.
+- Giving up a subtrack is now SHIFT + the track's button + its white key held 0.8 s (was: pressed).
+
+Compatibility
+- Sessions from earlier builds load as before, with no subtrack muted.
+
 ## Build 80
 
 Changed

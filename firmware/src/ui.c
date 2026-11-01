@@ -122,6 +122,10 @@ static struct {
     uint8_t sel;
     uint8_t sub[NTRACK];         /* each track's subtrack chosen (0 ST-A; a DRUM track's B .. D: build 79) .. */
     uint8_t sl;                  /* .. and the lane chosen: the chosen track's subtrack (sel_sync) */
+    uint16_t lmu;                /* (build 81) the subtracks muted, a bit a lane (ST-A's: its track's, on DRUM only) .. */
+    uint8_t sv_k, sv_t, sv_long; /* .. and SHIFT with a track's button held: the white key held (KEY_NONE none), its
+                                  * track, held 0.8 s */
+    uint32_t sv_t0;
     uint8_t page;
     uint8_t edit_pg;             /* the EDIT page shown (0 .. pages_n - 1) */
     uint8_t fx_pg;               /* the effect shown: FXP_* (CHORUS, COMP, DELAY, REVERB) */
@@ -306,6 +310,13 @@ static void flash(const char *l1, const char *l2, uint16_t c)
 static sound_t ui_lsnd[NXL] POOL;
 static sound_t *lane_snd(uint32_t l) { return l < NTRACK ? &ui.snd[l][ui.eng[l]] : &ui_lsnd[l - NTRACK]; }
 static int trk_lanes(uint32_t t) { return ui.eng[t] == ENG_FMD; }   /* (subtracks: DRUM's only) */
+static void lmu_apply(void)                      /* (build 81: the subtracks' mutes for the audio -- ST-A's while its track
+                                                  * is on DRUM, one past ST-A while it is taken) */
+{
+    uint32_t l;
+    for (l = 0; l < NLANE; l++)
+        ln_mu[l] = (uint8_t)((ui.lmu >> l & 1u) && (l < NTRACK ? trk_lanes(l) : ln_s[l] != 0));
+}
 static void sel_sync(void)                       /* (the lane chosen: the chosen track's subtrack, while it has them) */
 {
     uint32_t l = ui.sel;
@@ -689,6 +700,7 @@ static void lane_fresh(uint32_t l)               /* (a lane's own as at the star
     ui.pan[l] = 0;
     ui.gen_den[l] = ui.gen_cx[l] = 50;
     ui.last_note[l] = ui.last_chf[l] = 0;
+    ui.lmu &= (uint16_t)~(1u << l);              /* (not muted) */
     level_pan_apply(l);
 }
 /* the lane of track t's subtrack s (1 .. 3): its own; else a free one, or one a track off DRUM put away -- its sound
@@ -1743,6 +1755,7 @@ static void ui_input(void)
     int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u);
     sel_sync();                                      /* (the lane chosen, as the track chosen is now) */
     sc_apply();
+    lmu_apply();
     (void)rel;
     pat_poll();                                      /* (a pattern switched as the sequencer took it in) */
     arp_take();                                      /* (the arpeggiator's notes recorded: build 52) */
@@ -2218,8 +2231,9 @@ static void ui_input(void)
     }
     keys = fm1_in.notes;
     ch = keys ^ ui.keys;
-    {   /* (build 79) a DRUM track's button held and a white key 1 .. 4: its subtrack ST-A .. ST-D chosen (taken if new);
-         * SHIFT with it, one past ST-A given up. The key plays nothing */
+    {   /* (build 79) a DRUM track's button held and a white key 1 .. 4: its subtrack ST-A .. ST-D chosen (taken if new).
+         * (build 81) SHIFT with it: a subtrack taken, let go soon, muted or playing again; held 0.8 s, one past ST-A
+         * given up. The key plays nothing */
         uint32_t ht = NTRACK, k;
         for (k = 0; k < NTRACK; k++)
             if (btn_bit(fm1_in.buttons, TRACK_BTN[k]))
@@ -2227,20 +2241,19 @@ static void ui_input(void)
         for (k = 0; ht < NTRACK && !ui.mute_mode && trk_lanes(ht) && k < NKEY; k++) {
             int32_t w = white_ix(k);
             char m[8] = "ST-A";
-            if (w < 0 || w >= (int32_t)NSUB || !((ch >> k) & 1u))
+            if (w < 0 || w >= (int32_t)NSUB || !((ch >> k) & 1u) || k == ui.sv_k)
                 continue;
             ch &= ~(1u << k);
             if (!((keys >> k) & 1u))
                 continue;
             m[3] = (char)('A' + w);
-            if (sh && w) {                       /* (SHIFT: given up) */
-                uint32_t l = lane_find(ht, (uint32_t)w);
-                if (l < NLANE) {
-                    lane_free(l);
-                    str_cpy(m + 4, " OFF", 4);
-                    prj_dirty = pat_dirty = 1;
+            if (sh) {                            /* (SHIFT: muted or given up as it is let go or held) */
+                if (ui.sv_k == KEY_NONE && lane_find(ht, (uint32_t)w) < NLANE) {
+                    ui.sv_k = (uint8_t)k;
+                    ui.sv_t = (uint8_t)ht;
+                    ui.sv_long = 0;
+                    ui.sv_t0 = fm1_ms;
                 }
-                say(m, 900);
             } else if (w && lane_take(ht, (uint32_t)w) >= NLANE)
                 say("NO SUBTRACK", 1200);       /* (the NXL shared lanes all taken by DRUM tracks) */
             else {
@@ -2249,6 +2262,32 @@ static void ui_input(void)
                 sel_sync();
                 if (ui.page == PG_EDIT && ui.edit_pg >= pages_n(cur()))
                     ui.edit_pg = 0;
+                say(m, 900);
+            }
+            ui.force = 1;
+        }
+        if (ui.sv_k != KEY_NONE) {               /* (the subtrack's key held with SHIFT) */
+            uint32_t w = (uint32_t)white_ix(ui.sv_k), l = lane_find(ui.sv_t, w);
+            char m[12] = "ST-A";
+            m[3] = (char)('A' + w);
+            ch &= ~(1u << ui.sv_k);
+            if (!((keys >> ui.sv_k) & 1u)) {
+                if (!ui.sv_long && l < NLANE) {  /* (let go soon: muted, or playing again) */
+                    ui.lmu ^= (uint16_t)(1u << l);
+                    lmu_apply();
+                    str_cpy(m + 4, ui.lmu >> l & 1u ? " MUTE" : " ON", 6);
+                    say(m, 900);
+                    prj_dirty = 1;
+                }
+                ui.sv_k = KEY_NONE;
+            } else if (!ui.sv_long && (uint32_t)(fm1_ms - ui.sv_t0) >= 800u) {
+                ui.sv_long = 1;                  /* (held: given up -- ST-A stays) */
+                if (w && l < NLANE) {
+                    lane_free(l);
+                    lmu_apply();
+                    str_cpy(m + 4, " OFF", 5);
+                    prj_dirty = pat_dirty = 1;
+                }
                 say(m, 900);
             }
             ui.force = 1;
@@ -2602,7 +2641,8 @@ static void ui_leds(void)
                                       ((ui.rec == REC_ARMED || ui.lrec == 1) && (fm1_ms / 250u) & 1u));
     fm1_led_key(PANEL_BTN[B_PLAY], seq_run && (seq_pos[ui.sl] & 3u) == 0u);   /* (the beat, while it plays) */
     ht = NTRACK;                                 /* (build 79) a DRUM track's button held: its subtracks on white keys
-                                                  * 1 .. 4 (the chosen lit; ST-A and the ones taken dim), the others dark */
+                                                  * 1 .. 4 (the chosen lit, all four dim: build 81); SHIFT with it,
+                                                  * the ones taken (lit: playing; dim: muted), the others dark */
     for (t = 0; t < NTRACK; t++)
         if (btn_bit(fm1_in.buttons, TRACK_BTN[t]) && !ui.mute_mode && trk_lanes(t))
             ht = t;
@@ -2610,8 +2650,14 @@ static void ui_leds(void)
         if (ht < NTRACK && k != KEY_SHIFT) {
             int32_t w = white_ix(k);
             int in = w >= 0 && w < (int32_t)NSUB;
-            fm1_led_key(14u + k, in && (uint32_t)w == ui.sub[ht]);
-            led_dim_key(14u + k, in && (!w || lane_find(ht, (uint32_t)w) < NLANE));
+            if ((fm1_in.notes >> KEY_SHIFT) & 1u) {
+                uint32_t l = in ? lane_find(ht, (uint32_t)w) : NLANE;
+                fm1_led_key(14u + k, l < NLANE && !(ui.lmu >> l & 1u));
+                led_dim_key(14u + k, l < NLANE && (ui.lmu >> l & 1u));
+            } else {
+                fm1_led_key(14u + k, in && (uint32_t)w == ui.sub[ht]);
+                led_dim_key(14u + k, in);
+            }
             continue;
         }
         if (ui.lrec_down && white_ix(k) >= 0) {      /* (the loops: playing lit, muted dim) */
@@ -3560,7 +3606,7 @@ static void ui_init(void)
     ui.step_key = ui.qk = ui.sk = KEY_NONE;
     memset(ui.rec_step, 0xFF, sizeof ui.rec_step);
     memset(ui.lk_ev, 0xFF, sizeof ui.lk_ev);
-    ui.lv_k = KEY_NONE;
+    ui.lv_k = ui.sv_k = KEY_NONE;
     memset(ui.gen_den, 50, sizeof ui.gen_den);
     memset(ui.gen_cx, 50, sizeof ui.gen_cx);
     ui.click = 1;

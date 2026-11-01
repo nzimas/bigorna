@@ -98,6 +98,7 @@ typedef struct {
     int8_t loct[NXL], llevel[NXL], lpan[NXL];   /* .. each lane's octave, level and pan .. */
     sound_t lsnd[NXL];           /* .. and its sound */
     uint8_t sc_sub[NTRACK];      /* (build 80: before, PRJ_LEN79) each track's SC SOURCE's subtrack + 1 (0: its kick) */
+    uint16_t lmu;                /* (build 81: in the padding at the end, saved as 0 by build 80) the subtracks muted */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body49_t, cp)   /* (the lengths builds 18 .. 49 saved: the sound without LFOs) */
 #define PRJ_LEN28 __builtin_offsetof(prj_body49_t, sc_src)
@@ -109,6 +110,8 @@ typedef char prj_len50[PRJ_LEN50 % 4u == 0u ? 1 : -1];   /* (their size as saved
 #define PRJ_LEN78 ((__builtin_offsetof(prj_body_t, muq) + 1u + 3u) & ~3u)   /* (builds 52 .. 78: no subtracks) */
 #define PRJ_LEN79 __builtin_offsetof(prj_body_t, sc_sub)   /* (build 79: no SC SOURCE subtrack) */
 typedef char prj_len79[PRJ_LEN79 % 4u == 0u ? 1 : -1];   /* (its size as saved: no padding after lsnd) */
+typedef char prj_len80[sizeof(prj_body_t) == ((PRJ_LEN79 + NTRACK + 3u) & ~3u) ? 1 : -1];   /* (build 81's mutes: in
+                                                  * build 80's padding, the size it saved) */
 typedef char prj_len78[PRJ_LEN78 == ((PRJ_LEN50 + NTRACK * (1u + NARP) + 3u) & ~3u) &&
                        __builtin_offsetof(prj_body_t, ln_t) <= PRJ_LEN78 ? 1 : -1];   /* (MUTE QT took a byte of the
                                                   * padding: the size builds 52 .. 78 saved) */
@@ -1503,6 +1506,7 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     }
     memcpy(b->sub, ui.sub, NTRACK);
     memcpy(b->sc_sub, sc_sub, NTRACK);
+    b->lmu = ui.lmu;
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
 {
@@ -1562,6 +1566,8 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
         sc_sub[t] = (uint8_t)(b->sc_sub[t] <= NSUB ? b->sc_sub[t] : 0u);
         lanes_apply(t);
     }
+    ui.lmu = (uint16_t)(b->lmu & ((1u << NLANE) - 1u));
+    lmu_apply();
     sel_sync();
 }
 static int prj_save(uint32_t k)              /* the loops into the store, the pattern playing into its slot, then the

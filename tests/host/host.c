@@ -5076,6 +5076,7 @@ static int cmd_patsave(void)
 /* (build 79) subtracks: a DRUM track's ST-B .. ST-D on the NXL shared lanes, each a track in its own right */
 #define SEXPECT(c, what) do { if (!(c)) { printf("FAIL subtrk: %s\n", what); fails++; } } while (0)
 static uint32_t st_kw[16];
+static uint32_t st_hold;                         /* (ms the white key is held: build 81, SHIFT and held 0.8 s, given up) */
 static void st_choose(uint32_t t, uint32_t w, int sh)   /* (track t's button held, white key w pressed: SHIFT too) */
 {
     uint32_t b = 1u << PANEL_BTN[TRACK_BTN[t]];
@@ -5085,6 +5086,8 @@ static void st_choose(uint32_t t, uint32_t w, int sh)   /* (track t's button hel
     if (sh)
         fm1_in.notes |= 1u << KEY_SHIFT;
     fm1_in.notes |= 1u << st_kw[w];
+    ui_input();
+    fm1_ms += st_hold;
     ui_input();
     fm1_in.notes &= ~(1u << st_kw[w]);
     ui_input();
@@ -5116,14 +5119,52 @@ static int cmd_subtrk(const char *dir)
             "its sound its own, on DRUM: the kit's next piece, a snare");
     ui_draw();
     shot(dir, "subtrack_b");
-    {   /* the LEDs while the button is held: ST-B lit, ST-A dim, C and D dark */
+    {   /* the LEDs while the button is held: ST-B lit, all four dim (build 81); SHIFT too: the ones taken, A and B lit */
         uint32_t b = 1u << PANEL_BTN[TRACK_BTN[0]];
         fm1_in.buttons |= b;
         ui_leds();
         SEXPECT(host_led[14u + st_kw[1]] && !host_led[14u + st_kw[0]] && host_dim_on(14u + st_kw[0]) &&
-                !host_led[14u + st_kw[2]] && !host_dim_on(14u + st_kw[2]), "the button held: ST-B lit, ST-A dim, C dark");
+                !host_led[14u + st_kw[2]] && host_dim_on(14u + st_kw[2]) && host_dim_on(14u + st_kw[3]),
+                "the button held: ST-B lit, A, C and D dim");
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        ui_leds();
+        SEXPECT(host_led[14u + st_kw[0]] && host_led[14u + st_kw[1]] && !host_dim_on(14u + st_kw[1]) &&
+                !host_led[14u + st_kw[2]] && !host_dim_on(14u + st_kw[2]), "SHIFT too: A and B lit (playing), C dark");
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
         fm1_in.buttons &= ~b;
     }
+    /* (build 81) SHIFT + the button held + a white key let go soon: the subtrack muted, or playing again */
+    st_choose(0, 1, 1);
+    SEXPECT(ln_mu[lb] && !ln_mu[0] && !trk_mute[0] && ui.sub[0] == 1u && lane_find(0, 1) == lb && str_eq(ui.msg, "ST-B MUTE"),
+            "SHIFT + track 1 held + white key 2: ST-B muted, kept, still chosen");
+    {
+        uint32_t b = 1u << PANEL_BTN[TRACK_BTN[0]];
+        fm1_in.buttons |= b;
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        ui_leds();
+        SEXPECT(!host_led[14u + st_kw[1]] && host_dim_on(14u + st_kw[1]) && host_led[14u + st_kw[0]], "muted: its key dim");
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        fm1_in.buttons &= ~b;
+    }
+    {   /* muted: its voice silent, the track's own not */
+        trk[lb].mg = Q15;
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+        SEXPECT(trk[lb].mg == 0 && trk[0].mg == Q15, "its gain down to 0, ST-A's not");
+    }
+    st_choose(0, 0, 1);
+    SEXPECT(ln_mu[0] && ui.lmu == (1u << 0 | 1u << lb) && !trk_mute[0], "ST-A muted on its own: the track's mute untouched");
+    ui.eng[0] = ENG_FMT;
+    ui_input();
+    SEXPECT(!ln_mu[0], "off DRUM: ST-A's mute not heard");
+    ui.eng[0] = ENG_FMD;
+    ui_input();
+    SEXPECT(ln_mu[0], "back on DRUM: ST-A muted again");
+    st_choose(0, 0, 1);
+    st_choose(0, 1, 1);
+    SEXPECT(!ln_mu[0] && !ln_mu[lb] && ui.lmu == 0u && str_eq(ui.msg, "ST-B ON"), "again: both playing");
+    st_choose(0, 2, 1);
+    SEXPECT(lane_find(0, 2) >= NLANE && ui.lmu == 0u, "SHIFT on one not taken: nothing");
     /* its own level and pan, octave, steps; the sequencer plays it, its voices its own */
     turn(EN_SELECT, -5);
     SEXPECT(ui.level[lb] == LEVEL_UNITY - 5 && ui.level[0] == LEVEL_UNITY, "SELECT: the subtrack's level, not the track's");
@@ -5157,7 +5198,12 @@ static int cmd_subtrk(const char *dir)
     st_choose(1, 1, 0);
     SEXPECT(lane_find(1, 1) >= NLANE && str_eq(ui.msg, "NO SUBTRACK"), "a fourth shared lane: none, NO SUBTRACK");
     st_choose(0, 3, 1);
-    SEXPECT(lane_find(0, 3) >= NLANE && ui.sub[0] == 0u, "SHIFT + track 1 held + white key 4: ST-D given up, ST-A chosen");
+    SEXPECT(lane_find(0, 3) < NLANE && ln_mu[lane_find(0, 3)], "SHIFT + white key 4 let go soon: ST-D muted, not given up");
+    st_hold = 900;
+    st_choose(0, 3, 1);
+    st_hold = 0;
+    SEXPECT(lane_find(0, 3) >= NLANE && ui.sub[0] == 0u && ui.lmu == 0u,
+            "SHIFT + track 1 held + white key 4 held 0.8 s: ST-D given up (its mute gone), ST-A chosen");
     st_choose(1, 1, 0);
     SEXPECT(lane_find(1, 1) < NLANE && ui.sel == 1u, "track 2 takes the lane given up");
     /* off DRUM: put away, silent, kept; another DRUM track may take one; back on DRUM: as it was */
@@ -5199,6 +5245,7 @@ static int cmd_subtrk(const char *dir)
     {
         int32_t lv = ui.level[lb];
         uint32_t fam = (uint32_t)ui_lsnd[lb - NTRACK].family;
+        ui.lmu = (uint16_t)(1u << lb);           /* (build 81: ST-B muted) */
         SEXPECT(!prj_save(2), "(saved)");
         lane_free(lb);
         lane_free(lane_find(0, 2));
@@ -5208,6 +5255,9 @@ static int cmd_subtrk(const char *dir)
         SEXPECT(l < NLANE && ui.level[l] == lv && (uint32_t)ui_lsnd[l - NTRACK].family == fam && lane_find(0, 2) < NLANE &&
                 lane_find(1, 1) < NLANE, "a session loaded: its subtracks, their sounds and levels");
         SEXPECT(seq_note[l][3] == 50u, "and their steps, in its pattern");
+        SEXPECT(l == lb && ui.lmu == (1u << lb) && ln_mu[lb], "and their mutes");
+        ui.lmu = 0;
+        lmu_apply();
         {   /* (as build 78 saved it: the record ending before the subtracks) */
             const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
             prj_flash_read(prj_sector(2, 0), prj_buf, sizeof(prj_head_t) + sizeof(prj_body_t));
