@@ -5149,6 +5149,28 @@ static int cmd_perf(const char *dir)
     pf_hold(pf_kw[5]);
     tap(KEY_PERF);
     PFEXPECT(!perf_on && ui.tempo == 133 && prj_dirty, "a pattern kept: the session as it played then stays");
+    {   /* (build 83) PLAY stops the sequencer during a BREAK, SHIFT held too (every track's) */
+        seq_run = 1;
+        fm1_in.notes |= 1u << KEY_TRIG;
+        ui_input();
+        btn(B_PLAY, 0);
+        PFEXPECT(ui.brk && !seq_run && str_eq(ui.msg, "STOP"), "a break on the chosen track: PLAY stops");
+        fm1_in.notes = 0;
+        ui_input();
+        seq_run = 1;
+        fm1_in.notes |= 1u << KEY_SHIFT | 1u << KEY_TRIG;
+        ui_input();
+        k = ui.click;
+        host_press = 1u << PANEL_BTN[B_PLAY];
+        ui_input();
+        ui_input();
+        PFEXPECT(ui.brk == (1u << NTRACK) - 1u && !seq_run && ui.click == k, "SHIFT + the break key (every track): PLAY "
+                 "stops, the metronome left");
+        fm1_in.notes = 0;
+        ui_input();
+        btn(B_PLAY, 1);
+        PFEXPECT(ui.click != k, "no break: SHIFT + PLAY the metronome");
+    }
     printf("perf: %d failures\n", fails);
     return fails != 0;
 }

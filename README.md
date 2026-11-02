@@ -58,7 +58,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **KNOB 1–4** | chosen track's filter FREQ and RESO, delay send, reverb send. On a page: its rows A–D. |
 | **SHIFT + KNOB 3 / KNOB 4** | chosen track's chorus send / overdrive. |
 | **PLAY** | start or stop the [sequencer](#sequencer). **Held** (0.8 s): [TEMPO](#tempo) page. |
-| **SHIFT + PLAY** | metronome on or off. |
+| **SHIFT + PLAY** | metronome on or off (during a [BREAK](#break), PLAY stops instead). |
 | **REC** | [record](#recording) the keys into the chosen track's steps. |
 | **SHIFT + REC** | [looper](#looper): arm a loop. **Held**: track's loops on the white keys. |
 | **ARP** | SCALE page ([Scales](#scales)); ARP again leaves it. |
@@ -266,6 +266,7 @@ brings its own. With NO (at first), they happen at once.
 
 While the sequencer plays, **hold black key 3** to break up the chosen track's pattern; **SHIFT +** it, every track's.
 Nothing is written into the steps: when the key is let go, the pattern carries on from where it would have been.
+PLAY stops the sequencer during a break, SHIFT held or not, so a piece can end on the break.
 
 Each press draws one way of playing the steps, shown on the screen, and keeps it while the key is held. The break
 starts on the track's next beat, and what is on a beat stays on a beat:

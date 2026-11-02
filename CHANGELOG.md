@@ -7,6 +7,8 @@ Fixed
   pattern playing with the changes, so they went into it as soon as you switched away. Now, as in Quasar, the slot
   saved into plays from then on (its loops carry on where they are), and the pattern saved from keeps what it held,
   its mutes and unmutes included. During PERFORMANCE the pattern playing stays, as before.
+- PLAY did not stop the sequencer during a break on every track (SHIFT + black key 3): with SHIFT held, it turned the
+  metronome on or off. While a break is held, PLAY now always starts or stops, so a piece can end on the break.
 
 ## Build 82
 

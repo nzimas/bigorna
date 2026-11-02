@@ -2119,7 +2119,8 @@ static void ui_input(void)
                 dial(ID[sh][j], J[sh][j]);
             }
     }
-    if (btn_bit(press, B_PLAY) && sh) {              /* SHIFT + PLAY: the metronome */
+    if (btn_bit(press, B_PLAY) && sh && !ui.brk) {   /* SHIFT + PLAY: the metronome (not under a BREAK: SHIFT is held
+                                                      * for every track's, and PLAY there stops -- build 83) */
         ui.click = (uint8_t)!ui.click;
         rec_set(ui.rec);
         say(ui.click ? "CLICK ON" : "CLICK OFF", 900);
