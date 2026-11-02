@@ -457,7 +457,7 @@ the white square is the cursor: it opens on the pattern playing, and **PRESETS**
 | To | Do this |
 | --- | --- |
 | Play a pattern | press and release its white key. While the sequencer plays, it starts at the end of the chosen track's steps |
-| Save the pattern playing into a slot | hold the slot's white key 0.8 s, or move the cursor there and hold SAVE; the slot may be empty or not, and the pattern playing goes on |
+| Save the pattern playing into a slot | hold the slot's white key 0.8 s, or move the cursor there and hold SAVE; the slot may be empty or not. That slot plays from then on; the pattern saved from keeps what it held, its mutes included |
 | Save its changes in its own slot | hold its own white key 0.8 s |
 | Copy a pattern | SHIFT + hold its key 0.8 s |
 | Paste it | SHIFT + hold another key 0.8 s |

@@ -944,9 +944,14 @@ static int cmd_projects(const char *dir)
             tap(kw[12]);
             EXPECT(pat_cur == 12u, "(pattern 13 back)");
         }
-        {   /* a white key held: the pattern playing (13) saved there, the one playing kept (build 72: no SHIFT) */
-            static pat_t keep;
-            uint32_t playing = pat_cur;
+        {   /* a white key held: the pattern playing (13), changed, saved there; it plays from then on, 13 as it was
+             * saved, its mutes too (build 72: no SHIFT; build 82, as Quasar) */
+            static pat_t keep, was;
+            uint32_t playing = pat_cur, m0 = trk_mute[3];
+            pat_save_as(playing);                /* (13 saved first, in its own slot: its tracks' state with it) */
+            was = pat_store[playing];
+            trk_mute[3] = (uint8_t)!m0;          /* (a change: track 4 muted, or unmuted) */
+            pat_dirty = 1;
             pat_take(&keep);
             fm1_in.notes |= 1u << kw[0];
             ui_input();
@@ -954,9 +959,18 @@ static int cmd_projects(const char *dir)
             ui_input();
             fm1_in.notes &= ~(1u << kw[0]);
             ui_input();
-            EXPECT(pat_store[0].used && !memcmp(&pat_store[0], &keep, sizeof keep) && pat_cur == playing &&
-                   pat_clip_from < 0 && str_eq(ui.flash_l1, "SAVED"),
-                   "a white key held: the pattern playing saved there, it plays on");
+            EXPECT(pat_store[0].seq[0] == keep.seq[0] && !memcmp(pat_store[0].seq, keep.seq, sizeof keep.seq) &&
+                   pat_cur == 0u && !pat_dirty && pat_clip_from < 0 && str_eq(ui.flash_l1, "SAVED"),
+                   "a white key held: the pattern playing saved there, and that one plays");
+            EXPECT(!memcmp(&pat_store[playing], &was, sizeof was), "the one saved from: as it was");
+            fm1_ms += 2000;
+            tap(kw[12]);
+            EXPECT(pat_cur == 12u && trk_mute[3] == m0, "back to 13: its own mute, not the change");
+            fm1_ms += 2000;
+            tap(kw[0]);
+            EXPECT(pat_cur == 0u && trk_mute[3] != m0, "pattern 1: the change, the mute with it");
+            fm1_ms += 2000;
+            tap(kw[12]);
             {
                 int rc = prj_read(2, 1u);
                 const pat_t *pp = (const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t));
@@ -4885,6 +4899,7 @@ static int cmd_loopin(const char *dir)
         lop_meta_t m;
         int rc;
         QEXPECT(!pat_save(0) && !pat_save_as_rc(2), "(patterns 1 and 3)");
+        pat_switch(0);                           /* (3 plays from its save, build 82: pattern 1 again) */
         lp_clear_pat(2);
         QEXPECT(!prj_save(6) && lop_bytes() == 1u + 8u + 2u * sizeof(lev_t), "(session 7: one loop, in pattern 1)");
         for (sec = 0; sec < LOP_N; sec++)        /* (its loop as builds 38 .. 72 wrote it: no pattern) */
@@ -5193,8 +5208,8 @@ static int cmd_patsave(void)
     for (t = 0, all = 1; t < NTRACK; t++)
         for (i = 0; i < NSTEP; i++)
             all &= w.note[t][i] == seq_note[t][i];
-    WEXPECT(pat_store[7].used && all && pat_cur == 0u && str_eq(ui.flash_l1, "SAVED"),
-            "a white key held on the grid: the pattern playing saved there, every track");
+    WEXPECT(pat_store[7].used && all && pat_cur == 7u && str_eq(ui.flash_l1, "SAVED"),
+            "a white key held on the grid: the pattern playing saved there, every track, and that one plays");
     btn(B_GLO, 0);
     /* the track's view: the root's keys dim, the others dark */
     ui.scale = 2;                                /* (MINOR, root D) */

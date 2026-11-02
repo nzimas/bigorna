@@ -1311,7 +1311,8 @@ static void pat_clear(uint32_t k)
 }
 
 /* (build 66; build 72 without SHIFT) the PATTERNS grid, a white key held: the pattern playing (its changes too, its state) saved as
- * pattern k, empty or not; the one playing plays on (k itself: saved in its own slot) */
+ * pattern k, empty or not; k plays from then on, the one it came from as it was saved (k itself: saved in its own
+ * slot; build 82) */
 static void pat_save_as(uint32_t k)
 {
     char n[12] = "PATTERN ";
@@ -1324,7 +1325,34 @@ static void pat_save_as(uint32_t k)
     }
     if (k == pat_cur)
         rc = pat_save(k);
-    else {
+    else if (!perf_on) {                         /* (build 82, as Quasar's: the slot saved into is the pattern playing
+                                                  * from now on, as it plays -- its loops on where they are; the one
+                                                  * left keeps what it held, its mutes too: the changes went to k) */
+        uint32_t i, from = pat_cur;
+        lr = lp_copy_pat(from, k);
+        pat_take(&pat_store[k]);
+        pat_dirtyv[k] = 0;
+        for (i = 0; i < NLP; i++)
+            if (lps[i].pat == k) {
+                const loop_t *o = lp_at(from, lps[i].t, lps[i].l);
+                if (o) {
+                    lps[i].cur = o->cur;
+                    lps[i].anchor = o->anchor;
+                    lps[i].kick = o->kick;
+                }
+            }
+        RING_PUBLISH();
+        seq_lpat = (uint8_t)k;
+        if (seq_pend == 1u && seq_pend_k == k) {   /* (it was waiting to play: it plays) */
+            seq_pend = 0;
+            RING_PUBLISH();
+        }
+        pat_cur = (uint8_t)k;
+        pat_dirty = 0;
+        px_take(px_base);
+        prj_dirty = 1;
+        rc = pat_flush(k);
+    } else {                                     /* (PERFORMANCE: the one playing plays on, it goes back to it) */
         lr = lp_copy_pat(pat_cur, k);            /* (its loops too: build 73) */
         pat_take(&pat_store[k]);
         pat_dirtyv[k] = 0;

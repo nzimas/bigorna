@@ -1,5 +1,13 @@
 # Changelog
 
+## Build 83
+
+Fixed
+- Patterns kept the wrong mutes. Saving the pattern playing into another slot on the PATTERNS grid left the old
+  pattern playing with the changes, so they went into it as soon as you switched away. Now, as in Quasar, the slot
+  saved into plays from then on (its loops carry on where they are), and the pattern saved from keeps what it held,
+  its mutes and unmutes included. During PERFORMANCE the pattern playing stays, as before.
+
 ## Build 82
 
 Added
