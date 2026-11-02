@@ -49,6 +49,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | black key 3 | **held**: [BREAK](#break) on the chosen track. **SHIFT +**: on every track. |
 | black key 4 | [MIDI LEARN](#midi-learn) on or off. |
 | black key 5 | chosen track's [arpeggiator](#arpeggiator) on or off. **Held** (0.8 s): its page. |
+| black key 7 | [PERFORMANCE](#performance) on or off (also on the PATTERNS grid; in the step view, **SHIFT +** it). |
 | black key 9 (3rd from right) | **STEP**: [step view](#step-view). **SHIFT +**: empty the chosen track's steps. |
 | black key 10 | **EDIT**: [sound pages](#sound-pages-edit). |
 | black key 11 (last) | **SHIFT**. |
@@ -66,7 +67,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **SHIFT + SEQ** | chosen track's LFOs drawn anew. |
 | **SAVE** | [PATTERNS](#patterns) grid; SAVE again leaves it. |
 | **SAVE held** (0.8 s) | save the session. On the PATTERNS grid: save the pattern playing into the slot under the cursor. |
-| **SHIFT + SAVE** | [SESSIONS](#sessions) list; SHIFT + SAVE again leaves it. |
+| **SHIFT + SAVE** | [SESSIONS](#sessions) grid; SHIFT + SAVE again leaves it. |
 | **SHIFT + SAVE held** (0.8 s) | [GLOBAL SETUP](#global-setup): START and MIDI. |
 | **MASTER** | output level. |
 | MIDI in (USB and TRS) | notes and CCs for each track ([MIDI](#midi)). |
@@ -286,6 +287,44 @@ are left alone; loops play on as recorded.
 a white key 0.8 s: the break, as it plays, is saved into that pattern slot (BREAK SAVED, PATTERN n). The pattern
 playing goes on.
 
+### PERFORMANCE
+
+Black key 7 (in the step view, SHIFT + black key 7; also on the PATTERNS grid) turns PERFORMANCE on or off, after
+Elektron's temporary edits and CONTROL ALL. The key is lit while it is on, and PERF shows in red at the right of the
+track's view (REC, LOOP or ARM take its place while recording).
+
+Turned on, it keeps the state playing: every track's and subtrack's sound, the steps and their locks, lengths, clocks
+and directions, levels, pans, mutes, octaves, chords, arpeggiators, sidechains, the effects, tempo, scale and MUTE
+QT. Change anything: sounds, EDIT pages, phrases, steps, breaks. Turned off, all of it is put back as it was
+(RESTORED), and nothing is left marked unsaved. Sounds still ringing are not cut; they and the effects' tails ring
+out. Loops are not part of it: a loop recorded or emptied meanwhile stays so. With a pattern on its way, it does not
+turn on: WAIT shows.
+
+While it is on, KNOB 1–4 (and SHIFT + them) turn their parameter on the chosen track and on every other track and
+subtrack with notes (steps or a loop), each on its own sound, by the same steps.
+
+**Keeping a pattern.** SAVE still opens the PATTERNS grid: hold a white key 0.8 s (or SAVE, on the cursor's slot) to
+keep what is playing as that pattern, its steps and the tracks' state. Keeping a pattern also keeps the session as it
+plays at that moment (sounds, effects, tempo, scale); changes made after the last pattern kept are undone as
+PERFORMANCE goes off. If no pattern is kept, nothing stays. The machine returns to the pattern it started on; if it
+was kept over, as kept. The pattern reaches the flash as PERFORMANCE goes off.
+
+Meanwhile, sessions (SHIFT + SAVE, SAVE or HOME held), switching patterns (keys or program changes), copying, pasting
+or emptying patterns, and the [Backup](#backup) page wait till it is off: PERF MODE shows. MIDI LEARN's bindings are
+written to the flash as it goes off. If the copy it keeps did not check as it goes off, the steps come back but the
+rest stays as it is: NOT RESTORED shows.
+
+**CTRL** on each session's page (KNOBS or ALL; saved with the session) sets what else follows the chosen track while
+PERFORMANCE is on:
+
+- KNOBS (at first): only the knobs.
+- ALL: also a new phrase or new locks (black key 1, SHIFT + it, in the step view), a direction, the TRACK page's
+  LENGTH and CLOCK, the PHRASE page's DENSITY and COMPLEXITY, the step view's transposition, HOME's and SHIFT + HOME's
+  new sound, and every turn on an EDIT page: the same page and row on each other track, by the same steps (on another
+  machine that row may be another parameter). Lists, such as a machine type or a route, are left alone.
+
+Each track and subtrack does it on its own steps and sound; those without notes are left alone.
+
 ## Effects (SEQ)
 
 **SEQ** shows CHORUS, COMP, DELAY and REVERB, then the chosen track's LFO 1, LFO 2 and LFO 3, in turn, then goes back.
@@ -427,23 +466,28 @@ the white square is the cursor: it opens on the pattern playing, and **PRESETS**
 
 A changed pattern keeps its changes when you switch away, until the session is saved or loaded. A pattern that
 unmutes a track starts that track cleanly, without notes left over from the muted time. Every note is always saved;
-on a pattern crowded with locks, the last locks may be left out. MUTE mode and BREAK work on the grid too, and MIDI
-program changes 0 to 15 choose patterns 1 to 16 ([MIDI](#midi)).
+on a pattern crowded with locks, the last locks may be left out. MUTE mode, BREAK and PERFORMANCE work on the grid
+too, and MIDI program changes 0 to 15 choose patterns 1 to 16 ([MIDI](#midi)).
 
 ## Sessions
 
 16 sessions are kept in the FM-1's flash. A session holds everything: every track's and subtrack's sounds and settings, the effects,
 the tempo, the scale and root, the 16 patterns with their loops, and the pattern playing.
 
-**SHIFT + SAVE** opens the SESSIONS list; SHIFT + SAVE again leaves it. **PRESETS** chooses a slot and **SAVE** opens
-its page: BACK, LOAD, SAVE, COPY, DELETE, TEMPO, MUTE QT ([MUTE mode](#mute-mode)). SAVE runs the row chosen, or moves to its value (PRESETS
-changes it, SAVE sets it, SHIFT + SAVE leaves it as it was). Loading over changes not saved, saving over another
-session, copying over one and deleting ask first: NO or YES on PRESETS.
+**SHIFT + SAVE** opens the SESSIONS grid, laid out as the PATTERNS grid; SHIFT + SAVE again leaves it. The white keys
+are the 16 slots (lit dimly; the session playing brighter). On the screen the session playing is green (orange with
+changes not saved), saved sessions white, empty ones grey, and the white square is the cursor: it opens on the session
+playing, and **PRESETS** moves it. **SAVE** opens the page of the slot under the cursor: BACK, LOAD, SAVE, COPY,
+DELETE, TEMPO, MUTE QT ([MUTE mode](#mute-mode)) and CTRL ([PERFORMANCE](#performance)). SAVE runs the row chosen, or
+moves to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it as it was); SHIFT + SAVE goes back to the
+grid. On the page, loading over changes not saved, saving over another session, copying over one and deleting ask
+first: NO or YES on PRESETS.
 
 | To | Do this |
 | --- | --- |
+| Load a session | press and release its white key: it loads at once. With changes not saved, UNSAVED: AGAIN shows; press the same key again within 2 s. Or its page, LOAD |
+| Save the session playing into a slot | hold the slot's white key 0.8 s; empty or not, it is saved there without asking |
 | Save the session playing | hold SAVE (or HOME) 0.8 s, away from the SESSIONS pages and the PATTERNS grid. Never saved, it offers the first empty slot (SAVE NEW?) |
-| Load a session | its page, LOAD |
 | Start a new session | SAVE on an empty slot's page: new sounds, a scale and root at random, tempo 120, no patterns or loops. It asks first if the session playing has changes not saved. With nothing saved yet, it saves what is playing there instead |
 | Copy a session into another slot | its page, COPY, then the slot |
 | Delete a session | its page, DELETE |
@@ -451,7 +495,7 @@ session, copying over one and deleting ask first: NO or YES on PRESETS.
 Loading a session brings all of it back; while the sequencer plays, its loops start at the next bar. Loops take room
 in a store shared by all the sessions: if it is full, NO ROOM FOR LOOPS shows and nothing is saved; deleting a session
 frees room. Sessions saved by older builds load as they played. Changes not saved before the FM-1 is switched off are
-lost.
+lost. During PERFORMANCE, sessions wait: PERF MODE shows.
 
 How the FM-1 starts is set in [GLOBAL SETUP](#global-setup) > START: with a new session (NEW) or the last session
 loaded or saved (LAST).
@@ -565,8 +609,8 @@ through USB-C). A host that works at 48 kHz converts the sound itself.
 
 Few words, very large type, high contrast, and a colour for each track. The track's view shows, from the top: the
 pattern playing (orange with changes not saved) and the chord form (or ARP) at the top left; the battery, the octave
-and the transposition (T+2) at the top right, with REC or LOOP while recording; the track's number, its machine and
-its sound's family.
+and the transposition (T+2) at the top right, with REC or LOOP while recording (otherwise PERF, in red, while
+[PERFORMANCE](#performance) is on); the track's number, its machine and its sound's family.
 
 The battery shows 3 green bars when full, then 2 green, 1 amber, and 1 red when it runs low. On USB power it
 shows a white bolt instead.

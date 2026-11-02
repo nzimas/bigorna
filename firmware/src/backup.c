@@ -165,7 +165,8 @@ static uint32_t bk_commit(void)
         uint32_t go = 0, no = 0, g;
         if (h->magic != PRJ_MAGIC || h->what != num)
             return 4u;
-        if (h->len == sizeof(prj_body_t) || h->len == PRJ_LEN50) {
+        if (h->len == sizeof(prj_body_t) || h->len == PRJ_LEN50 || h->len == PRJ_LEN78 || h->len == PRJ_LEN79 ||
+            h->len == PRJ_LEN81) {                   /* (builds 50 on: loop_gen at its place) */
             go = __builtin_offsetof(prj_body_t, loop_gen);
             no = __builtin_offsetof(prj_body_t, loop_nsec);
         } else if (h->len == PRJ_LEN49) {            /* (builds 38 .. 49) */
@@ -208,6 +209,10 @@ static void bk_handle(const uint8_t *m, uint32_t d)
 {
     uint32_t cmd = m[2], n = d - 7u, i;
     const uint8_t *b = m + 6;
+    if (perf_on) {                                   /* (PERFORMANCE: prj_buf holds its snapshot; build 82) */
+        say("PERF MODE", 900);
+        return;
+    }
     if (cmd == 0x50u) {                              /* the list (and a restore's start: nothing taken yet) */
         uint32_t k = 0, num, len;
         bk.on = 0;

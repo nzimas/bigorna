@@ -24,6 +24,9 @@
  *                             it, every track. Let go, each plays on from where it is. The way shows in the band
  *   the 5th black key         (the step view off) the track's arpeggiator on or off (tracks.c; lit while on): the keys
  *                             held go to it, it plays them in turn (build 52); held 0.8 s: its page (ARP) up or down
+ *   the 7th black key         (the step view off; in it, with SHIFT) PERFORMANCE on or off (lit while on; build 82,
+ *                             after Quasar): the state kept, given back as it goes off; meanwhile KNOB 1 .. 4 move
+ *                             every track with notes (projects.c)
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
  *                             16 steps, silent (build 70): a key on an empty step puts the track's last note played
@@ -107,6 +110,7 @@ static const uint8_t KNOB[4] = {EN_K1, EN_K2, EN_K3, EN_K4};
 #define KEY_TRIG 5u                  /* (the 3rd: TRIG, the step held's own page) */
 #define KEY_MOD 8u                   /* (the 4th: MOD, the step held's MUTATE and MIDI FX) */
 #define KEY_ARP 10u                  /* (the 5th: out of the step view, the track's arpeggiator; build 52) */
+#define KEY_PERF 15u                 /* (the 7th: PERFORMANCE on or off -- in the step view, with SHIFT; build 82) */
 static const uint8_t KEY_DIR[3] = {13, 15, 17};  /* (the 6th .. 8th: REVERSE, PING-PONG, RANDOM) */
 static const char *const DIR_NAME[NDIR] = {"FORWARD", "REVERSE", "PING-PONG", "RANDOM"};
 #define SHOWN_DIAL 30u               /* (ui.shown_page: the dial up; the step's own page) */
@@ -287,6 +291,15 @@ static uint8_t seq_pend_k;                       /* (projects.c: the pattern wai
 static void tempo_apply(void);
 static int8_t pat_clip_from;                     /* (projects.c: the pattern copied, -1 none) */
 static void pat_clear(uint32_t k);
+static void prj_grid_open(void);                 /* (projects.c: the SESSIONS grid, and its white keys; build 82) */
+static void prj_key_load(uint32_t w);
+static void prj_key_save(uint32_t w);
+static int prj_key_lit(uint32_t w);
+static int perf_enter(void);                     /* (projects.c: PERFORMANCE's keeping and giving back) */
+static int perf_exit(void);
+static uint8_t perf_on;                          /* PERFORMANCE (the 7th black key) on: what changes, given back as it
+                                                  * goes off */
+static uint8_t ses_ctrl;                         /* (the session's CTRL: PERFORMANCE's KNOBS 0, ALL 1 -- its page) */
 static void phrase_new(uint32_t t);              /* (phrase.c) */
 static void phrase_relock(uint32_t t);
 static int snd_kick(const sound_t *s);          /* (phrase.c: a kick's sound) */
@@ -500,7 +513,8 @@ static int step_view(void);
 static int key_plays(uint32_t k)
 {
     return k != KEY_SHIFT && k != KEY_EDIT && k != KEY_STEP &&
-           ((k != KEY_GEN && k != KEY_TRK && k != KEY_TRIG && k != KEY_MOD && k != KEY_ARP) || step_view()) &&
+           ((k != KEY_GEN && k != KEY_TRK && k != KEY_TRIG && k != KEY_MOD && k != KEY_ARP && k != KEY_PERF) ||
+            step_view()) &&
            /* (out of the step view the 1st black key is CHORD mode's, the 2nd MUTE mode's, the 3rd BREAK, the 4th
             * MIDI LEARN) */
            (ui.scale == 0 || white_ix(k) >= 0);
@@ -748,13 +762,38 @@ static void lane_free(uint32_t l)                /* (a subtrack given up: its la
 }
 
 /* HOME: a new sound for the chosen track (same: of the family it plays) */
+/* (build 82) PERFORMANCE: a lane in use -- a track, or a subtrack taken on a DRUM track -- with something to play
+ * (a step with a note, or a loop of its track) */
+static int lane_material(uint32_t l)
+{
+    uint32_t i, t = l < NTRACK ? l : ln_t[l];
+    if (l >= NLANE || (l >= NTRACK && !(ln_s[l] && ln_on[l])) || t >= NTRACK)
+        return 0;
+    for (i = 0; i < NSTEP; i++)
+        if (seq_note[l][i])
+            return 1;
+    for (i = 0; i < NLOOP; i++)
+        if (lp_get(t, i))
+            return 1;
+    return 0;
+}
+/* .. CTRL (the session's page) set to ALL: lane l, not the chosen one, takes what the chosen one is given in
+ * PERFORMANCE -- a phrase, locks, a direction, a length, a clock, a transposition, a new sound, an EDIT page's turn
+ * -- if it has something to play, each on its own steps and sound */
+static int all_too(uint32_t l) { return perf_on && ses_ctrl && l != ui.sl && lane_material(l); }
 static void new_sound(int same)
 {
     sound_t *s = cur();
-    uint32_t m = ui.eng[ui.sel];
+    uint32_t m = ui.eng[ui.sel], l;
     int32_t fam = s->family;
     gen_sound(s, m, same ? fam : -1, same ? -1 : fam, next_seed());
     mark(ui.sl);
+    for (l = 0; l < NLANE; l++)
+        if (all_too(l)) {                        /* (CTRL ALL: each its own family's, or another of its machine) */
+            sound_t *o = lane_snd(l);
+            gen_sound(o, o->mach, same ? o->family : -1, same ? -1 : o->family, next_seed());
+            mark(l);
+        }
     say(same ? "SAME FAMILY" : "NEW", 700);
     ui.home_until = fm1_ms + 400u;
 }
@@ -779,6 +818,75 @@ static void par_turn(uint32_t id, uint32_t j, int32_t s)   /* a parameter of the
     if (mcfg.send_cc && mcfg.out_ch[ui.sel] && id * 8u + j < MIDI_NPAR && p.hi > p.lo)   /* (SEND CC: midi.c) */
         midi_main_send(0xB0u | (mcfg.out_ch[ui.sel] - 1u), MIDI_CC[id * 8u + j],
                        (uint32_t)((clampi(v, p.lo, p.hi) - p.lo) * 127 + (p.hi - p.lo) / 2) / (uint32_t)(p.hi - p.lo));
+}
+/* .. an EDIT page's parameter turned, CTRL ALL: the same page and row of each other lane's sound, by the same steps
+ * (a list -- a mode, a machine, a route -- left as it is) */
+static void all_par_turn(uint32_t pg, uint32_t j, int32_t s)
+{
+    uint32_t l;
+    for (l = 0; l < NLANE; l++) {
+        sound_t *snd = lane_snd(l);
+        uint32_t id;
+        par_t p;
+        if (!all_too(l) || pg >= pages_n(snd))
+            continue;
+        id = page_id(snd, pg);
+        par_get(snd, id, j, &p);
+        if (p.kind != PK_NUM && p.kind != PK_BIP)
+            continue;
+        par_put(snd, id, j, par_step(&p, par_val(snd, id, j), s));
+        mark(l);
+    }
+}
+/* .. a lane's length or clock turned (TRACK's KNOB 1, 2): the chosen lane's, and CTRL ALL the others' too */
+static void len_div_turn(uint32_t l, uint32_t j, int32_t s)
+{
+    if (j == 0u)
+        seq_len[l] = (uint8_t)clampi((seq_len[l] ? seq_len[l] : (int32_t)NSTEP) + s, 1, NSTEP);
+    else
+        seq_div[l] = (uint8_t)clampi((int32_t)seq_div[l] + s, 0, NDIV - 1);
+}
+static void all_len_div(uint32_t j, int32_t s)
+{
+    uint32_t l;
+    len_div_turn(ui.sl, j, s);
+    for (l = 0; l < NLANE; l++)
+        if (all_too(l))
+            len_div_turn(l, j, s);
+}
+/* .. a knob of the track's view turned (as Elektron's CONTROL ALL): the chosen lane's parameter, and the same one on
+ * every other lane with something to play, each its own sound's, by the same steps */
+static void perf_knob(uint32_t id, uint32_t j, int32_t s)
+{
+    uint32_t l;
+    par_turn(id, j, s);
+    for (l = 0; l < NLANE; l++) {
+        sound_t *snd = lane_snd(l);
+        par_t p;
+        if (l == ui.sl || !lane_material(l))
+            continue;
+        par_get(snd, id, j, &p);
+        if (p.kind == PK_NONE)
+            continue;
+        par_put(snd, id, j, par_step(&p, par_val(snd, id, j), s));
+        mark(l);
+    }
+}
+/* .. on: the state kept (not with a pattern on its way -- it waits); off: given back */
+static void perf_toggle(void)
+{
+    if (perf_on) {
+        int ok = perf_exit();
+        perf_on = 0;
+        say(ok ? "RESTORED" : "NOT RESTORED", ok ? 1000 : 1500);
+    } else if (perf_enter()) {
+        perf_on = 1;
+        if (pg_any() && ui.page != PG_PAT)       /* (the sessions' pages: not while it is on) */
+            ui.page = PG_MAIN;
+        say("PERFORMANCE", 1000);
+    } else
+        say("WAIT", 700);
+    ui.force = 1;
 }
 static int fx_lfo(void) { return ui.fx_pg >= FXP_L1 && ui.fx_pg <= FXP_L3; }
 static int fx_arp(void) { return ui.fx_pg == FXP_ARP; }
@@ -1854,7 +1962,11 @@ static void ui_input(void)
      * the session saved (on the grid: the pattern playing saved into the slot under the cursor). SHIFT + SAVE let go
      * soon, the sessions' list (on it: back); held 0.8 s, GLOBAL SETUP. On the sessions' pages and in GLOBAL SETUP,
      * their own at once, as pressed (held, nothing more: a long press must not save in place of LOAD -- build 39) */
-    if (btn_bit(press, B_SAVE)) {
+    if (btn_bit(press, B_SAVE) && perf_on && !ui.learn && sh) {
+        say("PERF MODE", 900);                   /* (PERFORMANCE: no session saved or loaded till it is off; the
+                                                  * PATTERNS grid open, to keep what plays as a pattern) */
+        ui.save_down = ui.ssv_down = 0;
+    } else if (btn_bit(press, B_SAVE)) {
         if (ui.page == PG_PRJ || ui.page == PG_PRJD) {
             prj_press(sh);
             ui.save_down = ui.ssv_down = 0;
@@ -1879,6 +1991,7 @@ static void ui_input(void)
             ui.ssv_down = 0;
             if (!ui.ssv_long) {
                 ui.page = PG_PRJ;
+                prj_grid_open();
                 ui.force = 1;
             }
         } else if (!ui.ssv_long && (uint32_t)(fm1_ms - ui.ssv_t0) >= 800u) {
@@ -1960,6 +2073,7 @@ static void ui_input(void)
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0) {
                 par_turn(id, j + 4u * ui.half, s);
+                all_par_turn(ui.edit_pg, j + 4u * ui.half, s);   /* (CTRL ALL: the other tracks' too) */
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
             }
@@ -1967,7 +2081,13 @@ static void ui_input(void)
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0 && j < 2u) {
                 uint8_t *v = j ? &ui.gen_cx[ui.sl] : &ui.gen_den[ui.sl];
+                uint32_t l;
                 *v = (uint8_t)clampi(*v + s, 0, 100);
+                for (l = 0; l < NLANE; l++)          /* (CTRL ALL: the other tracks' too) */
+                    if (all_too(l)) {
+                        v = j ? &ui.gen_cx[l] : &ui.gen_den[l];
+                        *v = (uint8_t)clampi(*v + s, 0, 100);
+                    }
                 pat_dirty = 1;
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
@@ -1975,11 +2095,7 @@ static void ui_input(void)
     } else if (ui.page == PG_TRK) {                  /* TRACK: KNOB 1 the length, 2 the clock */
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0 && j < 2u) {
-                uint32_t t = ui.sl;                  /* (the lane: the chosen subtrack) */
-                if (j == 0u)
-                    seq_len[t] = (uint8_t)clampi((seq_len[t] ? seq_len[t] : (int32_t)NSTEP) + s, 1, NSTEP);
-                else
-                    seq_div[t] = (uint8_t)clampi((int32_t)seq_div[t] + s, 0, NDIV - 1);
+                all_len_div(j, s);                   /* (the chosen subtrack's lane; CTRL ALL, the others' too) */
                 pat_dirty = 1;
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
@@ -1996,7 +2112,10 @@ static void ui_input(void)
         static const uint8_t J[2][4] = {{4, 5, 4, 5}, {4, 5, 6, 1}};
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0) {
-                par_turn(ID[sh][j], J[sh][j], s);
+                if (perf_on)                         /* (PERFORMANCE: every track with notes, as one) */
+                    perf_knob(ID[sh][j], J[sh][j], s);
+                else
+                    par_turn(ID[sh][j], J[sh][j], s);
                 dial(ID[sh][j], J[sh][j]);
             }
     }
@@ -2160,6 +2279,9 @@ static void ui_input(void)
                 str_cpy(m, "TRN ALL ", 16);
             } else {
                 trn_track(ui.sl, d);
+                for (t = 0; t < NLANE; t++)          /* (CTRL ALL: the other tracks' too) */
+                    if (all_too(t))
+                        trn_track(t, d);
                 str_cpy(m, "TRN ", 16);
             }
             trn_text(m + str_len(m), ui.trn[ui.sl]);
@@ -2373,6 +2495,8 @@ static void ui_input(void)
             ui.tb_down = ui.tb_long = 0;
             ui.force = 1;
         }
+        if ((ch & keys) >> KEY_PERF & 1u)            /* (PERFORMANCE on or off here too) */
+            perf_toggle();
         for (k = 0; k < NKEY; k++) {
             if (((ch & ~keys) >> k & 1u) && ui.key_track[k] != KEY_NONE) {   /* (a note held from before: let go) */
                 key_off(k);
@@ -2385,7 +2509,10 @@ static void ui_input(void)
                 ui.key_track[k] = KEY_NONE;
                 if (sh && (keys >> KEY_GEN & 1u)) {   /* (SHIFT and the 1st black key: emptied, nothing loaded) */
                     ui.qk_long = 1;
-                    pat_clear((uint32_t)white_ix(k));
+                    if (perf_on)
+                        say("PERF MODE", 900);
+                    else
+                        pat_clear((uint32_t)white_ix(k));
                 }
             }
         }
@@ -2400,10 +2527,41 @@ static void ui_input(void)
                     pat_brk_save((uint32_t)white_ix(ui.qk));
                 else if ((keys >> KEY_TRIG) & 1u)   /* (the break key held, no break -- stopped: nothing saved) */
                     ;
+                else if (sh && perf_on)          /* (PERFORMANCE: kept as a pattern only, held alone) */
+                    say("PERF MODE", 900);
                 else if (sh)                     /* (SHIFT: copied, or pasted; build 72) */
                     pat_copy_hold((uint32_t)white_ix(ui.qk));
                 else                             /* (the pattern playing saved there, build 72) */
                     pat_save_as((uint32_t)white_ix(ui.qk));
+            }
+        }
+        ui.keys = keys;
+        midi_take();
+        return;
+    }
+    if (ui.page == PG_PRJ) {                         /* the SESSIONS grid (build 82): a white key let go soon, its
+                                                      * session loaded; held 0.8 s, the session playing saved there
+                                                      * (projects.c) */
+        for (k = 0; k < NKEY; k++) {
+            if (((ch & ~keys) >> k & 1u) && ui.key_track[k] != KEY_NONE) {   /* (a note held from before: let go) */
+                key_off(k);
+                ui.key_track[k] = KEY_NONE;
+            }
+            if (((ch & keys) >> k & 1u) && white_ix(k) >= 0 && white_ix(k) < 16 && ui.qk == KEY_NONE) {
+                ui.qk = (uint8_t)k;
+                ui.qk_long = 0;
+                ui.qk_t0 = fm1_ms;
+                ui.key_track[k] = KEY_NONE;
+            }
+        }
+        if (ui.qk != KEY_NONE) {
+            if (!((keys >> ui.qk) & 1u)) {
+                if (!ui.qk_long)
+                    prj_key_load((uint32_t)white_ix(ui.qk));
+                ui.qk = KEY_NONE;
+            } else if (!ui.qk_long && (uint32_t)(fm1_ms - ui.qk_t0) >= 800u) {
+                ui.qk_long = 1;
+                prj_key_save((uint32_t)white_ix(ui.qk));
             }
         }
         ui.keys = keys;
@@ -2425,10 +2583,18 @@ static void ui_input(void)
         if (!((keys >> KEY_GEN) & 1u)) {
             ui.gen_down = 0;
             if (!ui.gen_long && step_view()) {
+                uint32_t l;
                 if (ui.gen_sh)
                     phrase_relock(ui.sl);
                 else
                     phrase_new(ui.sl);
+                for (l = 0; l < NLANE; l++)          /* (CTRL ALL: each other track's own, on its own steps) */
+                    if (all_too(l)) {
+                        if (ui.gen_sh)
+                            phrase_relock(l);
+                        else
+                            phrase_new(l);
+                    }
                 ui.gen_until = fm1_ms + 400u;
                 flash("NEW", ui.gen_sh ? "LOCKS" : "PHRASE", TRACK_COL[ui.sel]);
             }
@@ -2496,6 +2662,11 @@ static void ui_input(void)
             ui.force = 1;
             continue;
         }
+        if (((ch & keys) >> k & 1u) && k == KEY_PERF && (step_view() ? sh : !pg_any())) {   /* PERFORMANCE on or off
+                                                                         * (in the step view: SHIFT with it) */
+            perf_toggle();
+            continue;
+        }
         if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_ARP && !pg_any()) {   /* the arpeggiator's key: on
                                                                          * its release or held */
             ui.ak_down = 1;
@@ -2548,6 +2719,12 @@ static void ui_input(void)
             uint32_t d = k == KEY_DIR[0] ? DIR_REV : k == KEY_DIR[1] ? DIR_PING : DIR_RND;   /* (the track's direction;
                                                                                          * again: forward) */
             seq_dir[ui.sl] = (uint8_t)(seq_dir[ui.sl] == d ? DIR_FWD : d);
+            {
+                uint32_t l;
+                for (l = 0; l < NLANE; l++)          /* (CTRL ALL: the other tracks the same way) */
+                    if (all_too(l))
+                        seq_dir[l] = seq_dir[ui.sl];
+            }
             pat_dirty = 1;
             say(DIR_NAME[seq_dir[ui.sl]], 900);
             continue;
@@ -2667,6 +2844,12 @@ static void ui_leds(void)
             led_dim_key(14u + k, p && p->on && p->mute);
             continue;
         }
+        if (ui.page == PG_PRJ && white_ix(k) >= 0) {   /* (the SESSIONS grid: the sixteen dim, the one playing lit) */
+            int32_t w = white_ix(k);
+            fm1_led_key(14u + k, w < 16 && prj_key_lit((uint32_t)w));
+            led_dim_key(14u + k, w < 16);
+            continue;
+        }
         if (ui.page == PG_PAT && white_ix(k) >= 0) {   /* (the PATTERNS grid: every white key a pattern, dim; the playing
                                                         * one lit) */
             fm1_led_key(14u + k, white_ix(k) == pat_clip_from || (seq_pend == 1u && white_ix(k) == seq_pend_k)
@@ -2688,6 +2871,12 @@ static void ui_leds(void)
         if (k == KEY_TRK && (ui.page == PG_PAT || (ui.page == PG_MAIN && !step_view()))) {   /* (the MUTE key: lit
                                                                          * while on, dim off) */
             fm1_led_key(14u + k, ui.mute_mode);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (!step_view() && k == KEY_PERF && (!pg_any() || ui.page == PG_PAT)) {   /* (PERFORMANCE: dim, lit while
+                                                                                   * on) */
+            fm1_led_key(14u + k, perf_on);
             led_dim_key(14u + k, 1);
             continue;
         }
@@ -2818,7 +3007,9 @@ static void draw_number(void)
                 const char *r = ui.lrec == 2 ? "LOOP" : ui.rec == REC_ON ? "REC" : "ARM";
                 cv_text(236 - text_w(&FONT_S, r), 10 + 2 * FONT_S.h, &FONT_S, r,
                         ui.lrec == 2 || ui.rec == REC_ON ? C_BAD : RGB(255, 140, 0));
-            }
+            } else if (perf_on)                      /* (PERFORMANCE, in red, in the same place: what changes is given
+                                                      * back; build 82) */
+                cv_text(236 - text_w(&FONT_S, "PERF"), 10 + 2 * FONT_S.h, &FONT_S, "PERF", C_BAD);
         }
         {
             int32_t x = draw_batt(237, 2 + ((int32_t)FONT_S.h - 10) / 2);   /* (the battery, top right; then the octave) */

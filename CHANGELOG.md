@@ -1,5 +1,33 @@
 # Changelog
 
+## Build 82
+
+Added
+- PERFORMANCE, from Quasar, on black key 7 (in the step view, SHIFT + black key 7; also on the PATTERNS grid). On,
+  it keeps the state playing; off, it puts all of it back (sounds, steps, levels, pans, mutes, chords, arpeggiators,
+  sidechains, subtracks, effects, tempo, scale) without cutting sounds still ringing. Meanwhile KNOB 1 to 4 turn their
+  parameter on every track and subtrack with notes. A pattern kept on the PATTERNS grid while it is on stays, with
+  the session as it played then. Sessions, pattern switches, copy, paste, empty and the Backup page wait (PERF MODE).
+- CTRL on each session's page: KNOBS (at first) or ALL. With ALL, a phrase, locks, a direction, LENGTH, CLOCK,
+  DENSITY, COMPLEXITY, the transposition, HOME's new sound and EDIT turns also reach every other track with notes
+  during PERFORMANCE.
+- PERF in red on the track's view while PERFORMANCE is on.
+
+Changed
+- SHIFT + SAVE opens a SESSIONS grid, from Quasar, laid out as the PATTERNS grid: a white key let go loads its session
+  at once (with changes not saved, press it again within 2 s); held 0.8 s, it saves the session playing there.
+  PRESETS moves the cursor and SAVE opens the slot's page, as before.
+- Black key 7 no longer plays a note out of the step view on the CHROMATIC scale.
+
+Fixed
+- A restore from the Backup page brought sessions last saved by builds 52 to 79 back without their loops. They now
+  come back with them.
+
+Compatibility
+- Sessions from earlier builds load as before, with CTRL on KNOBS.
+- PERFORMANCE keeps its copy of the session in the flash's working buffer (RAM has no room for a second copy).
+  Pattern saves made during it reach the flash as it goes off.
+
 ## Build 81
 
 Added

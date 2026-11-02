@@ -62,6 +62,10 @@ static void setup_write(void)
 {
     if (!prj_ok)
         return;
+    if (perf_on) {                               /* (PERFORMANCE: prj_buf holds its snapshot -- written as it goes off) */
+        perf_setw = 1;
+        return;
+    }
     memset(prj_buf, 0, sizeof(prj_head_t) + SET_LEN);
     memcpy(prj_buf + sizeof(prj_head_t), &mcfg, sizeof mcfg);
     memcpy(prj_buf + sizeof(prj_head_t) + sizeof mcfg, mlearn, sizeof mlearn);

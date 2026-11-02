@@ -663,7 +663,7 @@ static int cmd_projects(const char *dir)
     btn(B_SAVE, 0);
     EXPECT(!pj.edit && ui.tempo == 137 && fx_bpm10 == 1370, "SAVE sets the tempo (and the delay follows)");
     turn(EN_PRESET, 1);                          /* MUTE QT (build 78: ROOT and SCALE gone, the SCALE page's) */
-    EXPECT(pj.row == PR_MUQ && pg_rows() == 7u, "the page's last row: MUTE QT");
+    EXPECT(pj.row == PR_MUQ && pg_rows() == 8u, "MUTE QT, before CTRL (build 82)");
     btn(B_SAVE, 0);
     turn(EN_PRESET, 1);                          /* YES, then left as it was */
     btn(B_SAVE, 1);
@@ -4998,6 +4998,146 @@ static int cmd_lptrn(const char *dir)
     return fails != 0;
 }
 
+/* (build 82, after Quasar) the SESSIONS grid's white keys; PERFORMANCE: the knobs on every track with notes, all of it
+ * given back, CTRL ALL, a pattern kept meanwhile (its sector written as it goes off), what waits, the snapshot's CRC */
+#define PFEXPECT(c, what) do { if (!(c)) { printf("FAIL perf: %s\n", what); fails++; } } while (0)
+static uint32_t pf_kw[16];
+static void pf_hold(uint32_t k)                  /* a key held 0.8 s, then let go */
+{
+    fm1_in.notes |= 1u << k;
+    ui_input();
+    fm1_ms += 900;
+    ui_input();
+    fm1_in.notes &= ~(1u << k);
+    ui_input();
+}
+static int cmd_perf(const char *dir)
+{
+    static sound_t snd0[NTRACK][NENG];
+    uint32_t k, has;
+    int32_t v0, v2, v3;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    for (k = 0; k < NKEY; k++)
+        if (white_ix(k) >= 0 && white_ix(k) < 16)
+            pf_kw[white_ix(k)] = k;
+    /* the SESSIONS grid: SHIFT + SAVE, its cursor on the session playing (none: 1) */
+    btn(B_SAVE, 1);
+    PFEXPECT(ui.page == PG_PRJ && pj.slot[0] == 0u, "SHIFT + SAVE: the SESSIONS grid");
+    ui_draw();
+    shot(dir, "perf_sessions_grid");
+    pf_hold(pf_kw[2]);
+    PFEXPECT(prj_has[2] && prj_cur == 2 && !prj_dirty && ui.page == PG_PRJ, "white key 3 held: saved there, the grid stays");
+    ui_leds();
+    PFEXPECT(host_led[14u + pf_kw[2]] && !host_led[14u + pf_kw[0]] && host_dim_on(14u + pf_kw[0]),
+             "its key lit, the others dim");
+    ui.tempo = 99;
+    prj_dirty = 1;
+    tap(pf_kw[2]);
+    PFEXPECT(ui.tempo == 99 && str_eq(ui.msg, "UNSAVED: AGAIN"), "changes not saved: the first press asks");
+    tap(pf_kw[2]);
+    PFEXPECT(ui.tempo == 120 && !prj_dirty && prj_cur == 2, "the same key again within 2 s: loaded");
+    tap(pf_kw[7]);
+    PFEXPECT(str_eq(ui.msg, "EMPTY") && prj_cur == 2, "an empty slot: nothing loaded");
+    btn(B_SAVE, 0);
+    PFEXPECT(ui.page == PG_PRJD && pj.slot[0] == 7u, "SAVE: the page of the slot under the cursor");
+    turn(EN_PRESET, 20);
+    PFEXPECT(pj.row == PR_CTRL && pg_rows() == 8u, "the page's last row: CTRL");
+    ui_draw();
+    shot(dir, "perf_session_ctrl");
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, 1);
+    btn(B_SAVE, 0);
+    PFEXPECT(ses_ctrl == 1u && prj_dirty, "CTRL: ALL");
+    ses_ctrl = 0;
+    btn(B_SAVE, 1);
+    btn(B_SAVE, 1);
+    btn(B_FX, 0);
+    PFEXPECT(ui.page == PG_MAIN && ui.sel == 0u && ui.sl == 0u, "back to track 1");
+    /* the session saved, tracks 1 and 3 with notes, 4 none */
+    memset((void *)seq_note, 0, sizeof seq_note);
+    seq_note[0][0] = 36;
+    seq_note[2][0] = 60;
+    save_held(0);
+    PFEXPECT(!prj_dirty && !pat_dirty, "saved");
+    memcpy(snd0, ui.snd, sizeof snd0);
+    /* PERFORMANCE: the 7th black key */
+    seq_pend = 1;
+    perf_toggle();
+    PFEXPECT(!perf_on && str_eq(ui.msg, "WAIT"), "a pattern on its way: not on");
+    seq_pend = 0;
+    tap(KEY_PERF);
+    PFEXPECT(perf_on, "the 7th black key: PERFORMANCE on");
+    ui_leds();
+    PFEXPECT(host_led[14u + KEY_PERF], "its key lit");
+    ui_draw();
+    shot(dir, "perf_on");
+    v0 = par_val(lane_snd(0), PG_FLT1, 4);
+    v2 = par_val(lane_snd(2), PG_FLT1, 4);
+    v3 = par_val(lane_snd(3), PG_FLT1, 4);
+    turn(EN_K1, -6);
+    PFEXPECT(par_val(lane_snd(0), PG_FLT1, 4) != v0 && par_val(lane_snd(2), PG_FLT1, 4) != v2 &&
+             par_val(lane_snd(3), PG_FLT1, 4) == v3, "KNOB 1: the chosen track's and track 3's, not track 4's (no notes)");
+    btn(B_HOME, 0);
+    PFEXPECT(!memcmp(&snd0[2], &ui.snd[2], sizeof snd0[2]) || par_val(lane_snd(2), PG_FLT1, 4) != v2,
+             "CTRL KNOBS: HOME the chosen track's alone");
+    {
+        sound_t s2 = ui.snd[2][ui.eng[2]];
+        btn(B_HOME, 0);
+        PFEXPECT(!memcmp(&s2, &ui.snd[2][ui.eng[2]], sizeof s2), "CTRL KNOBS: track 3's sound left");
+        ses_ctrl = 1;
+        btn(B_HOME, 0);
+        PFEXPECT(memcmp(&s2, &ui.snd[2][ui.eng[2]], sizeof s2) != 0, "CTRL ALL: HOME, track 3 a new sound too");
+        s2 = ui.snd[3][ui.eng[3]];
+        btn(B_HOME, 0);
+        PFEXPECT(!memcmp(&s2, &ui.snd[3][ui.eng[3]], sizeof s2), "CTRL ALL: track 4 (no notes) left");
+        ses_ctrl = 0;
+    }
+    ui.tempo = 160;
+    seq_note[2][5] = 50;
+    trk_mute[2] = 1;
+    has = prj_has[5];
+    save_held(0);
+    PFEXPECT(prj_has[5] == has && prj_cur == 2 && str_eq(ui.msg, "PERF MODE"), "SAVE held: no session saved");
+    btn(B_SAVE, 1);
+    PFEXPECT(ui.page == PG_MAIN && str_eq(ui.msg, "PERF MODE"), "SHIFT + SAVE: no SESSIONS grid");
+    setup_write();
+    PFEXPECT(perf_setw, "GLOBAL SETUP's write waits");
+    tap(KEY_PERF);
+    PFEXPECT(!perf_on && str_eq(ui.msg, "RESTORED") && !perf_setw, "off: RESTORED (the setup written)");
+    PFEXPECT(!memcmp(snd0, ui.snd, sizeof snd0), "every sound back");
+    PFEXPECT(ui.tempo == 120 && !seq_note[2][5] && seq_note[2][0] == 60 && !trk_mute[2], "tempo, steps, mutes back");
+    PFEXPECT(!prj_dirty && !pat_dirty, "nothing left marked unsaved");
+    /* a pattern kept meanwhile: what plays then, and the session then, stay; its sector written as it goes off */
+    tap(KEY_PERF);
+    ui.tempo = 140;
+    seq_note[2][7] = 48;
+    grid_open();
+    pf_hold(pf_kw[4]);
+    PFEXPECT(pat_store[4].used && perf_flush == 1u << 4, "the PATTERNS grid, white key 5 held: kept as pattern 5, its sector waits");
+    PFEXPECT(prj_read(2, 1) == 0 && !((const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t)))[4].used,
+             "not in the flash yet");
+    prj_read(2, 1);                              /* (the snapshot in prj_buf: overwritten -- as nothing else does it) */
+    tap(KEY_PERF);
+    PFEXPECT(!perf_on && str_eq(ui.msg, "NOT RESTORED"), "the snapshot overwritten: NOT RESTORED");
+    PFEXPECT(!seq_note[2][7] && seq_note[2][0] == 60, "the steps back all the same");
+    PFEXPECT(!perf_flush && prj_read(2, 1) == 0 && ((const pat_t *)(const void *)(prj_buf + sizeof(prj_head_t)))[4].used,
+             "pattern 5 written as it went off");
+    btn(B_SAVE, 0);
+    PFEXPECT(ui.page == PG_MAIN, "the grid closed");
+    tap(KEY_PERF);
+    ui.tempo = 133;
+    grid_open();
+    pf_hold(pf_kw[5]);
+    tap(KEY_PERF);
+    PFEXPECT(!perf_on && ui.tempo == 133 && prj_dirty, "a pattern kept: the session as it played then stays");
+    printf("perf: %d failures\n", fails);
+    return fails != 0;
+}
+
 /* (build 72) a pattern saved holds every track's steps: a track locked on every step no longer leaves the tracks
  * after it empty (the locks share the room left); the root's keys dim in the track's view; the grid's white key held
  * saves the pattern playing there */
@@ -5334,6 +5474,8 @@ int main(int argc, char **argv)
     wt_init();
     if (argc >= 3 && !strcmp(argv[1], "subtrk"))
         return cmd_subtrk(argv[2]);
+    if (argc >= 3 && !strcmp(argv[1], "perf"))
+        return cmd_perf(argv[2]);
     if (argc >= 2 && !strcmp(argv[1], "patsave"))
         return cmd_patsave();
     if (argc >= 3 && !strcmp(argv[1], "newses"))

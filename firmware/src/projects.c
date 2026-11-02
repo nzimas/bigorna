@@ -11,8 +11,12 @@
  * (In the code a session is a "project".)
  *
  *   (the gestures as Tonitor's, build 76: its snapshots are the patterns here)
- *   SHIFT + SAVE      the SESSIONS page: SESSION 1 .. 16; PRESETS moves through them, SAVE opens one's page. On the
- *                     page SAVE runs LOAD, SAVE, COPY or DELETE, or moves the focus to a value: PRESETS changes it,
+ *   SHIFT + SAVE      (build 82, after Quasar) the SESSIONS grid, as the PATTERNS': 1 .. 16 in four rows of four;
+ *                     the white keys the 16 sessions, lit dimly (the one playing brighter): let go soon, its session
+ *                     loaded there and then (changes not saved: the same key again within 2 s); held 0.8 s, the
+ *                     session playing saved there. PRESETS moves the cursor, SAVE opens its session's page. On the
+ *                     page SAVE runs LOAD, SAVE, COPY or DELETE, or moves the focus to a value (TEMPO, MUTE QT,
+ *                     CTRL -- PERFORMANCE's KNOBS or ALL: ui.c): PRESETS changes it,
  *                     SAVE sets it, SHIFT + SAVE leaves it as it was; SHIFT + SAVE goes back a page (from the list:
  *                     out). SHIFT + SAVE held 0.8 s: GLOBAL SETUP (setup.c)
  *   SAVE              the PATTERNS grid, 1 .. 16 in four rows of four (SAVE again: out): PRESETS moves the cursor,
@@ -99,6 +103,7 @@ typedef struct {
     sound_t lsnd[NXL];           /* .. and its sound */
     uint8_t sc_sub[NTRACK];      /* (build 80: before, PRJ_LEN79) each track's SC SOURCE's subtrack + 1 (0: its kick) */
     uint16_t lmu;                /* (build 81: in the padding at the end, saved as 0 by build 80) the subtracks muted */
+    uint8_t ctrl;                /* (build 82: before, PRJ_LEN81) CTRL, PERFORMANCE's: 0 KNOBS, 1 ALL */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body49_t, cp)   /* (the lengths builds 18 .. 49 saved: the sound without LFOs) */
 #define PRJ_LEN28 __builtin_offsetof(prj_body49_t, sc_src)
@@ -110,7 +115,8 @@ typedef char prj_len50[PRJ_LEN50 % 4u == 0u ? 1 : -1];   /* (their size as saved
 #define PRJ_LEN78 ((__builtin_offsetof(prj_body_t, muq) + 1u + 3u) & ~3u)   /* (builds 52 .. 78: no subtracks) */
 #define PRJ_LEN79 __builtin_offsetof(prj_body_t, sc_sub)   /* (build 79: no SC SOURCE subtrack) */
 typedef char prj_len79[PRJ_LEN79 % 4u == 0u ? 1 : -1];   /* (its size as saved: no padding after lsnd) */
-typedef char prj_len80[sizeof(prj_body_t) == ((PRJ_LEN79 + NTRACK + 3u) & ~3u) ? 1 : -1];   /* (build 81's mutes: in
+#define PRJ_LEN81 __builtin_offsetof(prj_body_t, ctrl)   /* (builds 80, 81: no CTRL) */
+typedef char prj_len80[PRJ_LEN81 == ((PRJ_LEN79 + NTRACK + 3u) & ~3u) ? 1 : -1];   /* (build 81's mutes: in
                                                   * build 80's padding, the size it saved) */
 typedef char prj_len78[PRJ_LEN78 == ((PRJ_LEN50 + NTRACK * (1u + NARP) + 3u) & ~3u) &&
                        __builtin_offsetof(prj_body_t, ln_t) <= PRJ_LEN78 ? 1 : -1];   /* (MUTE QT took a byte of the
@@ -325,13 +331,13 @@ static void prj_from17(void)
 /* sector s of project k into prj_buf; 0 if it is whole (a session saved by an earlier build: made one of now) */
 static int prj_read(uint32_t k, uint32_t s)
 {
-    static const uint16_t OLD[10] = {sizeof(prj_body17_t), PRJ_LEN23, PRJ_LEN28, PRJ_LEN32, PRJ_LEN34, PRJ_LEN37,
-                                     PRJ_LEN49, PRJ_LEN50, PRJ_LEN78, PRJ_LEN79};
+    static const uint16_t OLD[11] = {sizeof(prj_body17_t), PRJ_LEN23, PRJ_LEN28, PRJ_LEN32, PRJ_LEN34, PRJ_LEN37,
+                                     PRJ_LEN49, PRJ_LEN50, PRJ_LEN78, PRJ_LEN79, PRJ_LEN81};
     uint32_t magic = s ? PAT_MAGIC : PRJ_MAGIC, len = s ? PAT_PER * sizeof(pat_t) : sizeof(prj_body_t), i;
     const prj_head_t *h = (const prj_head_t *)(void *)prj_buf;
     if (!prj_ok || k >= PRJ_SLOTS || prj_flash_read(prj_sector(k, s), prj_buf, sizeof(prj_head_t) + len))
         return -1;
-    for (i = 0; !s && i < 10u; i++)
+    for (i = 0; !s && i < 11u; i++)
         if (prj_head_ok(h, magic, k * 16u, OLD[i]) && h->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), OLD[i])) {
             uint8_t *body = prj_buf + sizeof(prj_head_t);
             if (i == 0u)
@@ -339,11 +345,14 @@ static int prj_read(uint32_t k, uint32_t s)
             else if (OLD[i] == PRJ_LEN50) {      /* (builds 50, 51: as now, the arpeggiators added) */
                 prj_ar0((prj_body_t *)(void *)body);
                 prj_head_fill(PRJ_MAGIC, h->what, sizeof(prj_body_t));
-            } else if (OLD[i] == PRJ_LEN78 || OLD[i] == PRJ_LEN79)   /* (builds 52 .. 79: as now, what they lack 0) */
+            } else if (OLD[i] == PRJ_LEN78 || OLD[i] == PRJ_LEN79 || OLD[i] == PRJ_LEN81)   /* (builds 52 .. 81: as now,
+                                                  * what they lack 0) */
                 prj_head_fill(PRJ_MAGIC, h->what, sizeof(prj_body_t));
             else
                 prj_up(OLD[i]);
-            if (OLD[i] == PRJ_LEN79)             /* (build 79: each SC SOURCE on its track's kick) */
+            if (OLD[i] == PRJ_LEN81)             /* (builds 80, 81: CTRL KNOBS) */
+                memset(body + PRJ_LEN81, 0, sizeof(prj_body_t) - PRJ_LEN81);
+            else if (OLD[i] == PRJ_LEN79)        /* (build 79: each SC SOURCE on its track's kick) */
                 memset(body + PRJ_LEN79, 0, sizeof(prj_body_t) - PRJ_LEN79);
             else                                 /* (before build 79: no subtracks) */
                 memset(body + PRJ_LEN78, 0, sizeof(prj_body_t) - PRJ_LEN78);
@@ -722,11 +731,13 @@ static void prj_scan(int flash_ok)
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN50) ||
                                    prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN78) ||
-                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN79));
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN79) ||
+                                   prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN81));
             if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, sizeof(prj_body_t)) ||
                 prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN50) ||
                 prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN78) ||
-                prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN79))   /* (its loops' generation: builds 50 on, here) */
+                prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN79) ||
+                prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN81))   /* (its loops' generation: builds 50 on, here) */
                 prj_flash_read(prj_sector(k, 0) + sizeof h + __builtin_offsetof(prj_body_t, loop_gen), &prj_lgen[k], 4u);
             else if (prj_head_ok(&h, PRJ_MAGIC, k * 16u, PRJ_LEN49))   /* (builds 38 .. 49: at their place -- else their
                                                   * loops' sectors would count as free; build 50) */
@@ -1036,6 +1047,11 @@ static void sb_done(void)
     sb_lock = 0;
 }
 static uint8_t pat_dirtyv[PAT_SLOTS];             /* a pattern changed since saved (kept in the store, not the flash) */
+static uint32_t perf_commit;                      /* PERFORMANCE: the patterns saved while it is on, a bit each (kept as
+                                                   * it goes off; build 82) .. */
+static uint32_t perf_flush;                       /* .. and the ones whose sector waits to be written: prj_buf holds
+                                                   * PERFORMANCE's snapshot till it is off */
+static void perf_keep(void);
 static uint8_t seq_pend_k;                        /* (the pattern waiting) */
 static void pat_take(pat_t *p)                   /* the pattern playing, as a pattern */
 {
@@ -1217,6 +1233,10 @@ static int pat_flush(uint32_t k)
     uint32_t s = k / PAT_PER;
     if (prj_cur < 0)
         return 0;                                /* (no slot yet: kept in RAM until the project is saved) */
+    if (perf_on) {                               /* (PERFORMANCE: prj_buf holds its snapshot -- written as it goes off) */
+        perf_flush |= 1u << k;
+        return 0;
+    }
     memcpy(prj_buf + sizeof(prj_head_t), &pat_store[s * PAT_PER], PAT_PER * sizeof(pat_t));
     return prj_write((uint32_t)prj_cur, 1u + s);
 }
@@ -1298,6 +1318,10 @@ static void pat_save_as(uint32_t k)
     int rc, lr = 0;
     if (k >= PAT_SLOTS)
         return;
+    if (perf_on) {                               /* (PERFORMANCE: the session as it plays now kept with it) */
+        perf_commit |= 1u << k;
+        perf_keep();
+    }
     if (k == pat_cur)
         rc = pat_save(k);
     else {
@@ -1430,6 +1454,10 @@ static void pat_brk_save(uint32_t k)
         say("NOT PLAYING", 900);
         return;
     }
+    if (perf_on) {
+        perf_commit |= 1u << k;
+        perf_keep();
+    }
     {
         seqbuf_t *s = sb_scratch();
         seq_copy_out(s);
@@ -1507,6 +1535,7 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     memcpy(b->sub, ui.sub, NTRACK);
     memcpy(b->sc_sub, sc_sub, NTRACK);
     b->lmu = ui.lmu;
+    b->ctrl = ses_ctrl;
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
 {
@@ -1542,6 +1571,7 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     ui.scale = (uint8_t)(b->scale < NSCALE ? b->scale : 0);
     ui.sel = (uint8_t)(b->sel < NTRACK ? b->sel : 0);
     ses_muq = (uint8_t)(b->muq == 1u);
+    ses_ctrl = (uint8_t)(b->ctrl == 1u);
     for (t = 0; t < NXL; t++) {                  /* (build 79) the subtracks: each lane as it was, a DRUM sound; one
                                                   * twice for a track's subtrack, or out of range: free */
         uint32_t l = NTRACK + t, tr = b->ln_t[t], s = b->ln_s[t];
@@ -1713,9 +1743,9 @@ static int prj_delete(uint32_t k)
 
 /* -------------------------------------------------------------- the pages --- */
 /* the rows of a session's page: the operations, then the values */
-enum { PR_BACK, PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_MUQ, PR_N };   /* (BACK at the top:
-                                                  * SAVE on it, the list again; build 48) */
-static const char *const PR_NAME[PR_N] = {"BACK", "LOAD", "SAVE", "COPY", "DELETE", "TEMPO", "MUTE QT"};   /* (ROOT
+enum { PR_BACK, PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_MUQ, PR_CTRL, PR_N };   /* (BACK at the top:
+                                                  * SAVE on it, the list again; build 48. CTRL: PERFORMANCE's, build 82) */
+static const char *const PR_NAME[PR_N] = {"BACK", "LOAD", "SAVE", "COPY", "DELETE", "TEMPO", "MUTE QT", "CTRL"};   /* (ROOT
                                                   * and SCALE: the SCALE page's, ARP -- build 78) */
 enum { PQ_NONE, PQ_LOAD, PQ_SAVE, PQ_DELETE, PQ_COPYTO, PQ_COPYOVER, PQ_SAVENEW, PQ_NEW };
 static struct {
@@ -1725,6 +1755,9 @@ static struct {
     uint8_t to;                  /* COPY: the slot it goes to */
     uint8_t edit;                /* the focus on the value of the row chosen */
     int16_t val;                 /* .. the value as it is being set */
+    uint8_t again;               /* the SESSIONS grid: a white key let go on a session, changes not saved -- its slot + 1,
+                                  * the same again within 2 s loads it (build 82) */
+    uint32_t again_t;
     int32_t shown;               /* (what was drawn, folded into one number) */
 } pj;
 #define C_PRJ RGB(120, 255, 200)
@@ -1818,6 +1851,8 @@ static void prj_press(int sh)
         pj.edit = 0;
         if (pj.row == PR_TEMPO)
             ui.tempo = pj.val;
+        else if (pj.row == PR_CTRL)
+            ses_ctrl = (uint8_t)pj.val;
         else
             ses_muq = (uint8_t)pj.val;
         prj_dirty = 1;
@@ -1906,11 +1941,52 @@ static void prj_press(int sh)
         pj.ask = PQ_DELETE;
         pj.yes = 0;
         break;
-    default:                                     /* TEMPO, MUTE QT: the focus on the value */
+    default:                                     /* TEMPO, MUTE QT, CTRL: the focus on the value */
         pj.edit = 1;
-        pj.val = pj.row == PR_TEMPO ? ui.tempo : ses_muq;
+        pj.val = pj.row == PR_TEMPO ? ui.tempo : pj.row == PR_CTRL ? ses_ctrl : ses_muq;
         break;
     }
+}
+/* (build 82, after Quasar) the SESSIONS grid (SHIFT + SAVE): its cursor on the session playing */
+static void prj_grid_open(void)
+{
+    pj.slot[0] = (uint8_t)(prj_cur >= 0 ? (uint32_t)prj_cur : 0u);
+    pj.again = 0;
+}
+/* .. white key w (0 .. 15) let go soon: its session loaded, there and then (the grid stays). With changes not saved,
+ * the first press says so; the same key again within 2 s loads it */
+static void prj_key_load(uint32_t w)
+{
+    uint32_t k = w;
+    if (k >= PRJ_SLOTS)
+        return;
+    pj.slot[0] = (uint8_t)k;
+    ui.force = 1;
+    if (!prj_has[k]) {
+        say("EMPTY", 900);
+        return;
+    }
+    if ((prj_dirty || pat_dirty) && !(pj.again == k + 1u && (uint32_t)(fm1_ms - pj.again_t) < 2000u)) {
+        pj.again = (uint8_t)(k + 1u);
+        pj.again_t = fm1_ms;
+        say("UNSAVED: AGAIN", 2000);
+        return;
+    }
+    pj.again = 0;
+    do_load(k);
+}
+/* .. white key w lit: the session playing */
+static int prj_key_lit(uint32_t w) { return prj_cur >= 0 && w == (uint32_t)prj_cur; }
+/* .. held 0.8 s: the session playing saved there, empty or not (as a pattern into the PATTERNS grid) */
+static void prj_key_save(uint32_t w)
+{
+    uint32_t k = w;
+    if (k >= PRJ_SLOTS)
+        return;
+    pj.slot[0] = (uint8_t)k;
+    pj.again = 0;
+    do_save(k);
+    ui.force = 1;
 }
 /* PRESETS on a page: through the slots, the rows, the slot to copy to, NO / YES, or the value */
 static void prj_preset(int32_t s)
@@ -1923,7 +1999,8 @@ static void prj_preset(int32_t s)
     else if (pj.ask)
         pj.yes = (uint8_t)(s > 0);
     else if (pj.edit)
-        pj.val = (int16_t)(pj.row == PR_TEMPO ? clampi(pj.val + s, TEMPO_MIN, TEMPO_MAX) : s > 0);
+        pj.val = (int16_t)(pj.row == PR_TEMPO ? clampi(pj.val + s, TEMPO_MIN, TEMPO_MAX) : s > 0);   /* (MUTE QT, CTRL:
+                                                  * right the second, left the first) */
     else
         pj.row = (uint8_t)clampi((int32_t)pj.row + s, 0, (int32_t)pg_rows() - 1);
 }
@@ -1933,6 +2010,10 @@ static void pat_switch(uint32_t k)
 {
     if (k >= PAT_SLOTS)
         return;
+    if (perf_on) {                               /* (PERFORMANCE: the pattern stays till it is off) */
+        say("PERF MODE", 900);
+        return;
+    }
     seq_mq = 0;                                  /* (MUTE QT: mutes waiting, dropped -- the pattern brings its own) */
     if (mcfg.pc_out)                             /* (PROG CH OUT: the pattern asked for, 0 .. 15; build 46) */
         midi_main_send(0xC0u | (mcfg.pc_out_ch - 1u), k, 0);
@@ -2015,6 +2096,10 @@ static void prj_quick_save(void)
 {
     if (ui.page == PG_PRJD && pj.ask)            /* (a question up: answered by SAVE let go, not held) */
         return;
+    if (perf_on) {                               /* (PERFORMANCE: nothing saved till it is off) */
+        say("PERF MODE", 900);
+        return;
+    }
     if (prj_cur < 0) {
         uint32_t k;
         for (k = 0; k < PRJ_SLOTS && prj_has[k]; k++)
@@ -2037,6 +2122,168 @@ static void prj_quick_save(void)
     prj_done(prj_save((uint32_t)prj_cur), "SAVED", (uint32_t)prj_cur);
 }
 
+/* (build 82, after Quasar) PERFORMANCE (the 7th black key; ui.c): the state playing kept as it goes on -- the
+ * session's (every sound, the effects, levels, pans, mutes, chords, arpeggiators, sidechains, subtracks, tempo,
+ * scale, MUTE QT), the steps whole, the pattern's slot in the store and what was changed -- and given back as it goes
+ * off: nothing done meanwhile stays, but the patterns saved meanwhile on the PATTERNS grid (what plays kept as a
+ * pattern) and, with each, the session as it played then (perf_keep) -- what came after the last one given back.
+ * Sessions, and switching patterns, wait till it is off (ui.c, pat_switch, prj_quick_save), so it goes back to the
+ * pattern it began on -- as saved, if it was saved over. Loops are not part of it */
+/* (the FM-1's RAM has no room for a session's copy: the snapshot lives in prj_buf, the flash's buffer, which nothing
+ * else uses meanwhile -- sessions, GLOBAL SETUP and the backup wait, and the patterns' sectors are written as it
+ * goes off (pat_flush, setup_write, bk_handle); the steps in pat_clip, as copying waits too. A CRC checks it back) */
+typedef struct { prj_body_t b; uint8_t px[NTRACK * PX_T]; } perf_snap_t;
+typedef char perf_fits[sizeof(perf_snap_t) <= PRJ_SECT ? 1 : -1];
+#define PERF_SNAP ((perf_snap_t *)(void *)prj_buf)
+static uint16_t perf_crc;
+static uint8_t perf_dirty[3];
+static uint16_t perf_tempo;
+static void perf_seal(void) { perf_crc = prj_crc(prj_buf, sizeof(perf_snap_t)); }
+static int perf_enter(void)
+{
+    if (seq_pend)                                /* (a pattern on its way: not now) */
+        return 0;
+    pat_clip_from = -1;                          /* (a pattern copied: let go -- pat_clip holds the steps) */
+    pat_take(&pat_clip);
+    prj_take(&PERF_SNAP->b);
+    memcpy(PERF_SNAP->px, px_base, sizeof PERF_SNAP->px);
+    perf_seal();
+    perf_dirty[0] = prj_dirty;
+    perf_dirty[1] = pat_dirty;
+    perf_dirty[2] = pat_dirtyv[pat_cur];
+    perf_tempo = pat_tempo;
+    perf_commit = perf_flush = 0;
+    return 1;
+}
+/* .. a pattern kept while it is on: the session as it plays now what it goes back to -- the steps and the tracks'
+ * state still the pattern's it began on (unless kept over it) */
+static void perf_keep(void)
+{
+    prj_take(&PERF_SNAP->b);
+    perf_seal();
+}
+/* .. off, last: the pattern kept over the one it began on given as saved, the session's flags, then what waited for
+ * prj_buf -- the patterns' sectors, GLOBAL SETUP */
+static void setup_write(void);
+static uint8_t perf_setw;                         /* (setup_write asked for meanwhile: setup.c) */
+static void perf_done(void)
+{
+    uint32_t k;
+    if (perf_commit >> pat_cur & 1u)            /* (the pattern it began on, saved over meanwhile: as saved) */
+        pat_give(pat_cur, 1);
+    prj_dirty = (uint8_t)(perf_dirty[0] || perf_commit);
+    perf_commit = 0;
+    perf_on = 0;                                 /* (prj_buf free again) */
+    for (k = 0; k < PAT_SLOTS; k++)
+        if (perf_flush >> k & 1u && pat_flush(k)) {
+            say("SAVE FAILED", 1500);
+            break;
+        }
+    perf_flush = 0;
+    if (perf_setw) {
+        perf_setw = 0;
+        setup_write();
+    }
+    if (ui.page == PG_EDIT && ui.edit_pg >= pages_n(cur()))
+        ui.edit_pg = 0;
+}
+/* .. off: given back (0: the snapshot did not check -- the steps alone). Sounds still ringing are not cut (no EV_STOP,
+ * as a session's load has) */
+static int perf_exit(void)
+{
+    const prj_body_t *b = &PERF_SNAP->b;
+    uint32_t t, solo = 0, kept = perf_commit >> pat_cur & 1u;
+    seq_mq = 0;                                  /* (MUTE QT: mutes waiting, dropped) */
+    seq_pend = 0;                                /* (a break saved over the pattern playing, on its way: given below) */
+    RING_PUBLISH();
+    if (!kept) {                                 /* (the steps as they were; kept over: the pattern saved, perf_done) */
+        seqbuf_t *sb = sb_scratch();
+        pat_decode(&pat_clip, sb);
+        seq_copy_in(sb);
+        memcpy(ui.gen_den, sb->den, NLANE);
+        memcpy(ui.gen_cx, sb->cx, NLANE);
+        memcpy(ui.trn, sb->trn, NLANE);
+        lp_follow(sb->trn);
+        sb_done();
+    }
+    if (perf_crc != prj_crc(prj_buf, sizeof(perf_snap_t))) {   /* (the snapshot overwritten: the steps alone back) */
+        perf_done();
+        return 0;
+    }
+    memcpy(ui.snd, b->snd, sizeof ui.snd);
+    memcpy(fx_dl, b->dl, NDL);
+    memcpy(fx_rv, b->rv, NRV);
+    memcpy(fx_ch, b->ch, NCH);
+    memcpy(fx_cp, b->cp, NCP);
+    fx_cook_all();
+    for (t = 0; t < NTRACK; t++) {
+        ui.eng[t] = (uint8_t)(b->eng[t] % NENG);
+        ui.oct[t] = b->oct[t];
+        if (ui.level[t] != b->level[t] || ui.pan[t] != b->pan[t]) {
+            ui.level[t] = b->level[t];
+            ui.pan[t] = b->pan[t];
+            level_pan_apply(t);
+        }
+        mark(t);                                 /* (its sound published again) */
+        if ((b->mute[t] != 0) != (trk_mute[t] != 0)) {
+            if (trk_mute[t])
+                loop_wait_set(t);                /* (unmuted: its loops from their first step) */
+            trk_mute[t] = (uint8_t)(b->mute[t] != 0);
+            solo = 1;
+        }
+        sc_src[t] = b->sc_src[t];
+        sc_lvl[t] = b->sc_lvl[t];
+        sc_sub[t] = b->sc_sub[t];
+        ui.chord_on[t] = b->chord_on[t];
+        ui.chord_form[t] = b->chord_form[t];
+        if (arp_on[t] != b->arp_on[t] || memcmp((const void *)arp_p[t], b->arp[t], NARP))
+            arp_set(t, b->arp_on[t], b->arp[t]);
+    }
+    for (t = 0; t < NXL; t++) {                  /* (the subtracks: each lane as it was) */
+        uint32_t l = NTRACK + t;
+        ln_on[l] = 0;
+        RING_PUBLISH();
+        ln_t[l] = b->ln_t[t];
+        ln_s[l] = b->ln_s[t];
+        ui_lsnd[t] = b->lsnd[t];
+        ui.oct[l] = b->loct[t];
+        if (ui.level[l] != b->llevel[t] || ui.pan[l] != b->lpan[t]) {
+            ui.level[l] = b->llevel[t];
+            ui.pan[l] = b->lpan[t];
+            level_pan_apply(l);
+        }
+        mark(l);
+    }
+    memcpy(ui.sub, b->sub, NTRACK);
+    for (t = 0; t < NTRACK; t++)
+        lanes_apply(t);
+    if (ui.lmu != b->lmu)
+        solo = 1;
+    ui.lmu = b->lmu;
+    lmu_apply();
+    sel_sync();
+    if (solo)
+        ui.solo = 0xFF;                          /* (the mutes changed: no solo to undo) */
+    ses_muq = b->muq;
+    ses_ctrl = b->ctrl;
+    ui.tempo = (int16_t)b->tempo;
+    ui.root = b->root;
+    ui.scale = b->scale;
+    if (!kept) {                                 /* (the patterns saved meanwhile kept, the one it began on as it was:
+                                                  * pat_store's copy untouched -- switching, emptying, pasting wait) */
+        pat_tempo = perf_tempo;
+        tempo_apply();
+        if (perf_commit)                         /* (the session kept from a pattern saved: the tracks' state its own
+                                                  * pattern's again) */
+            px_give(PERF_SNAP->px);
+        memcpy(px_base, PERF_SNAP->px, sizeof px_base);
+        pat_dirty = perf_dirty[1];
+        pat_dirtyv[pat_cur] = perf_dirty[2];
+    }
+    perf_done();
+    return 1;
+}
+
 /* ------------------------------------------------------------------ drawing --- */
 /* a slot's state is its colour: loaded green (orange with changes not saved), saved white, empty grey */
 static uint16_t pg_col(uint32_t k) { return pg_cur(k) ? (pg_dirty() ? C_DIRTY : C_OK) : pg_has(k) ? C_WHITE : C_GREY; }
@@ -2050,29 +2297,38 @@ static void prj_title(const char *t, int half, uint16_t col, uint16_t line)
         cv_rect(half == 1 ? 0 : 120, 47, 120, 8, line);
     cv_blit(0, 0);
 }
-/* the SESSIONS list: a row a slot, five shown, the one loaded with a block at its right */
+/* a grid of sixteen slots, four rows of four (the SESSIONS', the PATTERNS') */
+static void draw_grid(uint32_t sel)
+{
+    uint32_t r, c;
+    for (r = 0; r < 4u; r++) {
+        cv_begin(240, 46, C_BLACK);
+        for (c = 0; c < 4u; c++) {
+            uint32_t k = r * 4u + c;
+            int32_t x = (int32_t)c * 60;
+            char n[4];
+            uint16_t col = pg_col(k);
+            fmt_int(n, (int32_t)k + 1);
+            if (k == sel)                        /* (the one chosen: white; build 72, no frame on the one playing --
+                                                  * its number green, or orange with changes) */
+                cv_rect(x + 2, 2, 56, 42, C_WHITE);
+            cv_text(x + 30 - text_w(&FONT_S, n) / 2, 23 - (int32_t)FONT_S.h / 2, &FONT_S, n, k == sel ? C_BLACK : col);
+        }
+        cv_blit(0, 55 + 46 * r);
+    }
+    cv_begin(240, 240 - 55 - 4 * 46, C_BLACK);
+    cv_blit(0, 55 + 4 * 46);
+}
+/* the SESSIONS grid (build 82, after Quasar: before, a list), as the PATTERNS' */
 static void draw_prj_list(void)
 {
-    uint32_t sel = pj.slot[0], top = sel < 2u ? 0u : sel > PRJ_SLOTS - 3u ? PRJ_SLOTS - 5u : sel - 2u, r;
     prj_title("SESSIONS", 0, C_PRJ, C_PRJ);
-    for (r = 0; r < 5u; r++) {
-        uint32_t k = top + r;
-        char n[16];
-        uint16_t c = pg_col(k);
-        str_cpy(n, "SESSION ", 12);
-        fmt_int(n + 8, (int32_t)k + 1);
-        cv_begin(240, 37, k == sel ? C_WHITE : C_BLACK);
-        cv_text(8, (37 - (int32_t)FONT_S.h) / 2, &FONT_S, n, k == sel ? C_BLACK : c);   /* (the pages' size) */
-        if (pg_cur(k))
-            cv_rect(212, 7, 22, 22, c);
-        cv_rect(0, 36, 240, 1, RGB(50, 50, 50));
-        cv_blit(0, 55 + 37 * r);
-    }
+    draw_grid(pj.slot[0]);
 }
 /* the PATTERNS grid: the sixteen in four rows of four */
 static void draw_pat_grid(void)
 {
-    uint32_t sel = pj.slot[1], page = 0, r, c;
+    uint32_t sel = pj.slot[1];
     if (pat_clip_from >= 0) {                    /* (a pattern copied: COPY P5, blinking, until it is pasted) */
         char t[12] = "COPY P";
         int on = (int)((fm1_ms / 400u) & 1u);
@@ -2105,23 +2361,7 @@ static void draw_pat_grid(void)
         cv_blit(0, 0);
     } else
         prj_title("PATTERNS", 0, C_PAT, C_PAT);
-    for (r = 0; r < 4u; r++) {
-        cv_begin(240, 46, C_BLACK);
-        for (c = 0; c < 4u; c++) {
-            uint32_t k = page * 16u + r * 4u + c;
-            int32_t x = (int32_t)c * 60;
-            char n[4];
-            uint16_t col = pg_col(k);
-            fmt_int(n, (int32_t)k + 1);
-            if (k == sel)                        /* (the one chosen: white; build 72, no frame on the one playing --
-                                                  * its number green, or orange with changes) */
-                cv_rect(x + 2, 2, 56, 42, C_WHITE);
-            cv_text(x + 30 - text_w(&FONT_S, n) / 2, 23 - (int32_t)FONT_S.h / 2, &FONT_S, n, k == sel ? C_BLACK : col);
-        }
-        cv_blit(0, 55 + 46 * r);
-    }
-    cv_begin(240, 240 - 55 - 4 * 46, C_BLACK);
-    cv_blit(0, 55 + 4 * 46);
+    draw_grid(sel);
 }
 /* a page's row: every name and value in the one size (S); the value in a field of its own at the right. The operations
  * above, the values below, a line between; DELETE in red */
@@ -2154,10 +2394,12 @@ static void prj_field(uint32_t r, uint32_t k, const char *val, uint16_t fg, int 
 /* row k's value as it reads (the value being set, while the focus is on it) */
 static void prj_value(uint32_t k, char *v, uint32_t n)
 {
-    int32_t x = pj.edit && pj.row == k ? pj.val : k == PR_TEMPO ? ui.tempo : ses_muq;
+    int32_t x = pj.edit && pj.row == k ? pj.val : k == PR_TEMPO ? ui.tempo : k == PR_CTRL ? ses_ctrl : ses_muq;
     v[0] = 0;
     if (k == PR_TEMPO)
         fmt_int(v, x);
+    else if (k == PR_CTRL)                       /* (PERFORMANCE: the knobs alone, or everything -- ui.c's all_too) */
+        str_cpy(v, x ? "ALL" : "KNOBS", n);
     else if (k == PR_MUQ)
         str_cpy(v, x ? "YES" : "NO", n);
 }
@@ -2224,7 +2466,7 @@ static void prj_draw(void)
 {
     uint32_t kind = pg_kind();
     int32_t key = ui.page * 1000000 + pj.slot[kind] * 10000 + pj.row * 1000 + pj.ask * 100 + pj.yes * 50 + pj.to +
-                  ui.tempo * 7 + ses_muq * 131 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 +
+                  ui.tempo * 7 + ses_muq * 131 + ses_ctrl * 977 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 +
                   pj.val * 31 + pat_cur * 17 + pat_tempo * 11 + pat_dirty * 5 + pat_store[pj.slot[1]].used * 23 +
                   (pat_clip_from + 1) * 41 + (pat_clip_from >= 0 ? (int32_t)((fm1_ms / 400u) & 1u) * 7777 : 0) +
                   (ui.page == PG_PAT && ui.mute_mode ? (int32_t)(64u + px_mutes()) * 100003 : 0) +
