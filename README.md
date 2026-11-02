@@ -112,7 +112,7 @@ the other 5 are free for other parts. A track not on DRUM has none (ST-A is the 
   ducks nothing. ST-A's mute is the track's own sound only, and holds only while the track is on DRUM. The track's
   mute ([MUTE mode](#mute-mode)) still mutes all its subtracks; the two are separate, so a subtrack muted stays muted
   when the track is unmuted. A subtrack given up loses its mute.
-- Patterns keep each subtrack's steps and settings; the session keeps its sound, level, pan and mute. The looper notes
+- Patterns keep each subtrack's steps, settings and mute; the session keeps its sound, level and pan. The looper notes
   which subtrack each note was played on; SHIFT + OCT− / OCT+ moves every subtrack.
 
 ### Sounds
@@ -448,7 +448,8 @@ it.
 ## Patterns
 
 A session has 16 patterns. A pattern holds every track's and subtrack's steps (with their length, clock, direction and
-transposition), its loops, and each track's mute, machine, octave, level, pan, sidechain, CHORD mode and arpeggiator.
+transposition), its loops, and each track's mute, subtrack mutes, machine, octave, level, pan, sidechain, CHORD mode
+and arpeggiator.
 The sounds, the effects, the tempo, the scale and the root belong to the session.
 
 **SAVE** opens the PATTERNS grid; SAVE again leaves it. The white keys are the 16 patterns, the one playing brighter.

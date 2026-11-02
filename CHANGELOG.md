@@ -1,5 +1,16 @@
 # Changelog
 
+## Build 84
+
+Fixed
+- Patterns now keep subtrack mutes. Until now only the session kept them, so muting or unmuting ST-A to ST-D carried
+  over into every pattern. Each pattern now holds its subtracks' mutes with the track's own mute: switching patterns
+  brings them back, and a subtrack muted or unmuted marks the pattern changed.
+
+Compatibility
+- Patterns saved by earlier builds have no subtrack mutes: playing one leaves the subtrack mutes as they are. Saved
+  again, it keeps them. Earlier builds read patterns saved by this one as before, without the subtrack mutes.
+
 ## Build 83
 
 Fixed

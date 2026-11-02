@@ -4548,7 +4548,8 @@ static int cmd_pstate(const char *dir)
             px_take(x);
             pq.st = PX_ON1;
             memset(pq.seq + SEQ_PX1, 0, PAT_SEQ_ROOM - SEQ_PX1);
-            memcpy(pq.seq + SEQ_PX1, x, sizeof x);
+            for (t = 0; t < NTRACK; t++)         /* (13 bytes a track, as they kept it) */
+                memcpy(pq.seq + SEQ_PX1 + t * PX_T1, x + t * PX_T, PX_T1);
             ps_set_b();
             pat_store[8] = pq;
             pat_give(8, 1);
@@ -5502,6 +5503,49 @@ static int cmd_subtrk(const char *dir)
         sc_apply();
         SEXPECT(sc_ln[1] == lc, "its subtrack given up: the kick again");
         ui.page = PG_MAIN;
+    }
+    {   /* (build 83) patterns keep the subtracks' mutes: each pattern its own, given back as it plays */
+        uint32_t lb2;
+        seq_run = 0;
+        ui.page = PG_MAIN;
+        if (lane_find(0, 1) >= NLANE)
+            st_choose(0, 1, 0);
+        lb2 = lane_find(0, 1);
+        SEXPECT(lb2 < NLANE && trk_lanes(0), "(track 1 on DRUM with ST-B)");
+        ui.lmu = (uint16_t)(1u << lb2);          /* (pattern 1: ST-B muted) */
+        lmu_apply();
+        pat_save(0);
+        ui.lmu = (uint16_t)(1u << 0);            /* (pattern 2: ST-A muted, ST-B playing) */
+        lmu_apply();
+        pat_save_as(1);
+        SEXPECT(pat_cur == 1u, "(pattern 2 saved and playing)");
+        pat_switch(0);
+        SEXPECT(pat_cur == 0u && ui.lmu == 1u << lb2 && ln_mu[lb2] && !ln_mu[0], "pattern 1: its ST-B muted, ST-A playing");
+        pat_switch(1);
+        SEXPECT(pat_cur == 1u && ui.lmu == 1u << 0 && !ln_mu[lb2] && ln_mu[0], "pattern 2: ST-A muted, ST-B playing");
+        ui.lmu ^= (uint16_t)(1u << lb2);         /* a subtrack muted: the pattern changed */
+        lmu_apply();
+        pat_dirty = 0;
+        px_note();
+        SEXPECT(pat_dirty, "a subtrack muted or unmuted marks the pattern changed");
+        pat_switch(0);
+        pat_switch(1);
+        SEXPECT(ui.lmu == (1u << 0 | 1u << lb2), "a change not saved, kept when switched away and back");
+        {   /* a pattern saved before build 83 (the 14th field 0): the subtracks' mutes left as they are */
+            uint8_t x[NTRACK * PX_T];
+            pat_t q = pat_store[0];
+            px_unpack(x, q.seq + SEQ_PX);
+            for (k = 0; k < NTRACK; k++)
+                x[k * PX_T + PX_SUB] = 0;
+            px_pack(q.seq + SEQ_PX, x);
+            pat_store[2] = q;
+            ui.lmu = (uint16_t)(1u << 0);
+            lmu_apply();
+            pat_switch(2);
+            SEXPECT(pat_cur == 2u && ui.lmu == 1u << 0, "a pattern from before: the subtracks' mutes as they were");
+        }
+        ui.lmu = 0;
+        lmu_apply();
     }
     printf("subtrk: %d failures\n", fails);
     return fails != 0;

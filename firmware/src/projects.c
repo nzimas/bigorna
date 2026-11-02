@@ -199,14 +199,19 @@ typedef struct {
  * CHORD mode on (bit 1), the arpeggiator on (bit 2), the chord's form (bits 3 .. 5); the machine (bits 0, 1), the
  * octave + 3 (bits 2 .. 4), the SC SOURCE (bits 5 .. 7); the level, the pan, the SC amount; the arpeggiator's
  * settings. Builds 62 and 63 kept it so, its last 78 bytes (st PX_ON1); from build 64 packed, 9 bytes a track, the
- * last 54 (st PX_ON: PX_W bits of each in turn, the pan + PAN_MAX), so that 96 steps of notes fit */
+ * last 54 (st PX_ON: PX_W bits of each in turn, the pan + PAN_MAX), so that 96 steps of notes fit. Build 83 adds a
+ * 14th: the track's subtracks muted (ST-A .. ST-D, bits 0 .. 3) and bit 4 set -- in bits the 9 bytes left unused, so
+ * the patterns before it read it as 0 (the subtracks' mutes left as they are) and earlier builds read past it */
 #define PX_ON1 1u
 #define PX_ON 2u
-#define PX_T 13u
+#define PX_T 14u
+#define PX_T1 13u                /* (builds 62, 63: 13 bytes a track, not packed) */
+#define PX_SUB 13u               /* (the 14th: the subtracks' mutes) */
+#define PX_SUB_ON 0x10u
 #define PX_P 9u
-#define SEQ_PX1 (PAT_SEQ_ROOM - NTRACK * PX_T)
+#define SEQ_PX1 (PAT_SEQ_ROOM - NTRACK * PX_T1)
 #define SEQ_PX (PAT_SEQ_ROOM - NTRACK * PX_P)
-static const uint8_t PX_W[PX_T] = {6, 8, 5, 6, 7, 4, 3, 2, 7, 1, 7, 7, 3};   /* (66 bits of 72) */
+static const uint8_t PX_W[PX_T] = {6, 8, 5, 6, 7, 4, 3, 2, 7, 1, 7, 7, 3, 5};   /* (71 bits of 72) */
 typedef char px_fits[NENG <= 4 && CHF_N <= 8 && NCP_SCS <= 8 && NARP == 8 && LEVEL_MAX < 32 && 2 * PAN_MAX < 64 &&
                      NAM <= 16 && NAR_RATE <= 8 && NAR_RNG <= 4 && NAR_BASS <= 8 && SEQ_REC4 + NTRACK * NSTEP * 6u <= SEQ_PX
                      ? 1 : -1];
@@ -805,7 +810,7 @@ static int16_t px_mu_over = -1;                  /* (build 65: the mutes px_take
                                                   * pattern left, its own, the switch having unmuted) */
 static void px_take(uint8_t *x)
 {
-    uint32_t t;
+    uint32_t t, s;
     for (t = 0; t < NTRACK; t++, x += PX_T) {
         uint32_t mu = px_mu_over >= 0 ? (uint32_t)px_mu_over >> t & 1u : trk_mute[t] != 0;
         x[0] = (uint8_t)(mu | (ui.chord_on[t] != 0) << 1 | (arp_on[t] != 0) << 2 |
@@ -815,6 +820,12 @@ static void px_take(uint8_t *x)
         x[3] = (uint8_t)ui.pan[t];
         x[4] = (uint8_t)(sc_lvl[t] & 127u);
         memcpy(x + 5, (const void *)arp_p[t], NARP);
+        x[PX_SUB] = PX_SUB_ON;                   /* (build 83) its subtracks' mutes, ST-A its own lane's */
+        for (s = 0; s < NSUB; s++) {
+            uint32_t l = s ? lane_find(t, s) : t;
+            if (l < NLANE && (ui.lmu >> l & 1u))
+                x[PX_SUB] |= (uint8_t)(1u << s);
+        }
     }
 }
 static uint8_t px_base[NTRACK * PX_T];           /* the state as the pattern playing was loaded or saved */
@@ -822,7 +833,7 @@ static uint8_t px_base[NTRACK * PX_T];           /* the state as the pattern pla
  * session changed: the pattern's state, as its steps */
 static void px_give(const uint8_t *x)
 {
-    uint32_t t, solo = 0;
+    uint32_t t, s, solo = 0, lmu = ui.lmu;
     for (t = 0; t < NTRACK; t++, x += PX_T) {
         uint32_t e = x[1] & 3u, sc = x[1] >> 5;
         int32_t o = (int32_t)(x[1] >> 2 & 7u) - 3, lv = clampi((int8_t)x[2], 0, LEVEL_MAX),
@@ -852,6 +863,16 @@ static void px_give(const uint8_t *x)
         sc_lvl[t] = (uint8_t)(x[4] & 127u);
         if (arp_on[t] != (x[0] >> 2 & 1u) || memcmp((const void *)arp_p[t], x + 5, NARP))
             arp_set(t, x[0] >> 2 & 1u, x + 5);
+        for (s = 0; (x[PX_SUB] & PX_SUB_ON) && s < NSUB; s++) {   /* (build 83: its subtracks' mutes; a pattern
+                                                  * before it has none -- left as they are) */
+            uint32_t l = s ? lane_find(t, s) : t;
+            if (l < NLANE)
+                lmu = x[PX_SUB] >> s & 1u ? lmu | 1u << l : lmu & ~(1u << l);
+        }
+    }
+    if (lmu != ui.lmu) {
+        ui.lmu = (uint16_t)lmu;
+        lmu_apply();
     }
     if (solo)
         ui.solo = 0xFF;                          /* (the mutes changed: no solo to undo) */
@@ -901,7 +922,7 @@ static uint32_t px_mutes_of(const pat_t *p)
     else
         s = p->seq + SEQ_PX1;
     for (t = 0; t < NTRACK; t++)
-        m |= (uint32_t)(s[t * PX_T] & 1u) << t;
+        m |= (uint32_t)(s[t * (p->st == PX_ON ? PX_T : PX_T1)] & 1u) << t;
     return m;
 }
 /* the pattern's state: given (its own, or -- one saved before build 62, or empty -- what plays, left so), noted */
@@ -911,8 +932,14 @@ static void px_load(const pat_t *p)
     if (p->used && p->st == PX_ON) {
         px_unpack(x, p->seq + SEQ_PX);
         px_give(x);
-    } else if (p->used && p->st == PX_ON1)       /* (builds 62, 63) */
-        px_give(p->seq + SEQ_PX1);
+    } else if (p->used && p->st == PX_ON1) {     /* (builds 62, 63: 13 bytes a track, no subtracks) */
+        uint32_t t;
+        for (t = 0; t < NTRACK; t++) {
+            memcpy(x + t * PX_T, p->seq + SEQ_PX1 + t * PX_T1, PX_T1);
+            x[t * PX_T + PX_SUB] = 0;
+        }
+        px_give(x);
+    }
     px_take(px_base);
 }
 /* the state changed since the pattern playing was loaded or saved: the pattern changed (each pass of the main loop) */
