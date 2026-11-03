@@ -38,7 +38,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **Track button held + white key 1–4** | on DRUM: its [subtrack](#subtracks) **ST-A**–**ST-D**. **SHIFT +**: mute or unmute it; held 0.8 s, give up a subtrack past ST-A. |
 | **PRESETS** knob | chosen track's machine: **4-OP**, **DRUM**, **WAVY**, **HIVE**. Each track keeps 1 sound per machine. |
 | **SHIFT + PRESETS** | new sound of the family before or after. |
-| **HOME** | new sound for the chosen track ([Sounds](#sounds)). |
+| **HOME** | new sound for the chosen track ([Sounds](#sounds)). Nothing with GEN LOCK on. |
 | **SHIFT + HOME** | new sound of the same family. |
 | **HOME held** (0.8 s) | save the session, as SAVE held. |
 | **OCT− / OCT+** | chosen track's octave, −3 to +3. In the step view: track's [transposition](#transposition). |
@@ -122,6 +122,10 @@ FM BASS or SWARM DRONE, leaning each time towards industrial, IDM or abstract. *
 same family; **SHIFT + PRESETS** moves to the family before or after. The screen shows the machine and the family.
 There are 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE. Drone, pad and texture families come with
 LFOs already set.
+
+**GEN LOCK** (on the session's page, saved with the session): with ON, HOME and SHIFT + HOME draw nothing and the
+sound stays as it is (GEN LOCK shows), so a press during a performance changes nothing. HOME held still saves the
+session. With OFF (at first, and for sessions saved by older builds), HOME draws as above.
 
 ## Sound pages (EDIT)
 
@@ -480,7 +484,8 @@ the tempo, the scale and root, the 16 patterns with their loops, and the pattern
 are the 16 slots (lit dimly; the session playing brighter). On the screen the session playing is green (orange with
 changes not saved), saved sessions white, empty ones grey, and the white square is the cursor: it opens on the session
 playing, and **PRESETS** moves it. **SAVE** opens the page of the slot under the cursor: BACK, LOAD, SAVE, COPY,
-DELETE, TEMPO, MUTE QT ([MUTE mode](#mute-mode)) and CTRL ([PERFORMANCE](#performance)). SAVE runs the row chosen, or
+DELETE, TEMPO, MUTE QT ([MUTE mode](#mute-mode)), CTRL ([PERFORMANCE](#performance)) and GEN LOCK
+([Sounds](#sounds)). SAVE runs the row chosen, or
 moves to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it as it was); SHIFT + SAVE goes back to the
 grid. On the page, loading over changes not saved, saving over another session, copying over one and deleting ask
 first: NO or YES on PRESETS.

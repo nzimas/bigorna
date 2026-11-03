@@ -1,5 +1,15 @@
 # Changelog
 
+## Build 85
+
+Added
+- GEN LOCK, on each session's page (OFF or ON, saved with the session). With ON, HOME and SHIFT + HOME do nothing:
+  no new sound is drawn, and GEN LOCK shows. HOME held still saves the session. PERFORMANCE leaves it as set.
+
+Compatibility
+- Sessions saved by earlier builds load with GEN LOCK OFF. The setting takes a byte that was padding, so the session's
+  size is unchanged and earlier builds load sessions saved by this one as before, without it.
+
 ## Build 84
 
 Fixed

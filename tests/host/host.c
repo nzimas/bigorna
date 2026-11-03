@@ -663,7 +663,7 @@ static int cmd_projects(const char *dir)
     btn(B_SAVE, 0);
     EXPECT(!pj.edit && ui.tempo == 137 && fx_bpm10 == 1370, "SAVE sets the tempo (and the delay follows)");
     turn(EN_PRESET, 1);                          /* MUTE QT (build 78: ROOT and SCALE gone, the SCALE page's) */
-    EXPECT(pj.row == PR_MUQ && pg_rows() == 8u, "MUTE QT, before CTRL (build 82)");
+    EXPECT(pj.row == PR_MUQ && pg_rows() == 9u, "MUTE QT, before CTRL (build 82) and GEN LOCK (build 85)");
     btn(B_SAVE, 0);
     turn(EN_PRESET, 1);                          /* YES, then left as it was */
     btn(B_SAVE, 1);
@@ -5061,7 +5061,11 @@ static int cmd_perf(const char *dir)
     btn(B_SAVE, 0);
     PFEXPECT(ui.page == PG_PRJD && pj.slot[0] == 7u, "SAVE: the page of the slot under the cursor");
     turn(EN_PRESET, 20);
-    PFEXPECT(pj.row == PR_CTRL && pg_rows() == 8u, "the page's last row: CTRL");
+    PFEXPECT(pj.row == PR_GLK && pg_rows() == 9u, "the page's last row: GEN LOCK");
+    ui_draw();
+    shot(dir, "perf_session_genlock");
+    turn(EN_PRESET, -1);
+    PFEXPECT(pj.row == PR_CTRL, "CTRL, above it");
     ui_draw();
     shot(dir, "perf_session_ctrl");
     btn(B_SAVE, 0);
@@ -5069,10 +5073,37 @@ static int cmd_perf(const char *dir)
     btn(B_SAVE, 0);
     PFEXPECT(ses_ctrl == 1u && prj_dirty, "CTRL: ALL");
     ses_ctrl = 0;
+    PFEXPECT(!ses_glk, "GEN LOCK: OFF at first");
+    turn(EN_PRESET, 1);
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, 1);
+    btn(B_SAVE, 0);
+    PFEXPECT(ses_glk == 1u && prj_dirty, "GEN LOCK: ON");
     btn(B_SAVE, 1);
     btn(B_SAVE, 1);
     btn(B_FX, 0);
     PFEXPECT(ui.page == PG_MAIN && ui.sel == 0u && ui.sl == 0u, "back to track 1");
+    {   /* (build 85) GEN LOCK on: HOME and SHIFT + HOME leave the sound; HOME held still saves */
+        sound_t s0 = ui.snd[0][ui.eng[0]];
+        btn(B_HOME, 0);
+        PFEXPECT(!memcmp(&s0, &ui.snd[0][ui.eng[0]], sizeof s0) && str_eq(ui.msg, "GEN LOCK"), "GEN LOCK: HOME, no new sound");
+        btn(B_HOME, 1);
+        PFEXPECT(!memcmp(&s0, &ui.snd[0][ui.eng[0]], sizeof s0), "GEN LOCK: SHIFT + HOME, no new sound");
+        fm1_in.buttons |= 1u << PANEL_BTN[B_HOME];
+        host_press = 1u << PANEL_BTN[B_HOME];
+        ui_input();
+        fm1_ms += 900;
+        ui_input();
+        fm1_in.buttons = 0;
+        ui_input();
+        fm1_ms += 2000;
+        PFEXPECT(!prj_dirty && !memcmp(&s0, &ui.snd[0][ui.eng[0]], sizeof s0), "GEN LOCK: HOME held, the session saved");
+        PFEXPECT(!prj_read(2, 0) && ((const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t)))->glk == 1u,
+                 "GEN LOCK: saved with the session");
+        ses_glk = 0;
+        btn(B_HOME, 0);
+        PFEXPECT(memcmp(&s0, &ui.snd[0][ui.eng[0]], sizeof s0) != 0, "GEN LOCK OFF: HOME, a new sound");
+    }
     /* the session saved, tracks 1 and 3 with notes, 4 none */
     memset((void *)seq_note, 0, sizeof seq_note);
     seq_note[0][0] = 36;

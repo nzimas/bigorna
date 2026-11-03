@@ -6,6 +6,7 @@
  *                             each, so turning back finds it) -- on the track's view only: on the EDIT pages it moves
  *                             through them, on the effects' pages the half shown
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
+ *                             (GEN LOCK on, the session's page: neither does anything; build 85)
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after; in the step
  *                             view, the track's steps transposed a step of the scale (build 51); SHIFT: every track's
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
@@ -300,6 +301,8 @@ static int perf_exit(void);
 static uint8_t perf_on;                          /* PERFORMANCE (the 7th black key) on: what changes, given back as it
                                                   * goes off */
 static uint8_t ses_ctrl;                         /* (the session's CTRL: PERFORMANCE's KNOBS 0, ALL 1 -- its page) */
+static uint8_t ses_glk;                          /* (the session's GEN LOCK: HOME and SHIFT + HOME no new sound -- its
+                                                  * page; build 85) */
 static void phrase_new(uint32_t t);              /* (phrase.c) */
 static void phrase_relock(uint32_t t);
 static int snd_kick(const sound_t *s);          /* (phrase.c: a kick's sound) */
@@ -2028,7 +2031,9 @@ static void ui_input(void)
     if (ui.home_down) {
         if (!btn_bit(fm1_in.buttons, B_HOME)) {
             ui.home_down = 0;
-            if (!ui.home_long)
+            if (!ui.home_long && ses_glk)       /* (GEN LOCK: no new sound, the sound left as it is) */
+                say("GEN LOCK", 700);
+            else if (!ui.home_long)
                 new_sound(sh);
         } else if (!ui.home_long && (uint32_t)(fm1_ms - ui.home_t0) >= 800u) {
             ui.home_long = 1;
