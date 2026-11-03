@@ -689,6 +689,13 @@ static const char *const DIV_NAME[NDIV] = {"1/8", "1/4", "1/2", "1X", "2X", "4X"
 static volatile uint8_t seq_div[NLANE] = {SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1,
                                          SEQ_DIV1, SEQ_DIV1};
 static uint32_t seq_tacc[NLANE];
+/* (build 88) each track's PROB and SWING (TRACK page, KNOB 3, 4): seq_pms its steps' chance of not playing (100 -
+ * PROB, so 0 is 100%), each step thrown for as it comes; seq_swg its swing less 50 (SWING 50 .. 80%: the share of a
+ * pair of steps the first takes) -- the second of each pair, counted from the track's first step, late by
+ * (SWING - 50) / 50 of a step. sw_odd: the step to come is a pair's second */
+#define SWG_MAX 30u
+static volatile uint8_t seq_pms[NLANE], seq_swg[NLANE];
+static uint8_t sw_odd[NLANE];
 /* each track's direction through its steps (the step view's 4th .. 6th black keys) */
 enum { DIR_FWD, DIR_REV, DIR_PING, DIR_RND, NDIR };
 static volatile uint8_t seq_dir[NLANE];
@@ -1058,6 +1065,13 @@ static uint32_t brk_step(uint32_t t, uint32_t p, uint32_t len)
         brk_vp[t] = (uint8_t)(p % 4u == 0u ? 100u : 55u + brk_rnd(40));
     return src;
 }
+static int seq_roll(uint32_t t)                  /* (PROB: the step plays this time) */
+{
+    if (!seq_pms[t])
+        return 1;
+    seq_rnd = seq_rnd * 1664525u + 1013904223u;
+    return (seq_rnd >> 16) % 100u >= seq_pms[t];
+}
 static void seq_trig(uint32_t t, uint32_t p)
 {
     uint32_t n = seq_note[t][p], g = seq_glen[t][p], i;
@@ -1065,7 +1079,7 @@ static void seq_trig(uint32_t t, uint32_t p)
         seq_skip[t][p] = 0;
         return;
     }
-    if (!n || !seq_cond_ok(t, seq_cond[t][p]))
+    if (!n || !seq_cond_ok(t, seq_cond[t][p]) || !seq_roll(t))
         return;
     {
         uint32_t r8 = DIV_R8[seq_div[t] % NDIV], rn = brk_rt[t] ? brk_rt[t] : RTG_N[seq_rtg[t][p] % NRTG];
@@ -1365,6 +1379,7 @@ typedef struct {
     uint8_t lid[NLANE][NSTEP][NPL];
     int16_t lv[NLANE][NSTEP][NPL];
     uint8_t len[NLANE], div[NLANE], dir[NLANE];
+    uint8_t pms[NLANE], swg[NLANE];            /* (build 88: PROB, SWING) */
     uint8_t den[NLANE], cx[NLANE];             /* (the phrase generator's, the main loop's: not the ISR's) */
     int8_t trn[NLANE];                          /* (each track's transposition, steps of the scale: the main loop's) */
 } seqbuf_t;
@@ -1385,6 +1400,8 @@ static void seq_copy_out(seqbuf_t *b)            /* the steps playing, into b */
     memcpy(b->len, (const void *)seq_len, sizeof b->len);
     memcpy(b->div, (const void *)seq_div, sizeof b->div);
     memcpy(b->dir, (const void *)seq_dir, sizeof b->dir);
+    memcpy(b->pms, (const void *)seq_pms, sizeof b->pms);
+    memcpy(b->swg, (const void *)seq_swg, sizeof b->swg);
 }
 static void seq_copy_in(const seqbuf_t *b)       /* b, as the steps playing */
 {
@@ -1403,6 +1420,8 @@ static void seq_copy_in(const seqbuf_t *b)       /* b, as the steps playing */
     memcpy((void *)seq_len, b->len, sizeof b->len);
     memcpy((void *)seq_div, b->div, sizeof b->div);
     memcpy((void *)seq_dir, b->dir, sizeof b->dir);
+    memcpy((void *)seq_pms, b->pms, sizeof b->pms);
+    memcpy((void *)seq_swg, b->swg, sizeof b->swg);
 }
 /* a pattern waiting (projects.c's pat_switch, the sequencer playing): sb_next taken in as track seq_pend_t ends its
  * time through -- the steps it leaves into sb_old, every track from its start -- then seq_pend 2 (the main loop
@@ -1427,6 +1446,10 @@ static int seq_wraps(uint32_t t)                 /* track t's next step begins i
     case DIR_RND: return seq_rnd_n[t] + 1u >= len;
     default: return pos + 1u >= len;
     }
+}
+static uint32_t sw_late(uint32_t t)             /* (SWING: how late the step to come is, a pair's second) */
+{
+    return seq_swg[t] && sw_odd[t] && !seq_wraps(t) ? seq_swg[t] % (SWG_MAX + 1u) * (SEQ_STEP8 / 50u) : 0u;
 }
 /* the arpeggiator's next note: the held notes over RANGE octaves, in MODE's order; BASS: every so many, the lowest an
  * octave down; OCT RND: an octave up or down at random (0: none) */
@@ -1607,6 +1630,7 @@ static void seq_block(void)
             seq_tacc[t] = SEQ_STEP8;
             seq_rnd_n[t] = 0;
             rt_left[t] = 0;
+            sw_odd[t] = 0;
         }
         memset(seq_plays, 0, sizeof seq_plays);
         for (t = 0; t < NTRACK; t++)             /* (the arpeggiators on the grid from step 1: a note just played --
@@ -1625,6 +1649,7 @@ static void seq_block(void)
             for (t = 0; t < NLANE; t++) {
                 uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p8 = spp * DIV_R8[seq_div[t] % NDIV], st = p8 / 8u;
                 seq_loop[t] = (uint16_t)(st / len);
+                sw_odd[t] = (uint8_t)((p8 % 8u ? st + 1u : st) % len & 1u);
                 if (p8 % 8u) {                   /* (inside a step: that one, played already; the next to come) */
                     seq_pos[t] = (uint8_t)(st % len);
                     seq_tacc[t] = (p8 % 8u) * SEQ_16TH;
@@ -1655,6 +1680,7 @@ static void seq_block(void)
             seq_rnd_n[t] = 0;
             rt_left[t] = 0;
             seq_tacc[t] = SEQ_STEP8;
+            sw_odd[t] = 0;
         }
         memset(seq_plays, 0, sizeof seq_plays);
         for (t = 0; t < NTRACK; t++) {           /* (its transpositions: its loops' from now) */
@@ -1720,8 +1746,10 @@ static void seq_block(void)
     }
     for (t = 0; t < NLANE; t++) {                /* each lane on its own clock (a lane that does not play: in time,
                                                   * silent) */
-        if (seq_tacc[t] >= SEQ_STEP8) {
-            uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_next(t, len), q = p;
+        if (seq_tacc[t] >= SEQ_STEP8 && seq_tacc[t] >= SEQ_STEP8 + sw_late(t)) {   /* (a pair's second: its swing
+                                                  * gone by too) */
+            uint32_t w = (uint32_t)seq_wraps(t), len = seq_len[t] ? seq_len[t] : NSTEP, p = seq_next(t, len), q = p;
+            sw_odd[t] = (uint8_t)(w || !sw_odd[t]);   /* (SWING: its first step a pair's first) */
             seq_tacc[t] -= SEQ_STEP8;
             rt_left[t] = 0;                      /* (a ratchet not done by the next step: cut) */
             seq_pos[t] = (uint8_t)p;

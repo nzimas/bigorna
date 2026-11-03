@@ -218,6 +218,11 @@ static const uint8_t PX_W[PX_T] = {6, 8, 5, 6, 7, 4, 3, 2, 7, 1, 7, 7, 3, 5};   
 typedef char px_fits[NENG <= 4 && CHF_N <= 8 && NCP_SCS <= 8 && NARP == 8 && LEVEL_MAX < 32 && 2 * PAN_MAX < 64 &&
                      NAM <= 16 && NAR_RATE <= 8 && NAR_RNG <= 4 && NAR_BASS <= 8 && SEQ_REC4 + NTRACK * NSTEP * 6u <= SEQ_PX
                      ? 1 : -1];
+/* (build 88) each lane's PROB and SWING (tracks.c's seq_pms, seq_swg), two bytes a lane just before SEQ_PX -- only
+ * in a pattern where some lane has them off their defaults, the records then ending before it; told by bit 7 of the
+ * first track's last byte of state, the bit px_pack leaves (an earlier pattern's records may run on there) */
+#define SEQ_PS (SEQ_PX - 2u * NLANE)
+#define SEQ_PS_ON (SEQ_PX + PX_P - 1u)
 #define SEQ_OLD_NOTE 8u          /* seq[8 + 16 t + i]: track t's step i, its note (0: empty) */
 #define SEQ_OLD_VEL 104u         /* .. its velocity (0: VEL_DEF, as build 9 left it) */
 #define SEQ_OLD_GLEN 200u        /* .. its length + 1 (0: GLEN_DEF) */
@@ -962,6 +967,7 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
 {
     static uint8_t md[NLANE][NSTEP], ch[NLANE][NSTEP], nl[NLANE][NSTEP], ok[NLANE][NSTEP];
     uint32_t t, i, r, more, o = SEQ_REC4, n = 0, room = SEQ_PX - SEQ_REC4;
+    int ps = 0;
     memset(p, 0, sizeof *p);
     p->used = 1;
     p->tempo = pat_tempo;
@@ -971,6 +977,16 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
         px_take(x);
         p->st = PX_ON;
         px_pack(p->seq + SEQ_PX, x);
+    }
+    for (t = 0; t < NLANE; t++)                  /* (build 88) PROB and SWING, if any lane has them */
+        ps |= b->pms[t] || b->swg[t];
+    if (ps) {
+        for (t = 0; t < NLANE; t++) {
+            p->seq[SEQ_PS + 2u * t] = b->pms[t];
+            p->seq[SEQ_PS + 2u * t + 1u] = b->swg[t];
+        }
+        p->seq[SEQ_PS_ON] |= 0x80u;
+        room = SEQ_PS - SEQ_REC4;
     }
     memset(md, 0, sizeof md);
     memset(ch, 0, sizeof ch);
@@ -1117,6 +1133,8 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
         b->cx[t] = (uint8_t)(v4 && p->seq[SEQ_CX + t] <= 100u ? p->seq[SEQ_CX + t] : 50u);
         b->trn[t] = (int8_t)(v4 ? clampi((int8_t)p->seq[SEQ_TRN + t], -TRN_MAX, TRN_MAX) : 0);
     }
+    memset(b->pms, 0, sizeof b->pms);            /* (PROB 100%, SWING 50%: unless the pattern has them) */
+    memset(b->swg, 0, sizeof b->swg);
     for (t = NTRACK; t < NLANE; t++) {           /* (the subtracks: as at the start, unless the pattern has theirs) */
         b->len[t] = 0;
         b->div[t] = SEQ_DIV1;
@@ -1181,6 +1199,12 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
                     b->lid[t][i][l] = p->seq[o];
                 }
         }
+        for (t = 0; v4 && p->st == PX_ON && (p->seq[SEQ_PS_ON] & 0x80u) && t < NLANE; t++)   /* (build 88) PROB,
+                                                  * SWING: the tracks', and the subtracks' that are this track's here */
+            if (t < NTRACK || (mine >> (t - NTRACK) & 1u)) {
+                b->pms[t] = (uint8_t)(p->seq[SEQ_PS + 2u * t] <= 100u ? p->seq[SEQ_PS + 2u * t] : 0u);
+                b->swg[t] = (uint8_t)(p->seq[SEQ_PS + 2u * t + 1u] <= SWG_MAX ? p->seq[SEQ_PS + 2u * t + 1u] : 0u);
+            }
     } else if (p->used && p->seq[SEQ_FMT] == SEQ_V2) {   /* (builds 11 .. 17) */
         uint32_t o = SEQ_REC, r;
         for (r = 0; r < p->seq[SEQ_NREC] && o + 6u <= PAT_SEQ_ROOM; r++) {

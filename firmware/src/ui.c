@@ -41,7 +41,9 @@
  *                                         COMPLEXITY (0 .. 100: how full its phrases; how many locks, conditions,
  *                                         ratchets)
  *                               the 2nd   the TRACK page, up or down: KNOB 1 the track's LENGTH (1 .. 16 steps),
- *                                         KNOB 2 its CLOCK against the tempo's 16ths (1/8, 1/4, 1/2, 1X, 2X, 4X)
+ *                                         KNOB 2 its CLOCK against the tempo's 16ths (1/8, 1/4, 1/2, 1X, 2X, 4X),
+ *                                         KNOB 3 its PROB (0 .. 100%: each step's chance to play), KNOB 4 its SWING
+ *                                         (50 .. 80%; build 88)
  *                               the 3rd   TRIG on or off: on, a step held shows its own page -- KNOB 1 its note (in
  *                                         the scale), 2 its velocity, 3 its length, 4 its trig condition; PRESETS
  *                                         right, its other half: KNOB 1 its RATCHET (the step played 2 .. 8 times)
@@ -710,6 +712,7 @@ static void lane_fresh(uint32_t l)               /* (a lane's own as at the star
     seq_len[l] = 0;
     seq_div[l] = SEQ_DIV1;
     seq_dir[l] = DIR_FWD;
+    seq_pms[l] = seq_swg[l] = 0;
     ui.oct[l] = 0;
     ui.trn[l] = 0;
     ui.level[l] = LEVEL_UNITY;
@@ -840,13 +843,18 @@ static void all_par_turn(uint32_t pg, uint32_t j, int32_t s)
         mark(l);
     }
 }
-/* .. a lane's length or clock turned (TRACK's KNOB 1, 2): the chosen lane's, and CTRL ALL the others' too */
+/* .. a lane's length, clock, PROB or SWING turned (TRACK's KNOB 1 .. 4): the chosen lane's, and CTRL ALL the others'
+ * too */
 static void len_div_turn(uint32_t l, uint32_t j, int32_t s)
 {
     if (j == 0u)
         seq_len[l] = (uint8_t)clampi((seq_len[l] ? seq_len[l] : (int32_t)NSTEP) + s, 1, NSTEP);
-    else
+    else if (j == 1u)
         seq_div[l] = (uint8_t)clampi((int32_t)seq_div[l] + s, 0, NDIV - 1);
+    else if (j == 2u)                            /* (PROB up: fewer steps left out) */
+        seq_pms[l] = (uint8_t)clampi((int32_t)seq_pms[l] - s, 0, 100);
+    else
+        seq_swg[l] = (uint8_t)clampi((int32_t)seq_swg[l] + s, 0, SWG_MAX);
 }
 static void all_len_div(uint32_t j, int32_t s)
 {
@@ -2094,9 +2102,9 @@ static void ui_input(void)
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
             }
-    } else if (ui.page == PG_TRK) {                  /* TRACK: KNOB 1 the length, 2 the clock */
+    } else if (ui.page == PG_TRK) {                  /* TRACK: KNOB 1 the length, 2 the clock, 3 PROB, 4 SWING */
         for (j = 0; j < 4u; j++)
-            if ((s = enc_take(KNOB[j])) != 0 && j < 2u) {
+            if ((s = enc_take(KNOB[j])) != 0) {
                 all_len_div(j, s);                   /* (the chosen subtrack's lane; CTRL ALL, the others' too) */
                 pat_dirty = 1;
                 ui.touched = (int8_t)j;
@@ -3506,7 +3514,7 @@ static void draw_gen_page(void)
     ui.shown_sub = (uint8_t)t;
 }
 
-/* the TRACK page (the step view's 2nd black key): the track's LENGTH and CLOCK, as rows */
+/* the TRACK page (the step view's 2nd black key): the track's LENGTH, CLOCK, PROB and SWING, as rows */
 static void draw_trk_page(void)
 {
     uint32_t t = ui.sl, j;                       /* (the lane: the chosen subtrack's) */
@@ -3525,7 +3533,8 @@ static void draw_trk_page(void)
         ui.half = h;
     }
     for (j = 0; j < 4u; j++) {
-        int32_t v = j == 0u ? (seq_len[t] ? seq_len[t] : (int32_t)NSTEP) : j == 1u ? seq_div[t] : 0;
+        int32_t v = j == 0u ? (seq_len[t] ? seq_len[t] : (int32_t)NSTEP) : j == 1u ? seq_div[t]
+                    : j == 2u ? 100 - (int32_t)seq_pms[t] : 50 + (int32_t)seq_swg[t];
         char b[8];
         if (!full && ui.shown_rows[j] == v && ((int32_t)j == tc) == ((int32_t)j == ui.shown_touch))
             continue;
@@ -3535,8 +3544,12 @@ static void draw_trk_page(void)
         } else if (j == 1u)                      /* (bipolar: 1X in the middle) */
             draw_row(j, "CLOCK", DIV_NAME[v % NDIV], v <= (int32_t)SEQ_DIV1 ? v * 500 / (int32_t)SEQ_DIV1
                      : 500 + (v - (int32_t)SEQ_DIV1) * 500 / (int32_t)(NDIV - 1u - SEQ_DIV1), 1, (int32_t)j == tc, TRACK_COL[ui.sel]);
-        else
-            draw_row(j, "", "", 0, 0, 0, TRACK_COL[ui.sel]);
+        else {                                   /* (PROB 0 .. 100%, SWING 50 .. 80%) */
+            fmt_int(b, v);
+            str_cpy(b + str_len(b), "%", 2);
+            draw_row(j, j == 2u ? "PROB" : "SWING", b, j == 2u ? v * 10 : (v - 50) * 1000 / (int32_t)SWG_MAX, 0,
+                     (int32_t)j == tc, TRACK_COL[ui.sel]);
+        }
         ui.shown_rows[j] = v;
     }
     ui.shown_touch = (int8_t)tc;

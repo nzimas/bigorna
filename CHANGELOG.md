@@ -1,5 +1,21 @@
 # Changelog
 
+## Build 88
+
+Added
+- PROB and SWING on the TRACK page (black key 2 in the step view), on KNOB 3 and KNOB 4. PROB, 0 to 100%, is the
+  chance that each of the track's steps plays, decided each time the step comes round; 100% plays every step. SWING,
+  50 to 80%, delays the second step of each pair, counted from the track's first step; 50% is straight. Both are per
+  track and per subtrack, follow CTRL ALL, and are kept by patterns and by PERFORMANCE.
+
+Compatibility
+- Patterns saved by earlier builds load with PROB 100% and SWING 50%. A pattern stores the two values only when some
+  track has them away from those defaults, in 18 bytes before the tracks' state, and then has 18 bytes less for steps
+  and locks. Earlier builds load patterns saved by this one without the two values.
+
+Tests
+- The BREAK test accepts the ROLL way, which plays the track's own steps with ratchets, when the drawn way is ROLL.
+
 ## Build 87
 
 Removed

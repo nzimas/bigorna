@@ -322,7 +322,7 @@ PERFORMANCE is on:
 
 - KNOBS (at first): only the knobs.
 - ALL: also a new phrase or new locks (black key 1, SHIFT + it, in the step view), a direction, the TRACK page's
-  LENGTH and CLOCK, the PHRASE page's DENSITY and COMPLEXITY, the step view's transposition, HOME's and SHIFT + HOME's
+  LENGTH, CLOCK, PROB and SWING, the PHRASE page's DENSITY and COMPLEXITY, the step view's transposition, HOME's and SHIFT + HOME's
   new sound, and every turn on an EDIT page: the same page and row on each other track, by the same steps (on another
   machine that row may be another parameter). Lists, such as a machine type or a route, are left alone.
 
@@ -374,8 +374,13 @@ cannot be step-locked.
 
 ## Sequencer
 
-Each track has 16 steps, with its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X) and direction. **PLAY**
-starts and stops it.
+Each track has 16 steps, with its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X), direction, probability and
+swing. **PLAY** starts and stops it.
+
+On the TRACK page (black key 2 in the step view), KNOB 3 sets PROB, 0 to 100% (100% at first): the chance that each of
+the track's steps plays, decided each time the step comes round. KNOB 4 sets SWING, 50 to 80% (50%, straight, at first):
+the share of each pair of steps the first one takes. The second step of each pair, counted from the track's first
+step, plays late by (SWING - 50) / 50 of a step.
 
 ### Step view
 
@@ -397,7 +402,7 @@ The black keys, lit dimly, do this in the step view:
 | Key | What it does |
 | --- | --- |
 | black key 1 | new [phrase](#phrases) for the track. **SHIFT +**: new locks on its steps. **Held** (0.8 s): PHRASE page |
-| black key 2 | TRACK page: LENGTH and CLOCK |
+| black key 2 | TRACK page: LENGTH, CLOCK, PROB and SWING |
 | black key 3 | TRIG on or off: a step held shows its own page |
 | black key 4 | MOD on or off: a step held shows its MOD page |
 | black keys 6, 7, 8 | track's direction: REVERSE, PING-PONG, RANDOM; pressed again, forwards |
@@ -449,8 +454,8 @@ it.
 
 ## Patterns
 
-A session has 16 patterns. A pattern holds every track's and subtrack's steps (with their length, clock, direction and
-transposition), its loops, and each track's mute, subtrack mutes, machine, octave, level, pan, sidechain, CHORD mode
+A session has 16 patterns. A pattern holds every track's and subtrack's steps (with their length, clock, direction,
+probability, swing and transposition), its loops, and each track's mute, subtrack mutes, machine, octave, level, pan, sidechain, CHORD mode
 and arpeggiator.
 The sounds, the effects, the tempo, the scale and the root belong to the session.
 

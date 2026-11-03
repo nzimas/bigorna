@@ -1242,6 +1242,62 @@ static int cmd_projects(const char *dir)
         seq_len[2] = 0;
         seq_div[2] = SEQ_DIV1;
     }
+    {   /* (build 88) the TRACK page's KNOB 3 PROB, KNOB 4 SWING: kept by a pattern; one before has 100%, 50% */
+        int32_t out[2 * CTL];
+        uint32_t i, n0, n1, k, was, got;
+        static pat_t pp;
+        ui.sel = 2;
+        tap(KEY_STEP);
+        tap(KEY_TRK);
+        turn(EN_K3, -50);
+        turn(EN_K4, 10);
+        EXPECT(seq_pms[2] == 50u && seq_swg[2] == 10u && pat_dirty, "PROB 50%, SWING 60%");
+        fm1_ms += 2000;
+        ui_draw();
+        shot(dir, "track_page_prob");
+        seq_pms[2] = 0;
+        memset((void *)seq_note[2], 60, NSTEP);
+        seq_run = 1;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        while (seq_pos[2] != 0u)
+            mix_block(out);
+        for (n0 = 0; seq_pos[2] != 1u && n0 < 5000u; n0++)
+            mix_block(out);
+        for (n1 = 0; seq_pos[2] != 2u && n1 < 5000u; n1++)
+            mix_block(out);
+        EXPECT(n0 > n1 + 40u && n0 + n1 > 2u * 140u && n0 + n1 < 2u * 160u, "SWING 60%: a pair's second late, the pair as long");
+        seq_swg[2] = 0;
+        for (k = was = 0; k < NSTEP; k++)
+            was += seq_plays[2][k];
+        seq_pms[2] = 50;
+        for (i = 0; i < 64u; i++) {              /* (64 steps) */
+            uint32_t p = seq_pos[2];
+            while (seq_pos[2] == p)
+                mix_block(out);
+        }
+        for (k = got = 0; k < NSTEP; k++)
+            got += seq_plays[2][k];
+        got -= was;
+        EXPECT(got > 16u && got < 48u, "PROB 50%: about half the steps");
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        seq_swg[2] = 10;
+        pat_take(&pp);
+        seq_pms[2] = seq_swg[2] = 0;
+        pat_store[14] = pp;
+        pat_give(14, 1);
+        EXPECT(seq_pms[2] == 50u && seq_swg[2] == 10u && !seq_pms[0] && !seq_swg[0], "a pattern keeps them");
+        pp.seq[SEQ_PS_ON] &= 0x7Fu;              /* (as a pattern before build 88) */
+        pat_store[14] = pp;
+        pat_give(14, 1);
+        EXPECT(!seq_pms[2] && !seq_swg[2], "one before: PROB 100%, SWING 50%");
+        tap(KEY_TRK);
+        tap(KEY_STEP);
+        memset((void *)seq_note[2], 0, NSTEP);   /* (as the block before left it) */
+        seq_note[2][0] = 60;
+    }
     {   /* patterns keep their changes when left; copied, the original stays; switched while playing: at the end of
          * the chosen track's time through */
         int32_t out[2 * CTL];
@@ -1681,7 +1737,8 @@ static int cmd_projects(const char *dir)
                 moved++;
         }
         EXPECT(on, "under BREAK the track's own position goes on, a step at a time");
-        EXPECT(moved > 0u, "under BREAK other steps play (or none, or leaps)");
+        EXPECT(moved > 0u || brk_rec == BR_ROLL, "under BREAK other steps play (or none, or leaps; "
+               "ROLL: its own, ratcheted)");
         EXPECT(ways == 1u, "BREAK held four bars: one way all through (build 53)");
         ui_input();
         ui_draw();
