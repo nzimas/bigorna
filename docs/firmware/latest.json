@@ -1,7 +1,7 @@
 {
  "file": "bigorna.fwsc",
- "version": "BUILD 80",
- "product": "FM-1_8080",
+ "version": "BUILD 88",
+ "product": "FM-1_8088",
  "size": 609992,
- "sha256": "fcbde8f7acb65565e045db00386bfb28f7c4271fca76dd46c0298ea9910b2eb8"
+ "sha256": "87baea1d3758cd73f493dfc0a018ab68e24e0734e0b4a4d8f7e47111948a142d"
 }

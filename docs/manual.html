@@ -70,6 +70,7 @@
 <a href="#arpeggiator" class="sub">Arpeggiator</a>
 <a href="#mute-mode" class="sub">MUTE mode</a>
 <a href="#break" class="sub">BREAK</a>
+<a href="#performance" class="sub">PERFORMANCE</a>
 <a href="#effects-seq">Effects (SEQ)</a>
 <a href="#sidechain" class="sub">Sidechain</a>
 <a href="#lfos" class="sub">LFOs</a>
@@ -241,6 +242,7 @@
 <tr><td>SHIFT held</td><td></td><td></td><td>chorus send</td><td>overdrive</td></tr>
 <tr><td><a href="#sound-pages-edit">EDIT</a></td><td>row A (E)</td><td>row B (F)</td><td>row C (G)</td><td>row D (H)</td></tr>
 <tr><td><a href="#effects-seq">SEQ</a></td><td>row A (E)</td><td>row B (F)</td><td>row C (G)</td><td>row D (H)</td></tr>
+<tr><td><a href="#step-view">TRACK</a> page</td><td>LENGTH</td><td>CLOCK</td><td>PROB</td><td>SWING</td></tr>
 <tr><td>a step held, <a href="#step-pages">TRIG</a> on</td><td>note</td><td>velocity</td><td>length</td><td>condition</td></tr>
 <tr><td>a step held, <a href="#step-pages">MOD</a> on</td><td>MUTATE</td><td>MUT EVERY</td><td>MIDI FX</td><td>FX EVERY</td></tr>
 </table>
@@ -249,12 +251,11 @@
 <table>
 <tr><th>Control</th><th>What it does</th></tr>
 <tr><td><b>6 top buttons</b></td><td>choose track <b>1–6</b> (lit: chosen; glowing dimly: sounding). From any page, back to the track. In <a href="#mute-mode">MUTE mode</a>: mute and solo.</td></tr>
-<tr><td><b>Track button held + white key 1–4</b></td><td>on DRUM: its <a href="#subtracks">subtrack</a> <b>ST-A</b>–<b>ST-D</b>. <b>SHIFT +</b>: give up a subtrack past ST-A.</td></tr>
+<tr><td><b>Track button held + white key 1–4</b></td><td>on DRUM: its <a href="#subtracks">subtrack</a> <b>ST-A</b>–<b>ST-D</b>. <b>SHIFT +</b>: mute or unmute it; held 0.8 s, give up a subtrack past ST-A.</td></tr>
 <tr><td><b>PRESETS</b> knob</td><td>chosen track's machine: <b>4-OP</b>, <b>DRUM</b>, <b>WAVY</b>, <b>HIVE</b>. Each track keeps 1 sound per machine.</td></tr>
 <tr><td><b>SHIFT + PRESETS</b></td><td>new sound of the family before or after.</td></tr>
-<tr><td><b>HOME</b></td><td>new sound for the chosen track (<a href="#sounds">Sounds</a>).</td></tr>
+<tr><td><b>HOME</b></td><td>new sound for the chosen track (<a href="#sounds">Sounds</a>). Nothing with GEN LOCK on.</td></tr>
 <tr><td><b>SHIFT + HOME</b></td><td>new sound of the same family.</td></tr>
-<tr><td><b>HOME held</b> (0.8 s)</td><td>save the session, as SAVE held.</td></tr>
 <tr><td><b>OCT− / OCT+</b></td><td>chosen track's octave, −3 to +3. In the step view: track's <a href="#transposition">transposition</a>.</td></tr>
 <tr><td><b>SHIFT + OCT− / OCT+</b></td><td>every track's transposition.</td></tr>
 <tr><td>white keys</td><td>play the chosen track in the scale; the keys that play the root glow dimly. In the step view: track's 16 steps. On the PATTERNS grid: 16 patterns.</td></tr>
@@ -263,6 +264,7 @@
 <tr><td>black key 3</td><td><b>held</b>: <a href="#break">BREAK</a> on the chosen track. <b>SHIFT +</b>: on every track.</td></tr>
 <tr><td>black key 4</td><td><a href="#midi-learn">MIDI LEARN</a> on or off.</td></tr>
 <tr><td>black key 5</td><td>chosen track's <a href="#arpeggiator">arpeggiator</a> on or off. <b>Held</b> (0.8 s): its page.</td></tr>
+<tr><td>black key 7</td><td><a href="#performance">PERFORMANCE</a> on or off (also on the PATTERNS grid; in the step view, <b>SHIFT +</b> it).</td></tr>
 <tr><td>black key 9 (3rd from right)</td><td><b>STEP</b>: <a href="#step-view">step view</a>. <b>SHIFT +</b>: empty the chosen track's steps.</td></tr>
 <tr><td>black key 10</td><td><b>EDIT</b>: <a href="#sound-pages-edit">sound pages</a>.</td></tr>
 <tr><td>black key 11 (last)</td><td><b>SHIFT</b>.</td></tr>
@@ -271,7 +273,7 @@
 <tr><td><b>KNOB 1–4</b></td><td>chosen track's filter FREQ and RESO, delay send, reverb send. On a page: its rows A–D.</td></tr>
 <tr><td><b>SHIFT + KNOB 3 / KNOB 4</b></td><td>chosen track's chorus send / overdrive.</td></tr>
 <tr><td><b>PLAY</b></td><td>start or stop the <a href="#sequencer">sequencer</a>. <b>Held</b> (0.8 s): <a href="#tempo">TEMPO</a> page.</td></tr>
-<tr><td><b>SHIFT + PLAY</b></td><td>metronome on or off.</td></tr>
+<tr><td><b>SHIFT + PLAY</b></td><td>metronome on or off (during a <a href="#break">BREAK</a>, PLAY stops instead).</td></tr>
 <tr><td><b>REC</b></td><td><a href="#recording">record</a> the keys into the chosen track's steps.</td></tr>
 <tr><td><b>SHIFT + REC</b></td><td><a href="#looper">looper</a>: arm a loop. <b>Held</b>: track's loops on the white keys.</td></tr>
 <tr><td><b>ARP</b></td><td>SCALE page (<a href="#scales">Scales</a>); ARP again leaves it.</td></tr>
@@ -279,8 +281,8 @@
 <tr><td><b>SEQ</b></td><td><a href="#effects-seq">effects' pages</a>, then the chosen track's <a href="#lfos">LFOs</a>, in turn.</td></tr>
 <tr><td><b>SHIFT + SEQ</b></td><td>chosen track's LFOs drawn anew.</td></tr>
 <tr><td><b>SAVE</b></td><td><a href="#patterns">PATTERNS</a> grid; SAVE again leaves it.</td></tr>
-<tr><td><b>SAVE held</b> (0.8 s)</td><td>save the session. On the PATTERNS grid: save the pattern playing into the slot under the cursor.</td></tr>
-<tr><td><b>SHIFT + SAVE</b></td><td><a href="#sessions">SESSIONS</a> list; SHIFT + SAVE again leaves it.</td></tr>
+<tr><td><b>SAVE held</b> (0.8 s)</td><td>save the session. On the PATTERNS grid: nothing (hold a white key to save a pattern).</td></tr>
+<tr><td><b>SHIFT + SAVE</b></td><td><a href="#sessions">SESSIONS</a> grid; SHIFT + SAVE again leaves it.</td></tr>
 <tr><td><b>SHIFT + SAVE held</b> (0.8 s)</td><td><a href="#global-setup">GLOBAL SETUP</a>: START and MIDI.</td></tr>
 <tr><td><b>MASTER</b></td><td>output level.</td></tr>
 <tr><td>MIDI in (USB and TRS)</td><td>notes and CCs for each track (<a href="#midi">MIDI</a>).</td></tr>
@@ -294,8 +296,10 @@
 <table>
 <tr><th>To</th><th>Do this</th></tr>
 <tr><td>Choose a subtrack</td><td>hold the track's button and press white key 1–4 (ST-A–ST-D); ST-B shows for a moment</td></tr>
-<tr><td>See them</td><td>hold the track's button: the chosen subtrack's key lit, ST-A and the other subtracks in use dim</td></tr>
-<tr><td>Give one up</td><td>hold SHIFT and the track's button, and press its white key (ST-B–ST-D): its steps go</td></tr>
+<tr><td>See them</td><td>hold the track's button: the chosen subtrack's key lit, the other 3 dim</td></tr>
+<tr><td>See the mutes</td><td>hold the track's button and SHIFT: each subtrack in use lit if playing, dim if muted; the others dark</td></tr>
+<tr><td>Mute or unmute one</td><td>hold SHIFT and the track's button, and press its white key and let go within 0.8 s (ST-A–ST-D)</td></tr>
+<tr><td>Give one up</td><td>hold SHIFT and the track's button, and hold its white key for 0.8 s (ST-B–ST-D): its steps go</td></tr>
 </table>
 <ul>
 <li>ST-A is the track's own sound; until another is chosen, everything acts on it.</li>
@@ -303,10 +307,12 @@
 <li>Everything then acts on the subtrack chosen: the keys and MIDI notes play it, EDIT shows its sound, the step view its steps, the TRACK and PHRASE pages are its (TRACK 1B), SELECT and ALGORITHM set its level and pan, OCT its octave. The screen shows it under the pattern, at the left: ST-A to ST-D.</li>
 <li>There are 3 subtracks past ST-A in all, shared by the tracks: 1 track with all 4 (ST-A to ST-D), or several tracks with 2 or 3. When none is left, NO SUBTRACK shows.</li>
 <li>A track turned off DRUM puts its subtracks away: silent, kept, back as they were when it is on DRUM again. Another DRUM track can take one of them when none is free.</li>
-<li>Patterns keep each subtrack's steps and settings; the session keeps its sound, level and pan. The looper notes which subtrack each note was played on; SHIFT + OCT− / OCT+ moves every subtrack.</li>
+<li>A muted subtrack fades out, its sends with it, and its steps keep running silently; it sends no MIDI notes and ducks nothing. ST-A's mute is the track's own sound only, and holds only while the track is on DRUM. The track's mute (<a href="#mute-mode">MUTE mode</a>) still mutes all its subtracks; the two are separate, so a subtrack muted stays muted when the track is unmuted. A subtrack given up loses its mute.</li>
+<li>Patterns keep each subtrack's steps, settings and mute; the session keeps its sound, level and pan. The looper notes which subtrack each note was played on; SHIFT + OCT− / OCT+ moves every subtrack.</li>
 </ul>
 <h3 id="sounds">Sounds</h3>
 <p><b>HOME</b> draws a new sound for the chosen track from a recipe of its machine: a family such as TIGHT KICK, METAL HAT, FM BASS or SWARM DRONE, leaning each time towards industrial, IDM or abstract. <b>SHIFT + HOME</b> draws another from the same family; <b>SHIFT + PRESETS</b> moves to the family before or after. The screen shows the machine and the family. There are 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE. Drone, pad and texture families come with LFOs already set.</p>
+<p><b>GEN LOCK</b> (on the session's page, saved with the session): with ON, HOME and SHIFT + HOME draw nothing and the sound stays as it is (GEN LOCK shows), so a press during a performance changes nothing. With OFF (at first, and for sessions saved by older builds), HOME draws as above.</p>
 <h2 id="sound-pages-edit">Sound pages (EDIT)</h2>
 <p>Black key 10 (<b>EDIT</b>) shows the sound's pages: SYN 1 to 4 (the machine's), FLTR 1, FLTR 2, AMP, FX and MANGLE. Each page has 8 parameters: <b>KNOB 1–4</b> set A to D; <b>PRESETS</b> turned right shows E to H, left goes back. <b>OCT− / OCT+</b> move between the pages. EDIT again leaves.</p>
 <h3 id="4-op">4-OP</h3>
@@ -393,7 +399,7 @@
 <p>A muted track fades out, its sends with it; its steps keep running silently. The mutes stay when MUTE mode is turned off. They are saved with the pattern. MUTE mode also works on the PATTERNS grid.</p>
 <p><b>MUTE QT</b> (on the session's page, saved with the session): with YES, a mute, unmute or solo waits for the start of the pattern's next cycle, the moment the chosen track begins its steps again (as a pattern switch does), and its button blinks until then. Stopped, it happens at once. Choosing a pattern drops mutes still waiting: the pattern brings its own. With NO (at first), they happen at once.</p>
 <h3 id="break">BREAK</h3>
-<p>While the sequencer plays, <b>hold black key 3</b> to break up the chosen track's pattern; <b>SHIFT +</b> it, every track's. Nothing is written into the steps: when the key is let go, the pattern carries on from where it would have been.</p>
+<p>While the sequencer plays, <b>hold black key 3</b> to break up the chosen track's pattern; <b>SHIFT +</b> it, every track's. Nothing is written into the steps: when the key is let go, the pattern carries on from where it would have been. PLAY stops the sequencer during a break, SHIFT held or not, so a piece can end on the break.</p>
 <p>Each press draws one way of playing the steps, shown on the screen, and keeps it while the key is held. The break starts on the track's next beat, and what is on a beat stays on a beat:</p>
 <table>
 <tr><th>Way</th><th>What plays</th></tr>
@@ -406,6 +412,18 @@
 </table>
 <p>On top of the way, a break may add ratchets (faster the longer the key is held), flams on drums, octave leaps on melodic tracks, a gap at the end of each bar, and accents. A kick keeps the bar's first step and takes no leaps; drones are left alone; loops play on as recorded.</p>
 <p><b>Saving a break.</b> BREAK also works on the PATTERNS grid. There, with black key 3 held and the sequencer playing, hold a white key 0.8 s: the break, as it plays, is saved into that pattern slot (BREAK SAVED, PATTERN n). The pattern playing goes on.</p>
+<h3 id="performance">PERFORMANCE</h3>
+<p>Black key 7 (in the step view, SHIFT + black key 7; also on the PATTERNS grid) turns PERFORMANCE on or off, after Elektron's temporary edits and CONTROL ALL. The key is lit while it is on, and PERF shows in red at the right of the track's view (REC, LOOP or ARM take its place while recording).</p>
+<p>Turned on, it keeps the state playing: every track's and subtrack's sound, the steps and their locks, lengths, clocks and directions, levels, pans, mutes, octaves, chords, arpeggiators, sidechains, the effects, tempo, scale and MUTE QT. Change anything: sounds, EDIT pages, phrases, steps, breaks. Turned off, all of it is put back as it was (RESTORED), and nothing is left marked unsaved. Sounds still ringing are not cut; they and the effects' tails ring out. Loops are not part of it: a loop recorded or emptied meanwhile stays so. With a pattern on its way, it does not turn on: WAIT shows.</p>
+<p>While it is on, KNOB 1–4 (and SHIFT + them) turn their parameter on the chosen track and on every other track and subtrack with notes (steps or a loop), each on its own sound, by the same steps.</p>
+<p><b>Keeping a pattern.</b> SAVE still opens the PATTERNS grid: hold a white key 0.8 s to keep what is playing as that pattern, its steps and the tracks' state. Keeping a pattern also keeps the session as it plays at that moment (sounds, effects, tempo, scale); changes made after the last pattern kept are undone as PERFORMANCE goes off. If no pattern is kept, nothing stays. The machine returns to the pattern it started on; if it was kept over, as kept. The pattern reaches the flash as PERFORMANCE goes off.</p>
+<p>Meanwhile, sessions (SHIFT + SAVE, SAVE held), switching patterns (keys or program changes), copying, pasting or emptying patterns, and the <a href="#backup">Backup</a> page wait till it is off: PERF MODE shows. MIDI LEARN's bindings are written to the flash as it goes off. If the copy it keeps did not check as it goes off, the steps come back but the rest stays as it is: NOT RESTORED shows.</p>
+<p><b>CTRL</b> on each session's page (KNOBS or ALL; saved with the session) sets what else follows the chosen track while PERFORMANCE is on:</p>
+<ul>
+<li>KNOBS (at first): only the knobs.</li>
+<li>ALL: also a new phrase or new locks (black key 1, SHIFT + it, in the step view), a direction, the TRACK page's LENGTH, CLOCK, PROB and SWING, the PHRASE page's DENSITY and COMPLEXITY, the step view's transposition, HOME's and SHIFT + HOME's new sound, and every turn on an EDIT page: the same page and row on each other track, by the same steps (on another machine that row may be another parameter). Lists, such as a machine type or a route, are left alone.</li>
+</ul>
+<p>Each track and subtrack does it on its own steps and sound; those without notes are left alone.</p>
 <h2 id="effects-seq">Effects (SEQ)</h2>
 <p><b>SEQ</b> shows CHORUS, COMP, DELAY and REVERB, then the chosen track's LFO 1, LFO 2 and LFO 3, in turn, then goes back. <b>OCT− / OCT+</b> move between them. <b>KNOB 1–4</b> set the first 4 rows; <b>PRESETS</b> turned right shows the next 4. A track button goes back to the track; <b>SHIFT +</b> a track button chooses another track and stays on the page.</p>
 <table>
@@ -433,7 +451,8 @@
 </table>
 <p><b>SHIFT + SEQ</b> draws the chosen track's 3 LFOs anew (LFO RANDOM): 2 or 3 of them on, each to a different parameter, with any wave, speed, mode and depth. It takes risks on purpose: press it again for another. LFO settings cannot be step-locked.</p>
 <h2 id="sequencer">Sequencer</h2>
-<p>Each track has 16 steps, with its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X) and direction. <b>PLAY</b> starts and stops it.</p>
+<p>Each track has 16 steps, with its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X), direction, probability and swing. <b>PLAY</b> starts and stops it.</p>
+<p>On the TRACK page (black key 2 in the step view), KNOB 3 sets PROB, 0 to 100% (100% at first): the chance that each of the track's steps plays, decided each time the step comes round. KNOB 4 sets SWING, 50 to 80% (50%, straight, at first): the share of each pair of steps the first one takes. The second step of each pair, counted from the track's first step, plays late by (SWING - 50) / 50 of a step.</p>
 <h3 id="step-view">Step view</h3>
 <p>Black key 9 (<b>STEP</b>) turns the step view on or off. The white keys are then the chosen track's 16 steps: lit, a note; dim, empty; the step playing the other way round; past the track's length, dark. Steps are silent while you edit them.</p>
 <table>
@@ -450,7 +469,7 @@
 <table>
 <tr><th>Key</th><th>What it does</th></tr>
 <tr><td>black key 1</td><td>new <a href="#phrases">phrase</a> for the track. <b>SHIFT +</b>: new locks on its steps. <b>Held</b> (0.8 s): PHRASE page</td></tr>
-<tr><td>black key 2</td><td>TRACK page: LENGTH and CLOCK</td></tr>
+<tr><td>black key 2</td><td>TRACK page: LENGTH, CLOCK, PROB and SWING</td></tr>
 <tr><td>black key 3</td><td>TRIG on or off: a step held shows its own page</td></tr>
 <tr><td>black key 4</td><td>MOD on or off: a step held shows its MOD page</td></tr>
 <tr><td>black keys 6, 7, 8</td><td>track's direction: REVERSE, PING-PONG, RANDOM; pressed again, forwards</td></tr>
@@ -475,31 +494,32 @@
 <h2 id="tempo">Tempo</h2>
 <p><b>Hold PLAY</b> (0.8 s) for the TEMPO page: <b>PRESETS</b> sets the session's tempo, 10 to 300 BPM. A track button leaves it.</p>
 <h2 id="patterns">Patterns</h2>
-<p>A session has 16 patterns. A pattern holds every track's and subtrack's steps (with their length, clock, direction and transposition), its loops, and each track's mute, machine, octave, level, pan, sidechain, CHORD mode and arpeggiator. The sounds, the effects, the tempo, the scale and the root belong to the session.</p>
+<p>A session has 16 patterns. A pattern holds every track's and subtrack's steps (with their length, clock, direction, probability, swing and transposition), its loops, and each track's mute, subtrack mutes, machine, octave, level, pan, sidechain, CHORD mode and arpeggiator. The sounds, the effects, the tempo, the scale and the root belong to the session.</p>
 <p><b>SAVE</b> opens the PATTERNS grid; SAVE again leaves it. The white keys are the 16 patterns, the one playing brighter. On the screen the pattern playing is green (orange with changes not saved), saved patterns white, empty ones grey, and the white square is the cursor: it opens on the pattern playing, and <b>PRESETS</b> moves it.</p>
 <table>
 <tr><th>To</th><th>Do this</th></tr>
 <tr><td>Play a pattern</td><td>press and release its white key. While the sequencer plays, it starts at the end of the chosen track's steps</td></tr>
-<tr><td>Save the pattern playing into a slot</td><td>hold the slot's white key 0.8 s, or move the cursor there and hold SAVE; the slot may be empty or not, and the pattern playing goes on</td></tr>
+<tr><td>Save the pattern playing into a slot</td><td>hold the slot's white key 0.8 s; the slot may be empty or not. That slot plays from then on; the pattern saved from keeps what it held, its mutes included</td></tr>
 <tr><td>Save its changes in its own slot</td><td>hold its own white key 0.8 s</td></tr>
 <tr><td>Copy a pattern</td><td>SHIFT + hold its key 0.8 s</td></tr>
 <tr><td>Paste it</td><td>SHIFT + hold another key 0.8 s</td></tr>
 <tr><td>Empty a pattern</td><td>hold SHIFT and black key 1, and press its key</td></tr>
 <tr><td>Leave the grid</td><td>SAVE, or a track button</td></tr>
 </table>
-<p>A changed pattern keeps its changes when you switch away, until the session is saved or loaded. A pattern that unmutes a track starts that track cleanly, without notes left over from the muted time. Every note is always saved; on a pattern crowded with locks, the last locks may be left out. MUTE mode and BREAK work on the grid too, and MIDI program changes 0 to 15 choose patterns 1 to 16 (<a href="#midi">MIDI</a>).</p>
+<p>A changed pattern keeps its changes when you switch away, until the session is saved or loaded. A pattern that unmutes a track starts that track cleanly, without notes left over from the muted time. Every note is always saved; on a pattern crowded with locks, the last locks may be left out. MUTE mode, BREAK and PERFORMANCE work on the grid too, and MIDI program changes 0 to 15 choose patterns 1 to 16 (<a href="#midi">MIDI</a>).</p>
 <h2 id="sessions">Sessions</h2>
 <p>16 sessions are kept in the FM-1's flash. A session holds everything: every track's and subtrack's sounds and settings, the effects, the tempo, the scale and root, the 16 patterns with their loops, and the pattern playing.</p>
-<p><b>SHIFT + SAVE</b> opens the SESSIONS list; SHIFT + SAVE again leaves it. <b>PRESETS</b> chooses a slot and <b>SAVE</b> opens its page: BACK, LOAD, SAVE, COPY, DELETE, TEMPO, MUTE QT (<a href="#mute-mode">MUTE mode</a>). SAVE runs the row chosen, or moves to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it as it was). Loading over changes not saved, saving over another session, copying over one and deleting ask first: NO or YES on PRESETS.</p>
+<p><b>SHIFT + SAVE</b> opens the SESSIONS grid, laid out as the PATTERNS grid; SHIFT + SAVE again leaves it. The white keys are the 16 slots (lit dimly; the session playing brighter). On the screen the session playing is green (orange with changes not saved), saved sessions white, empty ones grey, and the white square is the cursor: it opens on the session playing, and <b>PRESETS</b> moves it. <b>SAVE</b> opens the page of the slot under the cursor: BACK, LOAD, SAVE, COPY, DELETE, TEMPO, MUTE QT (<a href="#mute-mode">MUTE mode</a>), CTRL (<a href="#performance">PERFORMANCE</a>) and GEN LOCK (<a href="#sounds">Sounds</a>). SAVE runs the row chosen, or moves to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it as it was); SHIFT + SAVE goes back to the grid. On the page, loading over changes not saved, saving over another session, copying over one and deleting ask first: NO or YES on PRESETS.</p>
 <table>
 <tr><th>To</th><th>Do this</th></tr>
-<tr><td>Save the session playing</td><td>hold SAVE (or HOME) 0.8 s, away from the SESSIONS pages and the PATTERNS grid. Never saved, it offers the first empty slot (SAVE NEW?)</td></tr>
-<tr><td>Load a session</td><td>its page, LOAD</td></tr>
+<tr><td>Load a session</td><td>press and release its white key: it loads at once. With changes not saved, UNSAVED: AGAIN shows; press the same key again within 2 s. Or its page, LOAD</td></tr>
+<tr><td>Save the session playing into a slot</td><td>hold the slot's white key 0.8 s; empty or not, it is saved there without asking</td></tr>
+<tr><td>Save the session playing</td><td>hold SAVE 0.8 s, away from the SESSIONS pages and the PATTERNS grid. Never saved, it offers the first empty slot (SAVE NEW?)</td></tr>
 <tr><td>Start a new session</td><td>SAVE on an empty slot's page: new sounds, a scale and root at random, tempo 120, no patterns or loops. It asks first if the session playing has changes not saved. With nothing saved yet, it saves what is playing there instead</td></tr>
 <tr><td>Copy a session into another slot</td><td>its page, COPY, then the slot</td></tr>
 <tr><td>Delete a session</td><td>its page, DELETE</td></tr>
 </table>
-<p>Loading a session brings all of it back; while the sequencer plays, its loops start at the next bar. Loops take room in a store shared by all the sessions: if it is full, NO ROOM FOR LOOPS shows and nothing is saved; deleting a session frees room. Sessions saved by older builds load as they played. Changes not saved before the FM-1 is switched off are lost.</p>
+<p>Loading a session brings all of it back; while the sequencer plays, its loops start at the next bar. Loops take room in a store shared by all the sessions: if it is full, NO ROOM FOR LOOPS shows and nothing is saved; deleting a session frees room. Sessions saved by older builds load as they played. Changes not saved before the FM-1 is switched off are lost. During PERFORMANCE, sessions wait: PERF MODE shows.</p>
 <p>How the FM-1 starts is set in <a href="#global-setup">GLOBAL SETUP</a> &gt; START: with a new session (NEW) or the last session loaded or saved (LAST).</p>
 <h3 id="backup">Backup</h3>
 <p>The website's <a href="https://nzimas.github.io/bigorna/backup.html">Backup page</a> (desktop Chrome, Edge or Opera, over USB MIDI) copies every session, with its patterns and loops, and GLOBAL SETUP to a file on the computer, and writes them back. Use it before installing another firmware: Bigorna keeps its sessions where Tonitor keeps its own, so either may overwrite the other's. A restore puts each session back into its own slot and leaves the others; RESTORED S3 (or SETUP) shows as each lands.</p>
@@ -558,7 +578,7 @@
 <li><b>MacBook Air M5 (macOS), over USB-C:</b> FM-1 Bigorna, 2 input channels, 44,100 Hz, every packet in order with 6 tracks playing.</li>
 </ul>
 <h2 id="screen">Screen</h2>
-<p>Few words, very large type, high contrast, and a colour for each track. The track's view shows, from the top: the pattern playing (orange with changes not saved) and the chord form (or ARP) at the top left; the battery, the octave and the transposition (T+2) at the top right, with REC or LOOP while recording; the track's number, its machine and its sound's family.</p>
+<p>Few words, very large type, high contrast, and a colour for each track. The track's view shows, from the top: the pattern playing (orange with changes not saved) and the chord form (or ARP) at the top left; the battery, the octave and the transposition (T+2) at the top right, with REC or LOOP while recording (otherwise PERF, in red, while <a href="#performance">PERFORMANCE</a> is on); the track's number, its machine and its sound's family.</p>
 <p>The battery shows 3 green bars when full, then 2 green, 1 amber, and 1 red when it runs low. On USB power it shows a white bolt instead.</p>
 <h2 id="rescue">Rescue</h2>
 <p>Hold <b>OCT−</b> while switching the FM-1 on for the rescue screen, from which the installer can run again; 2 failed starts in a row also lead there. If the FM-1 starts but no longer answers over USB, hold <b>OCT−</b> and <b>OCT+</b> for 5 seconds while it runs: the chip's own update mode, from which a firmware can be restored with <a href="https://github.com/keremimo/melodee/blob/main/docs/RECOVERY.md">Melodee's recovery tool</a>.</p>

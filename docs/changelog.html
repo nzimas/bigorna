@@ -44,6 +44,88 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-88">Build 88</h2>
+<p>Added</p>
+<ul>
+<li>PROB and SWING on the TRACK page (black key 2 in the step view), on KNOB 3 and KNOB 4. PROB, 0 to 100%, is the chance that each of the track's steps plays, decided each time the step comes round; 100% plays every step. SWING, 50 to 80%, delays the second step of each pair, counted from the track's first step; 50% is straight. Both are per track and per subtrack, follow CTRL ALL, and are kept by patterns and by PERFORMANCE.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Patterns saved by earlier builds load with PROB 100% and SWING 50%. A pattern stores the two values only when some track has them away from those defaults, in 18 bytes before the tracks' state, and then has 18 bytes less for steps and locks. Earlier builds load patterns saved by this one without the two values.</li>
+</ul>
+<p>Tests</p>
+<ul>
+<li>The BREAK test accepts the ROLL way, which plays the track's own steps with ratchets, when the drawn way is ROLL.</li>
+</ul>
+<h2 id="build-87">Build 87</h2>
+<p>Removed</p>
+<ul>
+<li>SAVE held on the PATTERNS grid no longer saves a pattern. It saved into the slot under the cursor, which a white key press does not move, so after loading pattern 9 from its key it saved into slot 1. Hold a pattern's white key to save the pattern playing there. SAVE held on the grid now does nothing; elsewhere it still saves the session.</li>
+</ul>
+<h2 id="build-86">Build 86</h2>
+<p>Removed</p>
+<ul>
+<li>HOME held no longer saves the session; hold SAVE for that. Holding HOME now does nothing, and letting it go after a hold draws no sound. The gesture is kept free for later.</li>
+</ul>
+<h2 id="build-85">Build 85</h2>
+<p>Added</p>
+<ul>
+<li>GEN LOCK, on each session's page (OFF or ON, saved with the session). With ON, HOME and SHIFT + HOME do nothing: no new sound is drawn, and GEN LOCK shows. HOME held still saves the session. PERFORMANCE leaves it as set.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions saved by earlier builds load with GEN LOCK OFF. The setting takes a byte that was padding, so the session's size is unchanged and earlier builds load sessions saved by this one as before, without it.</li>
+</ul>
+<h2 id="build-84">Build 84</h2>
+<p>Fixed</p>
+<ul>
+<li>Patterns now keep subtrack mutes. Until now only the session kept them, so muting or unmuting ST-A to ST-D carried over into every pattern. Each pattern now holds its subtracks' mutes with the track's own mute: switching patterns brings them back, and a subtrack muted or unmuted marks the pattern changed.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Patterns saved by earlier builds have no subtrack mutes: playing one leaves the subtrack mutes as they are. Saved again, it keeps them. Earlier builds read patterns saved by this one as before, without the subtrack mutes.</li>
+</ul>
+<h2 id="build-83">Build 83</h2>
+<p>Fixed</p>
+<ul>
+<li>Patterns kept the wrong mutes. Saving the pattern playing into another slot on the PATTERNS grid left the old pattern playing with the changes, so they went into it as soon as you switched away. Now, as in Quasar, the slot saved into plays from then on (its loops carry on where they are), and the pattern saved from keeps what it held, its mutes and unmutes included. During PERFORMANCE the pattern playing stays, as before.</li>
+<li>PLAY did not stop the sequencer during a break on every track (SHIFT + black key 3): with SHIFT held, it turned the metronome on or off. While a break is held, PLAY now always starts or stops, so a piece can end on the break.</li>
+</ul>
+<h2 id="build-82">Build 82</h2>
+<p>Added</p>
+<ul>
+<li>PERFORMANCE, from Quasar, on black key 7 (in the step view, SHIFT + black key 7; also on the PATTERNS grid). On, it keeps the state playing; off, it puts all of it back (sounds, steps, levels, pans, mutes, chords, arpeggiators, sidechains, subtracks, effects, tempo, scale) without cutting sounds still ringing. Meanwhile KNOB 1 to 4 turn their parameter on every track and subtrack with notes. A pattern kept on the PATTERNS grid while it is on stays, with the session as it played then. Sessions, pattern switches, copy, paste, empty and the Backup page wait (PERF MODE).</li>
+<li>CTRL on each session's page: KNOBS (at first) or ALL. With ALL, a phrase, locks, a direction, LENGTH, CLOCK, DENSITY, COMPLEXITY, the transposition, HOME's new sound and EDIT turns also reach every other track with notes during PERFORMANCE.</li>
+<li>PERF in red on the track's view while PERFORMANCE is on.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>SHIFT + SAVE opens a SESSIONS grid, from Quasar, laid out as the PATTERNS grid: a white key let go loads its session at once (with changes not saved, press it again within 2 s); held 0.8 s, it saves the session playing there. PRESETS moves the cursor and SAVE opens the slot's page, as before.</li>
+<li>Black key 7 no longer plays a note out of the step view on the CHROMATIC scale.</li>
+</ul>
+<p>Fixed</p>
+<ul>
+<li>A restore from the Backup page brought sessions last saved by builds 52 to 79 back without their loops. They now come back with them.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions from earlier builds load as before, with CTRL on KNOBS.</li>
+<li>PERFORMANCE keeps its copy of the session in the flash's working buffer (RAM has no room for a second copy). Pattern saves made during it reach the flash as it goes off.</li>
+</ul>
+<h2 id="build-81">Build 81</h2>
+<p>Added</p>
+<ul>
+<li>Subtrack mutes. Hold a DRUM track's button and SHIFT: white keys 1 to 4 show its subtracks in use, lit if playing, dim if muted. A white key let go within 0.8 s mutes or unmutes that subtrack (ST-A to ST-D). A muted subtrack fades out, sends no MIDI notes and ducks nothing; its steps keep running. The track's own mute in MUTE mode still mutes all its subtracks. Sessions keep the subtrack mutes.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>Holding a DRUM track's button lights all 4 subtrack keys dim (the chosen one lit), not only the ones in use.</li>
+<li>Giving up a subtrack is now SHIFT + the track's button + its white key held 0.8 s (was: pressed).</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions from earlier builds load as before, with no subtrack muted.</li>
+</ul>
 <h2 id="build-80">Build 80</h2>
 <p>Changed</p>
 <ul>

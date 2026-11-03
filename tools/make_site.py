@@ -295,6 +295,7 @@ KNOB_PAGES = [
     ("SHIFT held", "", "", "chorus send", "overdrive"),
     ('<a href="#sound-pages-edit">EDIT</a>', "row A (E)", "row B (F)", "row C (G)", "row D (H)"),
     ('<a href="#effects-seq">SEQ</a>', "row A (E)", "row B (F)", "row C (G)", "row D (H)"),
+    ('<a href="#step-view">TRACK</a> page', "LENGTH", "CLOCK", "PROB", "SWING"),
     ('a step held, <a href="#step-pages">TRIG</a> on', "note", "velocity", "length", "condition"),
     ('a step held, <a href="#step-pages">MOD</a> on', "MUTATE", "MUT EVERY", "MIDI FX", "FX EVERY"),
 ]
