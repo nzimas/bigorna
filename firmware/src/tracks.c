@@ -109,6 +109,8 @@ static uint8_t dk_on;                            /* (some track ducked) */
 #define PL_REV (7u * 8u + 5u)
 #define PL_CHR (7u * 8u + 6u)
 #define PL_MNG (8u * 8u)                         /* (MANGLE: 64 .. 71) */
+#define PL_WRK 73u                               /* (build 89, WRECK -- params.c's page 9: its rows 73 .. 80, the pan
+                                                  * having 72, page 9's first) */
 static int pl_track(uint32_t id) { return id == PL_DEL || id == PL_REV || id == PL_CHR || id >= PL_MNG; }
 static void par_put(sound_t *s, uint32_t id, uint32_t j, int32_t v);   /* (params.c) */
 static void lfo_apply(sound_t *s, const int32_t *mod);   /* (params.c: the LFOs' shares onto their destinations) */
@@ -2280,8 +2282,10 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
                 sc1 = send_q15(v);
             else if (id == PL_PAN)
                 pan = v;
-            else if (id >= PL_MNG && id < PL_MNG + NM)
+            else if (id >= PL_MNG && id < PL_MNG + NMNG)
                 mg[id - PL_MNG] = (uint8_t)v;
+            else if (id >= PL_WRK && id < PL_WRK + (NM - M_FOLD))
+                mg[M_FOLD + id - PL_WRK] = (uint8_t)v;
         }
         if (pan >= 0) {
             uint32_t ph = (uint32_t)pan * (0x40000000u / 127u);

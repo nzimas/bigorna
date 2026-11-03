@@ -1194,7 +1194,8 @@ static void pat_decode(const pat_t *p, seqbuf_t *b)
                 o += 1u;
             }
             for (l = 0; l < nl && o + 3u <= PAT_SEQ_ROOM; l++, o += 3u)
-                if (keep && p->seq[o] <= PL_PAN && l < NPL) {
+                if (keep && (p->seq[o] <= PL_PAN || (p->seq[o] >= PL_WRK && p->seq[o] < PL_WRK + (NM - M_FOLD))) &&
+                    l < NPL) {
                     b->lv[t][i][l] = (int16_t)(uint16_t)(p->seq[o + 1u] | p->seq[o + 2u] << 8);
                     b->lid[t][i][l] = p->seq[o];
                 }

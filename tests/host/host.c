@@ -2469,8 +2469,61 @@ static int cmd_projects(const char *dir)
             sound_t sn = *cur();
             par_put(&sn, PG_MNG, M_SLICE, 5);
             par_get(&sn, PG_MNG, M_SLICE, &pp);
-            EXPECT(str_eq(pp.name, "SLICE") && par_val(&sn, PG_MNG, M_SLICE) == 5 && pages_n(&sn) == SYN_PAGES[sn.mach] + 5u,
+            EXPECT(str_eq(pp.name, "SLICE") && par_val(&sn, PG_MNG, M_SLICE) == 5 && pages_n(&sn) == SYN_PAGES[sn.mach] + 6u,
                    "MANGLE: its own page, SLICE on knob C");
+        }
+        {   /* (build 89) WRECK: its page after MANGLE, the stage on a track's signal, its locks, the generator's draws */
+            static int32_t x[CTL], y[CTL];
+            static pat_t pp;
+            static seqbuf_t sb;
+            uint8_t m[NM];
+            par_t pp1;
+            sound_t sn = *cur();
+            char b[12];
+            uint32_t i, n = 0, k;
+            double ex = 0, ed = 0;
+            par_put(&sn, PG_WRK, 1, 90);
+            par_get(&sn, PG_WRK, 1, &pp1);
+            page_title(&sn, PG_WRK, b);
+            EXPECT(str_eq(pp1.name, "RING") && sn.mg[M_RING] == 90 && page_id(&sn, pages_n(&sn) - 1u) == PG_WRK &&
+                   str_eq(b, "WRECK"), "WRECK: the last page, RING on knob B");
+            memset(m, 0, sizeof m);
+            for (i = 0; i < CTL; i++)
+                x[i] = y[i] = mulq15(30000, sin_ph(i * 0x08000000u));
+            mangle_block(0, y, m);
+            EXPECT(!memcmp(x, y, sizeof x), "WRECK at 0: passed by");
+            m[M_FOLD] = 127;
+            mangle_block(0, y, m);
+            for (i = 0; i < CTL; i++) {
+                ex += (double)x[i] * x[i];
+                ed += (double)(y[i] - x[i]) * (y[i] - x[i]);
+                n += y[i] >= -32768 && y[i] <= 32768;
+            }
+            EXPECT(ed > ex * 0.1 && n == CTL, "FOLD: the signal folded back, within full scale");
+            m[M_FOLD] = 0;
+            m[M_RING] = 127;
+            m[M_RFRQ] = 127;
+            memcpy(y, x, sizeof y);
+            mangle_block(0, y, m);
+            EXPECT(memcmp(x, y, sizeof x) && mangle[0].rph, "RING: the signal ring-modulated, its sine running");
+            mangle[0].rph = 0;
+            EXPECT(pl_id(PG_WRK, 2) == PL_WRK + 2u && pl_pg(PL_WRK + 2u) == PG_WRK && pl_j(PL_WRK + 2u) == 2u &&
+                   pl_id(PG_MNG, M_SLICE) == PG_MNG * 8u + M_SLICE && pl_track(PL_WRK), "WRECK's locks: past the pan's");
+            seq_note[1][3] = 60;
+            pl_set(1, 3, PL_WRK + 1u, 100);
+            pat_take(&pp);
+            pl_clear(1, 3);
+            pat_decode(&pp, &sb);
+            for (k = 0, n = 0; k < NPL; k++)
+                n += sb.lid[1][3][k] == PL_WRK + 1u && sb.lv[1][3][k] == 100;
+            EXPECT(n == 1u, "a pattern keeps a RING lock");
+            seq_note[1][3] = 0;
+            for (k = 0, n = 0; k < 200u; k++) {
+                sound_t g;
+                gen_sound(&g, ENG_FMT, -1, -1, 1000u + k);
+                n += g.mg[M_FOLD] || g.mg[M_RING];
+            }
+            EXPECT(n > 30u && n < 120u, "new sounds: some wrecked");
         }
         {
             vck_t c;
@@ -3224,7 +3277,7 @@ static int cmd_projects(const char *dir)
             key(KEY_EDIT, 1);
             key(KEY_EDIT, 0);
             sn = cur();
-            fl = pages_n(sn) - 5u;               /* (FLTR 1) */
+            fl = pages_n(sn) - 6u;               /* (FLTR 1) */
             ui.edit_pg = (uint8_t)fl;
             turn(EN_PRESET, 4);                  /* (E: FREQ) */
             EXPECT(ui.lsel == 4u && ui.ehalf == 1u, "PRESETS: the row (E), the half shown with it");

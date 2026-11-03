@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 89
+
+Added
+- WRECK, a sound page after MANGLE, from the Quasar firmware: FOLD (a triangle wavefolder, the signal driven up to
+  5 times), RING (a ring modulator mixed in) and RING FRQ (its sine, 20 Hz to 5 kHz, whatever note plays). It works
+  on each track's voices together, before MANGLE. Steps can lock all three, PERFORMANCE's CTRL ALL moves them, and
+  MIDI LEARN can bind them. About 3 in 10 sounds HOME draws now come with FOLD or RING.
+
+Fixed
+- A CC for a SYN page the machine lacks was checked against the number of pages less 5; with the new page it is
+  checked against the machine's SYN pages themselves.
+
+Compatibility
+- The three values take MANGLE's spare place and two bytes of padding in each sound, so sessions keep their size
+  and layout. Sessions saved by earlier builds load with WRECK off. Earlier builds load sessions from this one
+  without WRECK, and drop WRECK's step locks from its patterns.
+
 ## Build 88
 
 Added

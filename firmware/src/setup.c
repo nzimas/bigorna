@@ -99,7 +99,7 @@ static void setup_load(void)                     /* (the start: the settings as 
         for (i = 0; i < NLEARN; i++) {
             learn_t *l = &mlearn[i];
             if (l->kind > LK_FX || !l->ch || l->ch > 16u || l->cc > 127u || l->track >= NTRACK ||
-                l->id >= (l->kind == LK_FX ? NFXP * 8u : MIDI_NPAR))
+                l->id >= (l->kind == LK_FX ? NFXP * 8u : (PG_WRK + 1u) * 8u))   /* (a sound's: to WRECK's, build 89) */
                 l->kind = LK_NONE;
         }
     }

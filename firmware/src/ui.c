@@ -631,6 +631,10 @@ static void steps_clear(uint32_t t)               /* track t's steps emptied: no
     }
     pat_dirty = 1;
 }
+/* a page's parameter as a lock (page x 8 + knob; WRECK's from PL_WRK, past the pan's), and back */
+static uint32_t pl_id(uint32_t pg, uint32_t j) { return pg == PG_WRK ? PL_WRK + j : pg * 8u + j; }
+static uint32_t pl_pg(uint32_t id) { return id >= PL_WRK && id < PL_WRK + 8u ? PG_WRK : id >> 3; }
+static uint32_t pl_j(uint32_t id) { return id >= PL_WRK && id < PL_WRK + 8u ? id - PL_WRK : id & 7u; }
 /* a parameter's definition (the pan's, as a bipolar 0 .. 127), and the sound's own value of it */
 static void pl_par(const sound_t *s, uint32_t id, par_t *p)
 {
@@ -638,9 +642,9 @@ static void pl_par(const sound_t *s, uint32_t id, par_t *p)
     if (id == PL_PAN)
         *p = PAN;
     else
-        par_get(s, id >> 3, id & 7u, p);
+        par_get(s, pl_pg(id), pl_j(id), p);
 }
-static int32_t pl_base(const sound_t *s, uint32_t id) { return id == PL_PAN ? 64 : par_val(s, id >> 3, id & 7u); }
+static int32_t pl_base(const sound_t *s, uint32_t id) { return id == PL_PAN ? 64 : par_val(s, pl_pg(id), pl_j(id)); }
 static int32_t pl_val(uint32_t t, uint32_t i, uint32_t id)   /* step i's value of a parameter: locked, or the sound's */
 {
     int j = pl_find(t, i, id);
@@ -1452,7 +1456,7 @@ static int snd_cc_set(uint32_t t, uint32_t id, uint32_t j, uint32_t v)
 {
     sound_t *s = &ui.snd[t][ui.eng[t]];
     par_t p;
-    if (id < 4u && id >= pages_n(s) - 5u)        /* (a SYN page this machine has not) */
+    if (id < 4u && id >= SYN_PAGES[s->mach % NENG])   /* (a SYN page this machine has not) */
         return 0;
     par_get(s, id, j, &p);
     if (p.kind == PK_NONE || p.hi <= p.lo)
@@ -2074,7 +2078,7 @@ static void ui_input(void)
         uint32_t id = page_id(cur(), ui.edit_pg);
         for (j = 0; j < 4u; j++)
             if ((s = enc_take(KNOB[j])) != 0) {
-                pl_turn(id * 8u + j + 4u * ui.half, s, 0);
+                pl_turn(pl_id(id, j + 4u * ui.half), s, 0);
                 ui.touched = (int8_t)j;
                 ui.touch_until = fm1_ms + 1500u;
             }
@@ -3190,7 +3194,7 @@ static void draw_edit_page(void)
         par_t p;
         int32_t v;
         char b[16];
-        uint32_t pid = id * 8u + j + 4u * ui.half;
+        uint32_t pid = pl_id(id, j + 4u * ui.half);
         int locked = st < NSTEP && pl_find(ui.sl, st, pid) >= 0;
         par_get(s, id, j + 4u * ui.half, &p);
         v = st < NSTEP ? pl_val(ui.sl, st, pid) : par_val(s, id, j + 4u * ui.half);

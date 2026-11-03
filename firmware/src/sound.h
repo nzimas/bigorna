@@ -17,8 +17,11 @@ enum { A_ATK, A_HOLD, A_DEC, A_SUS, A_REL, A_RSET, A_MODE, A_PAN, A_VOL, NA };
 enum { X_BR, X_OD, X_SRR, X_ODT, X_ODRT, X_DEL, X_REV, X_CHR, NX };   /* (X_ODT: OD TYPE from build 61; SRR's route
                                                                     * until build 16, GRAIN in build 17, then unused) */
 /* MANGLE page: DESTROY (digital destruction: its amount and its kind) and SLICE (a gate in time with the tempo: its
- * pattern, OFF or 1 .. 16; its rate; how deep it cuts; its edges; the pattern turned by steps) */
-enum { M_DST, M_DMODE, M_SLICE, M_SRATE, M_SDEPTH, M_SEDGE, M_SSHIFT, M_SPARE, NM };
+ * pattern, OFF or 1 .. 16; its rate; how deep it cuts; its edges; the pattern turned by steps). Then (build 89, after
+ * Quasar's) the WRECK page's: FOLD, RING, RING FRQ -- in MANGLE's spare place and the two bytes of padding before
+ * seed, so that the sound's size and layout, and the sessions', stay as they were (theirs 0: off) */
+enum { M_DST, M_DMODE, M_SLICE, M_SRATE, M_SDEPTH, M_SEDGE, M_SSHIFT, M_FOLD, M_RING, M_RFRQ, NM };
+#define NMNG 7u                  /* (MANGLE's own: M_DST .. M_SSHIFT) */
 
 /* SYN parameters, by machine (page-major: page 1 knob A = 0 .. page 4 knob H = 31) */
 enum {   /* 4-OP */
@@ -72,6 +75,8 @@ typedef struct {
     uint32_t seed;
     lfo_t lfo[NLFO];             /* the three LFOs (from build 50; sessions saved before load with them off) */
 } sound_t;
+typedef char snd_layout[sizeof(sound_t) == 136u && __builtin_offsetof(sound_t, seed) == 108u ? 1 : -1];   /* (WRECK:
+                                                  * in the padding, the layout as saved) */
 
 /* one parameter's place on a page, its range, and its centre (bipolar parameters show value - centre) */
 typedef struct { const char *name; int16_t lo, hi, mid; } pdef_t;

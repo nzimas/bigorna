@@ -1056,6 +1056,19 @@ static void lfo_random(sound_t *s, uint32_t seed)
 }
 
 /* a new sound for machine m: of family fam (>= 0), or of any family but avoid (-1: none) */
+/* (build 89) WRECK now and then, after Quasar's: a fold, or a ring at a frequency of its own (seldom both) -- the more
+ * industrial the taste, the likelier. Drawn last, so the draws before it stay as they were */
+static void wreck(sound_t *s, gctx_t *g)
+{
+    if (!CH(g, 25 + g->ind / 5))
+        return;
+    if (CH(g, 50))
+        s->mg[M_FOLD] = (uint8_t)RI(g, 20, 90);
+    if (!s->mg[M_FOLD] || CH(g, 15)) {
+        s->mg[M_RING] = (uint8_t)RI(g, 35, 115);
+        s->mg[M_RFRQ] = (uint8_t)RI(g, 10, 120);
+    }
+}
 static void gen_sound(sound_t *s, uint32_t m, int32_t fam, int32_t avoid, uint32_t seed)
 {
     gctx_t g;
@@ -1083,6 +1096,7 @@ static void gen_sound(sound_t *s, uint32_t m, int32_t fam, int32_t avoid, uint32
         int32_t od0 = s->fx[X_OD];
         grit(s, &g);
         grit_lfo(s, &g, str_has(RECIPES[fam].name, "KICK"));
+        wreck(s, &g);
         s->amp[A_VOL] = (uint8_t)clampi(s->amp[A_VOL] - (s->fx[X_OD] - od0) / 5, 40, 124);   /* (more drive: less level) */
     }
     s->fx[X_OD] = (uint8_t)(s->fx[X_OD] * 100 / 127);   /* (the recipes' drive in 0 .. 127: OVERDRIVE is 0 .. 100) */

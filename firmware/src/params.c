@@ -65,7 +65,7 @@ static const par_t PAR_SW[1][8] = {
 static const uint8_t SYN_PAGES[NENG] = {4, 4, 3, 1};
 
 /* the common pages: what they are, then their parameters (the FLTR machine changes knobs F and G's names) */
-enum { PG_FLT1 = 4, PG_FLT2, PG_AMP, PG_FX, PG_MNG };
+enum { PG_FLT1 = 4, PG_FLT2, PG_AMP, PG_FX, PG_MNG, PG_WRK };
 static const par_t PAR_FLT2[8] = {PN("FLT DELAY"), P_("KEYTRACK", 0, 127, 0, PK_NUM), PN("BASE"), PN("WIDTH"),
                                   PL("BW ROUTE", 1, L_RT), PO("ENV RESET"), PL("FILTER", 5, L_FLT), PX};
 static const par_t PAR_AMP[8] = {PN("ATTACK"), P_("HOLD", 0, 127, 0, PK_HOLD), PN("DECAY"), PN("SUSTAIN"),
@@ -73,6 +73,7 @@ static const par_t PAR_AMP[8] = {PN("ATTACK"), P_("HOLD", 0, 127, 0, PK_HOLD), P
 static const par_t PAR_MNG[8] = {PN("DESTROY"), PL("DST MODE", 3, L_DMODE), PL("SLICE", 16, L_SLICE),
                                  PL("SLICE RATE", 3, L_SRATE), PN("SLC DEPTH"), PN("SLC EDGE"),
                                  P_("SLC SHIFT", 0, 15, 0, PK_NUM), PX};
+static const par_t PAR_WRK[8] = {PN("FOLD"), PN("RING"), PN("RING FRQ"), PX, PX, PX, PX, PX};   /* (build 89) */
 static const par_t PAR_FX[8] = {PN("BIT REDUCE"), P_("OVERDRIVE", 0, 100, 0, PK_NUM), PN("SRR"), PL("OD TYPE", 2, L_ODT),
                                 PN("DELAY SEND"), PN("REVERB SEND"), PN("CHORUS SEND"), PL("OD ROUTE", 1, L_RT)};
 /* (the FX page's order is the Digitone II's: BR OVER SRR SR.RT DEL REV CHR OD.RT) */
@@ -80,8 +81,8 @@ static const uint8_t FX_SLOT[8] = {X_BR, X_OD, X_SRR, X_ODT, X_DEL, X_REV, X_CHR
 static const uint8_t AMP_SLOT[8] = {A_ATK, A_HOLD, A_DEC, A_SUS, A_REL, A_RSET, A_MODE, A_VOL};
 static const uint8_t FLT2_SLOT[8] = {F_DEL, F_KEYT, F_BASE, F_WDTH, F_BWRT, F_RSET, 0xFF, 0xFE};
 
-/* the pages of a sound: its machine's SYN pages, then FLTR 1, FLTR 2, AMP, FX, MANGLE */
-static uint32_t pages_n(const sound_t *s) { return SYN_PAGES[s->mach % NENG] + 5u; }
+/* the pages of a sound: its machine's SYN pages, then FLTR 1, FLTR 2, AMP, FX, MANGLE, WRECK */
+static uint32_t pages_n(const sound_t *s) { return SYN_PAGES[s->mach % NENG] + 6u; }
 /* page index p (0 .. pages_n - 1) as a page id: SYN 0 .. 3, or PG_* */
 static uint32_t page_id(const sound_t *s, uint32_t p)
 {
@@ -90,7 +91,7 @@ static uint32_t page_id(const sound_t *s, uint32_t p)
 }
 static void page_title(const sound_t *s, uint32_t id, char *b)
 {
-    static const char *const T[5] = {"FLTR 1", "FLTR 2", "AMP", "FX", "MANGLE"};
+    static const char *const T[6] = {"FLTR 1", "FLTR 2", "AMP", "FX", "MANGLE", "WRECK"};
     if (id < 4u) {
         str_cpy(b, "SYN  ", 8);
         b[4] = (char)('1' + id);
@@ -160,8 +161,10 @@ static void par_get(const sound_t *s, uint32_t id, uint32_t j, par_t *p)
         *p = PAR_AMP[j];
     else if (id == PG_FX)
         *p = PAR_FX[j];
-    else
+    else if (id == PG_MNG)
         *p = PAR_MNG[j];
+    else
+        *p = PAR_WRK[j];
 }
 /* where it lives in the sound */
 static int32_t par_val(const sound_t *s, uint32_t id, uint32_t j)
@@ -177,6 +180,8 @@ static int32_t par_val(const sound_t *s, uint32_t id, uint32_t j)
         return s->amp[AMP_SLOT[j]];
     if (id == PG_FX)
         return s->fx[FX_SLOT[j]];
+    if (id == PG_WRK)
+        return j < NM - M_FOLD ? s->mg[M_FOLD + j] : 0;
     return s->mg[j];
 }
 static void par_put(sound_t *s, uint32_t id, uint32_t j, int32_t v)
@@ -195,7 +200,10 @@ static void par_put(sound_t *s, uint32_t id, uint32_t j, int32_t v)
         s->amp[AMP_SLOT[j]] = (uint8_t)v;
     else if (id == PG_FX)
         s->fx[FX_SLOT[j]] = (uint8_t)v;
-    else
+    else if (id == PG_WRK) {
+        if (j < NM - M_FOLD)
+            s->mg[M_FOLD + j] = (uint8_t)v;
+    } else if (j < NMNG)
         s->mg[j] = (uint8_t)v;
 }
 /* a ratio (x 4) as text: 0.25, 0.5, 0.75, 1, 1.25 .. 16 */

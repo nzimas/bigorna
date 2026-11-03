@@ -128,7 +128,7 @@ sessions saved by older builds), HOME draws as above.
 
 ## Sound pages (EDIT)
 
-Black key 10 (**EDIT**) shows the sound's pages: SYN 1 to 4 (the machine's), FLTR 1, FLTR 2, AMP, FX and MANGLE. Each
+Black key 10 (**EDIT**) shows the sound's pages: SYN 1 to 4 (the machine's), FLTR 1, FLTR 2, AMP, FX, MANGLE and WRECK. Each
 page has 8 parameters: **KNOB 1–4** set A to D; **PRESETS** turned right shows E to H, left goes back. **OCT− /
 OCT+** move between the pages. EDIT again leaves.
 
@@ -175,7 +175,7 @@ A swarm of 6 detuned oscillators and a main oscillator.
 | --- | --- |
 | SYN 1 | TUNE, SWRM WAVE, DETUNE, MIX, MAIN OCT (−2, −1, 0), MAIN WAVE, ANIMATION, NOISE MOD |
 
-### FLTR, AMP, FX and MANGLE
+### FLTR, AMP, FX, MANGLE and WRECK
 
 These pages are the same on every machine.
 
@@ -186,6 +186,7 @@ These pages are the same on every machine.
 | AMP | ATTACK, HOLD, DECAY, SUSTAIN, RELEASE, RESET, MODE (AHD or ADSR), VOLUME |
 | FX | BIT REDUCE, OVERDRIVE, SRR (sample-rate reduction), OD TYPE, the DELAY, REVERB and CHORUS sends, OD ROUTE |
 | MANGLE | DESTROY and DST MODE, SLICE, SLICE RATE, SLC DEPTH, SLC EDGE, SLC SHIFT |
+| WRECK | FOLD, RING, RING FRQ |
 
 - **FILTER**: MULTI (multimode), LP4 (4-pole low-pass), LEGACY (low- or high-pass), COMB−, COMB+, EQ.
 - **OD TYPE**: VALVE (2 valve-style stages), RAT (a RAT-style clipper, darker as it rises), FOLD (a wavefolder,
@@ -193,6 +194,11 @@ These pages are the same on every machine.
 - **DESTROY** breaks the sound digitally; DST MODE chooses how: WRAP, XOR, FLIP, DROP.
 - **SLICE** is a gate in time with the tempo: 16 patterns at 1/8, 1/16, 1/32 or 1/16 triplets, with its depth,
   edge and shift.
+- **WRECK** comes from the Quasar firmware. **FOLD** drives the track's signal up to 5 times into a triangle
+  wavefolder. **RING** mixes in a ring modulator whose sine runs at **RING FRQ** (20 Hz to 5 kHz), whatever note
+  plays. Both at 0 leave the sound alone. WRECK works on the track's voices together, before MANGLE, and steps can
+  lock it. About 3 in 10 new sounds from HOME come with FOLD or RING. WRECK has no fixed CCs; MIDI LEARN reaches
+  it.
 
 ## Keys and scales
 
