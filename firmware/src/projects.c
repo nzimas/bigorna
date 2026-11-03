@@ -25,7 +25,7 @@
  *                     empty or not (build 72); SHIFT and held 0.8 s, copies it (COPY P5 above the grid, blinking, and
  *                     its key) -- then SHIFT and another held 0.8 s pastes it there, saved and loaded (the same again,
  *                     or off the grid: let go); SHIFT and the 1st black key held, pressed, empties it
- *   SAVE held, HOME held   the session playing saved, into its slot
+ *   SAVE held         the session playing saved, into its slot
  *   a track's button  back to playing
  * A session loads at the pattern it was saved playing; the start, at the last session's (or pattern 1).
  * LOAD with changes not saved, SAVE over another, DELETE, and COPY over another ask first: NO / YES on PRESETS, SAVE
@@ -2154,7 +2154,7 @@ static void pat_poll(void)
     tempo_apply();
     ui.force = 1;
 }
-/* SAVE or HOME held: the session playing saved into its slot -- never saved, the first empty slot's page with SAVE
+/* SAVE held: the session playing saved into its slot -- never saved, the first empty slot's page with SAVE
  * NEW? (YES chosen; SAVE answers) */
 static void prj_quick_save(void)
 {

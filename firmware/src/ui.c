@@ -2022,7 +2022,8 @@ static void ui_input(void)
                 prj_quick_save();
         }
     }
-    /* HOME: let go soon, a new sound (SHIFT: of the same family); held 0.8 s, the project saved */
+    /* HOME: let go soon, a new sound (SHIFT: of the same family); held 0.8 s, nothing (build 86: it saved the project
+     * before -- SAVE held does; the gesture kept free) */
     if (btn_bit(press, B_HOME)) {
         ui.home_down = 1;
         ui.home_long = 0;
@@ -2035,10 +2036,8 @@ static void ui_input(void)
                 say("GEN LOCK", 700);
             else if (!ui.home_long)
                 new_sound(sh);
-        } else if (!ui.home_long && (uint32_t)(fm1_ms - ui.home_t0) >= 800u) {
+        } else if (!ui.home_long && (uint32_t)(fm1_ms - ui.home_t0) >= 800u)
             ui.home_long = 1;
-            prj_quick_save();
-        }
     }
     if (btn_bit(press, B_ARP) && sh) {               /* SHIFT + ARP: a scale and root at random, the SCALE page shown
                                                       * a moment over any page (Tonitor's; build 77) */

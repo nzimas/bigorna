@@ -1,5 +1,11 @@
 # Changelog
 
+## Build 86
+
+Removed
+- HOME held no longer saves the session; hold SAVE for that. Holding HOME now does nothing, and letting it go after a
+  hold draws no sound. The gesture is kept free for later.
+
 ## Build 85
 
 Added

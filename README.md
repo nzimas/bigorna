@@ -40,7 +40,6 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **SHIFT + PRESETS** | new sound of the family before or after. |
 | **HOME** | new sound for the chosen track ([Sounds](#sounds)). Nothing with GEN LOCK on. |
 | **SHIFT + HOME** | new sound of the same family. |
-| **HOME held** (0.8 s) | save the session, as SAVE held. |
 | **OCT− / OCT+** | chosen track's octave, −3 to +3. In the step view: track's [transposition](#transposition). |
 | **SHIFT + OCT− / OCT+** | every track's transposition. |
 | white keys | play the chosen track in the scale; the keys that play the root glow dimly. In the step view: track's 16 steps. On the PATTERNS grid: 16 patterns. |
@@ -124,8 +123,8 @@ There are 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE. Drone, 
 LFOs already set.
 
 **GEN LOCK** (on the session's page, saved with the session): with ON, HOME and SHIFT + HOME draw nothing and the
-sound stays as it is (GEN LOCK shows), so a press during a performance changes nothing. HOME held still saves the
-session. With OFF (at first, and for sessions saved by older builds), HOME draws as above.
+sound stays as it is (GEN LOCK shows), so a press during a performance changes nothing. With OFF (at first, and for
+sessions saved by older builds), HOME draws as above.
 
 ## Sound pages (EDIT)
 
@@ -314,7 +313,7 @@ plays at that moment (sounds, effects, tempo, scale); changes made after the las
 PERFORMANCE goes off. If no pattern is kept, nothing stays. The machine returns to the pattern it started on; if it
 was kept over, as kept. The pattern reaches the flash as PERFORMANCE goes off.
 
-Meanwhile, sessions (SHIFT + SAVE, SAVE or HOME held), switching patterns (keys or program changes), copying, pasting
+Meanwhile, sessions (SHIFT + SAVE, SAVE held), switching patterns (keys or program changes), copying, pasting
 or emptying patterns, and the [Backup](#backup) page wait till it is off: PERF MODE shows. MIDI LEARN's bindings are
 written to the flash as it goes off. If the copy it keeps did not check as it goes off, the steps come back but the
 rest stays as it is: NOT RESTORED shows.
@@ -494,7 +493,7 @@ first: NO or YES on PRESETS.
 | --- | --- |
 | Load a session | press and release its white key: it loads at once. With changes not saved, UNSAVED: AGAIN shows; press the same key again within 2 s. Or its page, LOAD |
 | Save the session playing into a slot | hold the slot's white key 0.8 s; empty or not, it is saved there without asking |
-| Save the session playing | hold SAVE (or HOME) 0.8 s, away from the SESSIONS pages and the PATTERNS grid. Never saved, it offers the first empty slot (SAVE NEW?) |
+| Save the session playing | hold SAVE 0.8 s, away from the SESSIONS pages and the PATTERNS grid. Never saved, it offers the first empty slot (SAVE NEW?) |
 | Start a new session | SAVE on an empty slot's page: new sounds, a scale and root at random, tempo 120, no patterns or loops. It asks first if the session playing has changes not saved. With nothing saved yet, it saves what is playing there instead |
 | Copy a session into another slot | its page, COPY, then the slot |
 | Delete a session | its page, DELETE |

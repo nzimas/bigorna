@@ -2631,7 +2631,7 @@ static int cmd_projects(const char *dir)
         memcpy(fx_cp, CP0, NCP);
         fx_cook_all();
     }
-    /* the long presses: SAVE held on the grid saves the pattern playing (the cursor on it), HOME held the project */
+    /* the long presses: SAVE held on the grid saves the pattern playing (the cursor on it), HOME held nothing */
     pat_tempo = 77;
     pat_dirty = 1;
     ui.page = PG_MAIN;
@@ -2685,8 +2685,8 @@ static int cmd_projects(const char *dir)
     fm1_in.buttons = 0;
     ui_input();
     fm1_ms += 2000;
-    EXPECT(!prj_dirty && !prj_read(2, 0) && ((const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t)))->tempo == 99,
-           "HOME held saves the project");
+    EXPECT(prj_dirty && !prj_read(2, 0) && ((const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t)))->tempo != 99,
+           "HOME held: no save (build 86)");
     /* SAVE held: the session saved at once; never saved, the first empty slot asked (SAVE NEW?, YES), SAVE: saved */
     ui.tempo = 101;
     prj_dirty = 1;
@@ -5083,7 +5083,7 @@ static int cmd_perf(const char *dir)
     btn(B_SAVE, 1);
     btn(B_FX, 0);
     PFEXPECT(ui.page == PG_MAIN && ui.sel == 0u && ui.sl == 0u, "back to track 1");
-    {   /* (build 85) GEN LOCK on: HOME and SHIFT + HOME leave the sound; HOME held still saves */
+    {   /* (build 85) GEN LOCK on: HOME and SHIFT + HOME leave the sound */
         sound_t s0 = ui.snd[0][ui.eng[0]];
         btn(B_HOME, 0);
         PFEXPECT(!memcmp(&s0, &ui.snd[0][ui.eng[0]], sizeof s0) && str_eq(ui.msg, "GEN LOCK"), "GEN LOCK: HOME, no new sound");
@@ -5097,7 +5097,8 @@ static int cmd_perf(const char *dir)
         fm1_in.buttons = 0;
         ui_input();
         fm1_ms += 2000;
-        PFEXPECT(!prj_dirty && !memcmp(&s0, &ui.snd[0][ui.eng[0]], sizeof s0), "GEN LOCK: HOME held, the session saved");
+        PFEXPECT(prj_dirty && !memcmp(&s0, &ui.snd[0][ui.eng[0]], sizeof s0), "HOME held: no save, no new sound");
+        save_held(0);
         PFEXPECT(!prj_read(2, 0) && ((const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t)))->glk == 1u,
                  "GEN LOCK: saved with the session");
         ses_glk = 0;
