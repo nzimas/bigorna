@@ -264,7 +264,6 @@ static const char *const LMN[NLM] = {"FREE", "TRIG", "HOLD", "ONE", "HALF"};
 static uint8_t prj_dirty, pat_cur, pat_dirty;
 static int8_t prj_cur;
 static void prj_press(int sh);
-static void pat_save_cursor(void);
 static void prj_preset(int32_t s);
 static void prj_draw(void);
 static void prj_quick_save(void);
@@ -2016,9 +2015,8 @@ static void ui_input(void)
             }
         } else if (!ui.save_long && (uint32_t)(fm1_ms - ui.save_t0) >= 800u) {
             ui.save_long = 1;
-            if (ui.page == PG_PAT)
-                pat_save_cursor();
-            else
+            if (ui.page != PG_PAT)               /* (build 87: on the PATTERNS grid, nothing -- a white key held saves
+                                                  * the pattern playing there) */
                 prj_quick_save();
         }
     }

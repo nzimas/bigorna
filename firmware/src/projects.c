@@ -19,8 +19,8 @@
  *                     CTRL -- PERFORMANCE's KNOBS or ALL: ui.c --, GEN LOCK -- HOME idle, build 85): PRESETS changes it,
  *                     SAVE sets it, SHIFT + SAVE leaves it as it was; SHIFT + SAVE goes back a page (from the list:
  *                     out). SHIFT + SAVE held 0.8 s: GLOBAL SETUP (setup.c)
- *   SAVE              the PATTERNS grid, 1 .. 16 in four rows of four (SAVE again: out): PRESETS moves the cursor,
- *                     SAVE held saves the pattern playing into the slot under it. The white keys are the 16 patterns there, lit dimly (the one playing brighter): a white
+ *   SAVE              the PATTERNS grid, 1 .. 16 in four rows of four (SAVE again: out): PRESETS moves the cursor
+ *                     (SAVE held there: nothing, build 87). The white keys are the 16 patterns there, lit dimly (the one playing brighter): a white
  *                     key let go soon loads its pattern (the grid stays); held 0.8 s, the pattern playing saved there,
  *                     empty or not (build 72); SHIFT and held 0.8 s, copies it (COPY P5 above the grid, blinking, and
  *                     its key) -- then SHIFT and another held 0.8 s pastes it there, saved and loaded (the same again,
@@ -1444,7 +1444,7 @@ static void pat_copy_hold(uint32_t k)
  * as pattern k. Each track under it takes, at each of its steps, the step the break plays there (its plan: the way,
  * from where the track went into it), with one throw of its layers -- a ratchet, an octave leap, a flam (MIDI FX
  * FLAM), an accent, the gap emptying the bar's last steps; the other tracks, and the drones, as written. The pattern
- * holds the tracks' state playing, as SAVE held on the grid does; the one playing saved over: the break's steps play at the end
+ * holds the tracks' state playing, as a white key held on the grid does; the one playing saved over: the break's steps play at the end
  * of the chosen track's time through */
 static uint32_t rtg_of(uint32_t n)               /* (the ratchet nearest n hits, not more) */
 {
@@ -2102,9 +2102,6 @@ static void pat_switch(uint32_t k)
 /* each pass of the main loop: a pattern taken in by the sequencer, its switch finished (the one it left kept in the
  * store as it was, changes and all); stopped with one waiting, at once */
 static uint8_t pat_noted = 0xFF;                 /* (the pattern playing as the grid's cursor last followed it) */
-/* (build 76) the PATTERNS grid, SAVE held: the pattern playing saved into the slot under the cursor, as a white key
- * held saves it (Tonitor's SAVE held on its SNAPSHOTS page) */
-static void pat_save_cursor(void) { pat_save_as(pj.slot[1]); }
 /* (build 69) the PATTERNS grid opened: its cursor (white) on the pattern playing -- or the one waiting to */
 static void pat_grid_open(void)
 {

@@ -65,7 +65,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **SEQ** | [effects' pages](#effects-seq), then the chosen track's [LFOs](#lfos), in turn. |
 | **SHIFT + SEQ** | chosen track's LFOs drawn anew. |
 | **SAVE** | [PATTERNS](#patterns) grid; SAVE again leaves it. |
-| **SAVE held** (0.8 s) | save the session. On the PATTERNS grid: save the pattern playing into the slot under the cursor. |
+| **SAVE held** (0.8 s) | save the session. On the PATTERNS grid: nothing (hold a white key to save a pattern). |
 | **SHIFT + SAVE** | [SESSIONS](#sessions) grid; SHIFT + SAVE again leaves it. |
 | **SHIFT + SAVE held** (0.8 s) | [GLOBAL SETUP](#global-setup): START and MIDI. |
 | **MASTER** | output level. |
@@ -307,9 +307,8 @@ turn on: WAIT shows.
 While it is on, KNOB 1–4 (and SHIFT + them) turn their parameter on the chosen track and on every other track and
 subtrack with notes (steps or a loop), each on its own sound, by the same steps.
 
-**Keeping a pattern.** SAVE still opens the PATTERNS grid: hold a white key 0.8 s (or SAVE, on the cursor's slot) to
-keep what is playing as that pattern, its steps and the tracks' state. Keeping a pattern also keeps the session as it
-plays at that moment (sounds, effects, tempo, scale); changes made after the last pattern kept are undone as
+**Keeping a pattern.** SAVE still opens the PATTERNS grid: hold a white key 0.8 s to keep what is playing as that
+pattern, its steps and the tracks' state. Keeping a pattern also keeps the session as it plays at that moment (sounds, effects, tempo, scale); changes made after the last pattern kept are undone as
 PERFORMANCE goes off. If no pattern is kept, nothing stays. The machine returns to the pattern it started on; if it
 was kept over, as kept. The pattern reaches the flash as PERFORMANCE goes off.
 
@@ -462,7 +461,7 @@ the white square is the cursor: it opens on the pattern playing, and **PRESETS**
 | To | Do this |
 | --- | --- |
 | Play a pattern | press and release its white key. While the sequencer plays, it starts at the end of the chosen track's steps |
-| Save the pattern playing into a slot | hold the slot's white key 0.8 s, or move the cursor there and hold SAVE; the slot may be empty or not. That slot plays from then on; the pattern saved from keeps what it held, its mutes included |
+| Save the pattern playing into a slot | hold the slot's white key 0.8 s; the slot may be empty or not. That slot plays from then on; the pattern saved from keeps what it held, its mutes included |
 | Save its changes in its own slot | hold its own white key 0.8 s |
 | Copy a pattern | SHIFT + hold its key 0.8 s |
 | Paste it | SHIFT + hold another key 0.8 s |

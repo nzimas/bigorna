@@ -612,6 +612,19 @@ static int host_dim_on(uint32_t id)             /* a key's LED lit dimly */
                 return (fm1_led_dim[p] >> r) & 1u;
     return 0;
 }
+static void wkey_hold(uint32_t ix)              /* white key ix (0 .. 15) held 0.8 s, then let go */
+{
+    uint32_t k;
+    for (k = 0; k < NKEY && white_ix(k) != (int32_t)ix; k++)
+        ;
+    fm1_in.notes |= 1u << k;
+    ui_input();
+    fm1_ms += 900;
+    ui_input();
+    fm1_in.notes &= ~(1u << k);
+    ui_input();
+    fm1_ms += 2000;
+}
 static void tap(uint32_t k)                      /* a key pressed and let go */
 {
     fm1_in.notes |= 1u << k;
@@ -859,8 +872,8 @@ static int cmd_projects(const char *dir)
             seq_note[0][0] = 0;
             pat_dirty = 1;
         }
-        /* SAVE: the grid; SAVE held there, the pattern (1) saved, its steps with it (the cursor on it); a white key loads
-         * its pattern (build 76: as Tonitor's snapshots) */
+        /* SAVE: the grid; SAVE held there, nothing (build 87); white key 1 held, the pattern (1) saved, its steps with
+         * it; a white key loads its pattern (build 76: as Tonitor's snapshots) */
         btn(B_SAVE, 0);
         EXPECT(ui.page == PG_PAT && pj.slot[1] == 0u, "SAVE opens the patterns, the cursor on the one playing");
         fm1_in.buttons |= 1u << PANEL_BTN[B_SAVE];
@@ -871,9 +884,12 @@ static int cmd_projects(const char *dir)
         fm1_in.buttons = 0;
         ui_input();
         fm1_ms += 2000;
+        EXPECT(ui.page == PG_PAT && pat_dirty && !(pat_store[0].used && pat_store[0].seq[SEQ_NREC] == 2u &&
+               pat_store[0].seq[SEQ_REC4 + 6u + 1u] == n0), "SAVE held on the grid: nothing saved");
+        wkey_hold(0);
         EXPECT(pat_cur == 0u && pat_store[0].used && !pat_dirty && pat_store[0].seq[SEQ_FMT] == SEQ_V4 &&
                pat_store[0].seq[SEQ_NREC] == 2u && pat_store[0].seq[SEQ_REC4 + 6u + 1u] == n0,
-               "SAVE held on the grid saves the pattern playing, its steps");
+               "white key 1 held on the grid saves the pattern playing, its steps");
         EXPECT(ui.page == PG_PAT, "the grid stays");
         {   /* (written into session 3's flash) */
             int rc = prj_read(2, 1u);
@@ -2631,14 +2647,17 @@ static int cmd_projects(const char *dir)
         memcpy(fx_cp, CP0, NCP);
         fx_cook_all();
     }
-    /* the long presses: SAVE held on the grid saves the pattern playing (the cursor on it), HOME held nothing */
+    /* the long presses: SAVE held on the grid nothing (build 87), a white key held there saves the pattern playing;
+     * HOME held nothing */
     pat_tempo = 77;
     pat_dirty = 1;
     ui.page = PG_MAIN;
     grid_open();
     save_held(0);
+    EXPECT(ui.page == PG_PAT && pat_store[pat_cur].tempo != 77 && pat_dirty, "SAVE held on the grid: nothing saved");
+    wkey_hold(pat_cur);
     EXPECT(ui.page == PG_PAT && pat_store[pat_cur].tempo == 77 && pat_store[pat_cur].used && !pat_dirty,
-           "SAVE held on the grid saves the pattern playing");
+           "a white key held on the grid saves the pattern playing");
     btn(B_SAVE, 0);
     EXPECT(ui.page == PG_MAIN, "SAVE: the grid down");
     {   /* ARP: the SCALE page (Tonitor's, build 76): SELECT the root, ALGORITHM the scale; ARP again, back */

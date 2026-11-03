@@ -1,5 +1,12 @@
 # Changelog
 
+## Build 87
+
+Removed
+- SAVE held on the PATTERNS grid no longer saves a pattern. It saved into the slot under the cursor, which a white key
+  press does not move, so after loading pattern 9 from its key it saved into slot 1. Hold a pattern's white key to save
+  the pattern playing there. SAVE held on the grid now does nothing; elsewhere it still saves the session.
+
 ## Build 86
 
 Removed
