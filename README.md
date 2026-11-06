@@ -437,6 +437,14 @@ In the step view, black key 1 writes a new phrase for the chosen track: steps, n
 ratchets and locks, made for the role of its sound (KICK, SNARE, HAT, PERC, NOISE, BASS, LEAD, STAB, DRONE). On the
 PHRASE page, DENSITY and COMPLEXITY (0 to 100) thin it out or fill it.
 
+Each role draws its rhythm from about ten shapes: four on the floor, Euclidean, groups of 2, 3 and 4 steps
+(3+3+2 ..), a 3, 5, 6 or 7 step cell repeated against the bar, clusters, gaps shrinking or growing, a half bar
+mirrored or answered, bursts, 16ths, offbeats, uneven walks. The snare picks a feel: backbeat, displaced, half time,
+double time, broken or none. A phrase often has a form over bars, written with A:B conditions: a fill every 4th
+(8th, 2nd) time, a variant bar every 2nd or 3rd time, or the first half again in place of the second every other
+time. Now and then a part fits around the other tracks (percussion in the kick's and snare's gaps, a bass on the
+kick), and the velocities rise, fall or alternate across the bar.
+
 ## Recording
 
 **REC** records the keys into the chosen track's steps, each note with its velocity and length, until REC again.

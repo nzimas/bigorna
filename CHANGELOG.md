@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 94
+
+Changed
+- The phrase generator (black key 1 in the step view) has many more rhythms. Each role draws from about ten of
+  fifteen shapes: four on the floor, Euclidean, groups of 2, 3 and 4 steps added up to 16 (3+3+2, 3+3+3+3+4 ..),
+  a cell of 3, 5, 6 or 7 steps repeated against the bar, clusters with long gaps, gaps shrinking or growing to the
+  bar's end, a half bar mirrored or answered, bursts, 16ths, offbeats and walks of uneven gaps. The snare picks a
+  feel: a backbeat, displaced, half time, double time, broken or none. Out of 600 phrases per role, the distinct
+  bars went from 63 to 450 for the kick, 54 to 478 for the bass, 44 to 525 for the lead and 170 to 484 for hats.
+- Phrases now often have a form over several bars: a fill every 4th time (or 8th, or 2nd) at the bar's end (a run,
+  every other step, hits at random, or silence), a variant bar every 2nd or 3rd time (turned, a few hits moved, or
+  a new shape), or the second half replaced by the first every other time. The form is written with A:B
+  conditions; a step that already has a condition keeps it.
+- Now and then a part fits itself to the other tracks: percussion and noise in the gaps of the kick and snare,
+  hats off the kick, a kick off the snare, a bass on the kick's steps or between them, a lead off the drums.
+- Now and then a phrase's velocities rise across the bar, fall, alternate loud and soft, or vary a little.
+
 ## Build 93
 
 Fixed

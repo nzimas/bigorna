@@ -5914,6 +5914,24 @@ static int cmd_clkfx(void)
             left += vox[k].sounding;
         CXEXPECT(!left, "ADSR, AHD drawn under a held note, let go, ADSR again: no voice left sounding");
     }
+    {   /* (build 94) a kick's phrase, 200 times: many bars, not one; forms over bars (a variant on B:B) */
+        static uint32_t seen[2048];
+        uint32_t n, d = 0, form = 0, m, c;
+        memset(seen, 0, sizeof seen);
+        for (n = 0; n < 200u; n++) {
+            gen_sound(&ui.snd[0][ENG_FMD], ENG_FMD, 0, -1, n);
+            ui.eng[0] = ENG_FMD;
+            phrase_new(0);
+            for (i = 0, m = 0, c = 0; i < NSTEP; i++) {
+                m |= (seq_note[0][i] != 0) << i;
+                c |= seq_note[0][i] && seq_cond[0][i] >= CD_AB && !((seq_cond[0][i] - CD_AB) & 1u);
+            }
+            d += !(seen[m >> 5] >> (m & 31u) & 1u);
+            seen[m >> 5] |= 1u << (m & 31u);
+            form += c;
+        }
+        CXEXPECT(d > 100u && form > 40u, "kick phrases: many bars, forms over bars");
+    }
     printf("clkfx: %d failures\n", fails);
     return fails != 0;
 }
