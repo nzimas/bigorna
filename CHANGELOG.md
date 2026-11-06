@@ -1,5 +1,12 @@
 # Changelog
 
+## Build 91
+
+Added
+- With a step held and TRIG on, turning KNOB 1 (the step's note) plays the new note on the track for 350 ms, at the
+  step's velocity, with its chord if it has one (the root alone on DRUM tracks). Each turn stops the note before.
+  Pressing the step plays nothing, as before. The audition does not use the step's parameter locks.
+
 ## Build 90
 
 Fixed

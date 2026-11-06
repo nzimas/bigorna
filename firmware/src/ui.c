@@ -161,6 +161,9 @@ static struct {
     uint8_t step_key;            /* SHIFT: the key of the step held (KEY_NONE none) */
     uint8_t step_new, step_edit;     /* .. its note put there as it was pressed; changed since */
     uint32_t step_t0;            /* .. pressed at */
+    uint8_t aud_l, aud_n[3];     /* (build 91) the step's note auditioned as KNOB 1 turns it: its lane, its notes (0:
+                                  * none), let go at aud_until */
+    uint32_t aud_until;
     uint8_t sv;                  /* the step view on (STEP) */
     uint32_t gen_until;          /* the phrase key lit fully until */
     uint8_t gen_down, gen_long, gen_sh;   /* the phrase key held: since gen_t0; held 0.8 s (its page); SHIFT with it */
@@ -1734,6 +1737,38 @@ static void pl_turn(uint32_t id, int32_t s, int show)
         ui.dial_until = fm1_ms + 1000u;
     }
 }
+/* (build 91) the step's note heard as TRIG's KNOB 1 turns it: the note (its chord, if it has one), at its velocity, on
+ * its track, for a moment -- the one before let go */
+#define AUD_MS 350u
+static void aud_off(void)
+{
+    uint32_t k;
+    for (k = 0; k < 3u; k++)
+        if (ui.aud_n[k]) {
+            ev_post(EV_OFF, ui.aud_l, ui.aud_n[k], 0);
+            ui.aud_n[k] = 0;
+        }
+}
+static void aud_step(uint32_t t, uint32_t i)
+{
+    uint32_t n = seq_note[t][i], f1 = seq_chf[t][i], vel = seq_vel[t][i] ? seq_vel[t][i] : VEL_DEF, k;
+    int32_t c[3];
+    aud_off();
+    if (!n)
+        return;
+    if (!f1 || ck_buf[t][ck_use[t]].mach == ENG_FMD) {   /* (DRUM: the root alone, as the sequencer plays it) */
+        c[0] = (int32_t)n;
+        c[1] = c[2] = 0;
+    } else
+        chord_of((int32_t)n, f1 - 1u, c);
+    ui.aud_l = (uint8_t)t;
+    for (k = 0; k < 3u; k++)
+        if (c[k] > 0) {
+            ui.aud_n[k] = (uint8_t)c[k];
+            ev_post(EV_ON, t, (uint32_t)c[k], vel);
+        }
+    ui.aud_until = fm1_ms + AUD_MS;
+}
 /* the knobs on the step held (EDIT not up): the note, the velocity, the length, the condition */
 static void step_knob(uint32_t j, int32_t s)
 {
@@ -1757,9 +1792,10 @@ static void step_knob(uint32_t j, int32_t s)
             seq_rtg[t][i] = (uint8_t)clampi((int32_t)seq_rtg[t][i] + s, 0, NRTG - 1);
         else
             return;
-    } else if (j == 0u)
+    } else if (j == 0u) {
         seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], s);
-    else if (j == 1u)
+        aud_step(t, i);                          /* (heard as it is turned) */
+    } else if (j == 1u)
         seq_vel[t][i] = (uint8_t)clampi(pct_raw(pct_disp(seq_vel[t][i]) + s), 1, 127);   /* (shown 1 .. 100) */
     else if (j == 2u)
         seq_glen[t][i] = (uint8_t)clampi(seq_glen[t][i] + s, 0, NGLEN - 1);
@@ -1876,6 +1912,8 @@ static void ui_input(void)
     int32_t s, e_pre, e_sel, e_alg;
     int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u);
     sel_sync();                                      /* (the lane chosen, as the track chosen is now) */
+    if ((ui.aud_n[0] || ui.aud_n[1] || ui.aud_n[2]) && (int32_t)(fm1_ms - ui.aud_until) >= 0)
+        aud_off();                                   /* (the step's note auditioned: its moment over) */
     sc_apply();
     lmu_apply();
     (void)rel;

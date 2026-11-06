@@ -782,7 +782,7 @@ static int cmd_projects(const char *dir)
         turn(EN_K1, 1);                          /* (a step held, EDIT not up: the knobs its note, velocity ..) */
         n1 = seq_note[5][0];
         EXPECT(n1 > n0 && in_scale((int32_t)n1), "TRIG, KNOB 1: the note up the scale");
-        EXPECT(ev_w == w0, "its note turned: still silent");
+        EXPECT(ev_w == w0 + 1u && ui.aud_n[0] == n1, "its note turned: the new note heard (build 91)");
         turn(EN_K2, -20);
         turn(EN_K3, 2);
         turn(EN_K4, CD_AB - CD_NONE + 2);        /* 1:2, !1:2, 2:2 */
@@ -5810,6 +5810,42 @@ static int cmd_clkfx(void)
                      at[4] - at[0] >= 2u * sb - 2u && at[4] - at[0] <= 2u * sb + 2u, "STUTTER: four, half a step apart");
     }
     seq_run = 0;
+    {   /* (build 91) TRIG's KNOB 1 on the step held: the new note heard as it turns, let go a moment later */
+        uint32_t kw[16], k, n, on = 0, gone = 1;
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+        for (k = 0; k < NKEY; k++)
+            if (white_ix(k) >= 0 && white_ix(k) < 16)
+                kw[white_ix(k)] = k;
+        ui.sel = 0;
+        ui.page = PG_MAIN;
+        cx_steps();
+        tap(KEY_STEP);
+        tap(KEY_TRIG);
+        fm1_in.notes |= 1u << kw[2];
+        ui_input();
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+        CXEXPECT(!ui.aud_n[0], "a step pressed: not auditioned");
+        turn(EN_K1, 1);
+        n = seq_note[0][2];
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+        for (k = 0; k < NVOICE; k++)
+            on |= vox[k].gate && vox_owner(&vox[k]) == 0u && vox[k].note == n;
+        CXEXPECT(n != 50u && ui.aud_n[0] == n && on, "KNOB 1 turned: the step's new note sounds");
+        fm1_ms += AUD_MS + 10u;
+        ui_input();
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+        for (k = 0; k < NVOICE; k++)
+            gone &= !(vox[k].gate && vox_owner(&vox[k]) == 0u && vox[k].note == n);
+        CXEXPECT(!ui.aud_n[0] && gone, "a moment later: let go");
+        fm1_in.notes &= ~(1u << kw[2]);
+        ui_input();
+        tap(KEY_TRIG);
+        tap(KEY_STEP);
+    }
     printf("clkfx: %d failures\n", fails);
     return fails != 0;
 }

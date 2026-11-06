@@ -420,7 +420,8 @@ The black keys, lit dimly, do this in the step view:
 ### Step pages
 
 **TRIG**: KNOB 1 the step's note (in the scale), 2 its velocity, 3 its length, 4 its trig condition; with PRESETS turned
-right, KNOB 1 its RATCHET (the step played 2 to 8 times). The conditions are the Digitone II's: PRE and !PRE (as the
+right, KNOB 1 its RATCHET (the step played 2 to 8 times). Turning KNOB 1 plays the new note (its chord, if the step has one) for a
+moment, at the step's velocity, so you hear the note you are setting. The conditions are the Digitone II's: PRE and !PRE (as the
 last condition was met or not), NEI and !NEI (as the track before met its condition), 1ST and !1ST (the first time
 through), probabilities, and A:B (the A-th time of every B).
 
