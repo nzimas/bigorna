@@ -1,5 +1,16 @@
 # Changelog
 
+## Build 93
+
+Fixed
+- A note could hang for good after HOME. A note held on a sound with an ADSR envelope sits in its sustain. If HOME
+  then drew a sound on the same machine with an AHD envelope (which has no sustain), the voice stayed in sustain at
+  that sound's level of nothing, and letting the key go did not end it: AHD's release only acts on its hold. The
+  next ADSR sound drawn brought the voice back at its own sustain, sounding with nothing held, and it stayed through
+  every sound drawn after (silent on the AHD ones). WAVY's families mix both kinds (CHORD STAB, WAVE PAD and the
+  drones ADSR; DIGITAL HASH and PD BUZZ AHD), so moving between them made it likely. Now a voice in sustain under an
+  AHD sound decays from where it is, and a voice in sustain with its note let go releases.
+
 ## Build 92
 
 Fixed

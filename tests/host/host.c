@@ -5879,6 +5879,41 @@ static int cmd_clkfx(void)
         for (i = 0; i < 8u; i++)
             mix_block(out);
     }
+    {   /* (build 93) a note held on an ADSR sound, an AHD one drawn under it (the same machine), let go, then an ADSR
+         * one again: the voice ends -- it stayed in SUS, silent, and came back at the new sustain for good */
+        sound_t sa, sb;
+        uint32_t k, left;
+        seq_run = 0;
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+        tracks_init();
+        vox_age = 0;
+        memset(ck_buf, 0, sizeof ck_buf);
+        gen_sound(&sa, ENG_FMT, -1, -1, 11);
+        sa.amp[A_MODE] = 1; sa.amp[A_ATK] = 0; sa.amp[A_DEC] = 40; sa.amp[A_SUS] = 127; sa.amp[A_REL] = 30;
+        sb = sa;
+        sb.amp[A_MODE] = 0; sb.amp[A_HOLD] = 40;
+        ck_cook(&ck_buf[0][0], &sa);
+        ck_buf[0][1] = ck_buf[0][0];
+        ck_pub[0] = ck_use[0] = 0;
+        ev_post(EV_ON, 0, 48, 127);
+        for (i = 0; i < 1378u; i++)
+            mix_block(out);
+        ck_cook(&ck_buf[0][1], &sb);             /* (AHD, the note held) */
+        ck_pub[0] = 1;
+        for (i = 0; i < 1378u; i++)
+            mix_block(out);
+        ev_post(EV_OFF, 0, 48, 0);
+        for (i = 0; i < 2756u; i++)
+            mix_block(out);
+        ck_cook(&ck_buf[0][0], &sa);             /* (ADSR again, nothing held) */
+        ck_pub[0] = 0;
+        for (i = 0; i < 2756u; i++)
+            mix_block(out);
+        for (k = 0, left = 0; k < NVOICE; k++)
+            left += vox[k].sounding;
+        CXEXPECT(!left, "ADSR, AHD drawn under a held note, let go, ADSR again: no voice left sounding");
+    }
     printf("clkfx: %d failures\n", fails);
     return fails != 0;
 }

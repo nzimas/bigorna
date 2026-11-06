@@ -82,9 +82,10 @@ static void env_release(env_t *e, const envck_t *c)           /* a note let go *
         return;
     if (c->adsr)
         e->st = EV_REL;
-    else if (c->hold == 0xFFFF && e->st == EV_HOLD)
+    else if ((c->hold == 0xFFFF && e->st == EV_HOLD) || e->st == EV_SUS)
         e->st = EV_DEC;                                       /* (AHD, HOLD NOTE: the decay from here; an attack
-                                                               * still rising decays from its top) */
+                                                               * still rising decays from its top. EV_SUS: an ADSR
+                                                               * sound's, an AHD one drawn under it -- build 93) */
 }
 /* a block on; returns the level, Q24 */
 FAST static int32_t env_step(env_t *e, const envck_t *c, int gate)
@@ -132,8 +133,17 @@ FAST static int32_t env_step(env_t *e, const envck_t *c, int gate)
             }
         }
         break;
-    case EV_SUS:
-        e->lv = c->sus;
+    case EV_SUS:                                              /* (build 93) the sound changed under a held note:
+                                                               * AHD has no sustain, so the decay from here; and a
+                                                               * sustain with the note let go, its release -- before,
+                                                               * a note let go under an AHD sound stayed in SUS, silent,
+                                                               * and the next ADSR sound drawn brought it back for good) */
+        if (!c->adsr)
+            e->st = EV_DEC;
+        else if (!gate)
+            e->st = EV_REL;
+        else
+            e->lv = c->sus;
         break;
     case EV_REL:
         e->lv = (int32_t)(((int64_t)e->lv * c->rel) >> 16);
