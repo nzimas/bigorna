@@ -1,5 +1,17 @@
 # Changelog
 
+## Build 96
+
+Changed
+- The drone and pad families' releases are shorter: a note let go now ends within about 5 s (before the reverb's
+  tail), as WAVY's have since build 92. Before, SWARM PAD's went on up to 12.5 s after its note was let go, MACHINE's
+  21 s, FB DRONE's and SWARM DRONE's 23 s, DARK WASH's 25 s, and NOISE ENGINE's and SCRAPE's 15 to 17 s, and STOP does
+  not cut a release short, so one such note sounded like a note left hanging. FM BELL's release is at most 5 s (was
+  8 s). Measured over 24 sounds of each family, from the note let go to the envelope at -60 dB.
+- Checked for a note truly left hanging on HIVE while recording a loop: 300 host runs of keys, SHIFT + REC, REC,
+  PLAY, HOME, octaves, the other buttons and tracks on a SWARM PAD track, then everything let go and stopped, left
+  no voice sounding.
+
 ## Build 95
 
 Fixed

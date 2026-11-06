@@ -429,7 +429,7 @@ static void r_noise_engine(sound_t *s, gctx_t *g)
     SY(s, FD_NRM, CH(g, 50)); SY(s, FD_NHLD, 127); SY(s, FD_NDEC, 127);
     SY(s, FD_NBAS, RI(g, 20, 90)); SY(s, FD_NWID, RI(g, 20, 80)); SY(s, FD_GRAN, RI(g, 50, 127));
     SY(s, FD_NLEV, RI(g, 110, 127));
-    amp_adsr(s, RI(g, 15, 70), 127, 127, RI(g, 60, 110));
+    amp_adsr(s, RI(g, 15, 70), 127, 127, RI(g, 46, 62));   /* (build 96: REL 2.5 .. 5 s; was 60 .. 110, 5 .. 21 s) */
     filt(s, SH_BP, RI(g, 70, 100), RI(g, 15, 45), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 22, 40), 127);
     sends(s, RI(g, 10, 45), RI(g, 40, 90), 0);
@@ -446,7 +446,7 @@ static void r_scrape(sound_t *s, gctx_t *g)
     SY(s, FD_HOLD, RI(g, 60, 110)); SY(s, FD_DEC, RI(g, 90, 120)); SY(s, FD_LEV, RI(g, 70, 100));
     SY(s, FD_NLEV, RI(g, 60, 100)); SY(s, FD_NHLD, RI(g, 60, 110)); SY(s, FD_NDEC, RI(g, 90, 120));
     SY(s, FD_GRAN, RI(g, 70, 120)); SY(s, FD_NBAS, RI(g, 60, 90)); SY(s, FD_NWID, RI(g, 20, 50));
-    amp_adsr(s, RI(g, 10, 50), 127, RI(g, 90, 127), RI(g, 60, 100));
+    amp_adsr(s, RI(g, 10, 50), 127, RI(g, 90, 127), RI(g, 42, 60));   /* (build 96: was 60 .. 100, 5 .. 16 s) */
     filt(s, SH_BP, RI(g, 60, 95), RI(g, 20, 55), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 24, 45), 127);
     sends(s, RI(g, 10, 40), RI(g, 50, 95), 0);
@@ -461,7 +461,7 @@ static void r_machine(sound_t *s, gctx_t *g)
     SY(s, FD_DECA, 127); SY(s, FD_ENDA, RI(g, 40, 90)); SY(s, FD_HOLD, 127); SY(s, FD_DEC, 127); SY(s, FD_LEV, RI(g, 60, 100));
     SY(s, FD_NHLD, 127); SY(s, FD_NDEC, 127); SY(s, FD_NLEV, RI(g, 30, 70));
     SY(s, FD_NBAS, RI(g, 30, 60)); SY(s, FD_NWID, RI(g, 20, 50)); SY(s, FD_GRAN, RI(g, 20, 80));
-    amp_adsr(s, RI(g, 40, 90), 127, 127, RI(g, 80, 115));
+    amp_adsr(s, RI(g, 40, 90), 127, 127, RI(g, 46, 62));   /* (build 96: was 80 .. 115, 10 .. 23 s) */
     filt(s, SH_BP, RI(g, 45, 75), RI(g, 20, 50), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 18, 34), 127);
     sends(s, RI(g, 10, 30), RI(g, 60, 100), 0);
@@ -505,7 +505,7 @@ static void r_fm_bell(sound_t *s, gctx_t *g)
     SY(s, FT_RATA, PICK(g, 9, 13, 17, 21, 25)); SY(s, FT_RATB, RATB(RI(g, 5, 10), RI(g, 4, 14)));
     SY(s, FT_DTUN, RI(g, 10, 60)); SY(s, FT_ALEV, RI(g, 60, 95)); SY(s, FT_BLEV, RI(g, 50, 85));
     SY(s, FT_ADEC, RI(g, 55, 95)); SY(s, FT_AEND, RI(g, 0, 20)); SY(s, FT_BDEC, RI(g, 50, 90)); SY(s, FT_BEND, RI(g, 0, 20));
-    amp_adsr(s, 0, RI(g, 65, 95), 0, RI(g, 50, 80));
+    amp_adsr(s, 0, RI(g, 65, 95), 0, RI(g, 40, 64));   /* (build 96: REL to 5 s; was to 10 s) */
     filt(s, SH_LP, RI(g, 80, 115), RI(g, 0, 25), 0, 0, 64, 0, 64, 50);
     band(s, RI(g, 10, 26), 127);
     sends(s, RI(g, 15, 50), RI(g, 30, 75) + g->abs_ * 20 / 100, 0);
@@ -534,7 +534,7 @@ static void r_fb_drone(sound_t *s, gctx_t *g)
     SY(s, FT_AATK, RI(g, 40, 100)); SY(s, FT_ADEC, 127); SY(s, FT_AEND, RI(g, 40, 90)); SY(s, FT_ALEV, RI(g, 30, 80));
     SY(s, FT_BATK, RI(g, 60, 110)); SY(s, FT_BDEC, 127); SY(s, FT_BEND, RI(g, 40, 100)); SY(s, FT_BLEV, RI(g, 30, 80));
     SY(s, FT_ATRG, 0); SY(s, FT_BTRG, 0); SY(s, FT_PHRT, 0);
-    amp_adsr(s, RI(g, 30, 90), 127, 127, RI(g, 70, 115));
+    amp_adsr(s, RI(g, 30, 90), 127, 127, RI(g, 46, 62));   /* (build 96: 2.5 .. 5 s; was 70 .. 115, 7 .. 23 s) */
     filt(s, SH_LP, RI(g, 58, 90), RI(g, 10, 40), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 14, 30), 127);
     sends(s, 0, RI(g, 50, 95), 0);
@@ -749,7 +749,8 @@ static void r_swarm_pad(sound_t *s, gctx_t *g)
     SY(s, SW_SWRM, RI(g, 20, 100)); SY(s, SW_MAIN, RI(g, 20, 110)); SY(s, SW_DET, RI(g, 45, 90));
     SY(s, SW_MIX, RI(g, 100, 127)); SY(s, SW_MOCT, PICK(g, 2, 1)); SY(s, SW_ANIM, RI(g, 30, 70));
     SY(s, SW_NMOD, g->ind * RI(g, 0, 40) / 100);
-    amp_adsr(s, RI(g, 40, 95), RI(g, 60, 100), RI(g, 100, 127), RI(g, 50, 90));
+    amp_adsr(s, RI(g, 40, 95), RI(g, 60, 100), RI(g, 100, 127), RI(g, 40, 58));   /* (build 96: 1.8 .. 4.4 s; was
+                                                  * 50 .. 90, 3 .. 13 s) */
     filt(s, SH_LP, RI(g, 64, 94), RI(g, 0, 30), RI(g, 0, 12), RI(g, 40, 90), RI(g, 60, 100), RI(g, 40, 100), RI(g, 50, 90), 30);
     band(s, RI(g, 8, 22), 127);
     sends(s, RI(g, 0, 30), RI(g, 60, 100), RI(g, 15, 55));
@@ -764,7 +765,7 @@ static void r_swarm_drone(sound_t *s, gctx_t *g)
     SY(s, SW_SWRM, RI(g, 0, 120)); SY(s, SW_MAIN, RI(g, 0, 120)); SY(s, SW_DET, RI(g, 30, 80));
     SY(s, SW_MIX, RI(g, 100, 127)); SY(s, SW_MOCT, PICK(g, 2, 1)); SY(s, SW_ANIM, RI(g, 40, 100));
     SY(s, SW_NMOD, g->ind * RI(g, 10, 60) / 100);
-    amp_adsr(s, RI(g, 30, 90), 127, 127, RI(g, 70, 115));
+    amp_adsr(s, RI(g, 30, 90), 127, 127, RI(g, 46, 62));   /* (build 96: 2.5 .. 5 s; was 70 .. 115, 7 .. 23 s) */
     filt(s, SH_LP, RI(g, 60, 90), RI(g, 10, 40), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 14, 30), 127);
     sends(s, RI(g, 0, 25), RI(g, 55, 100), 0);
@@ -778,7 +779,7 @@ static void r_dark_wash(sound_t *s, gctx_t *g)
     sw_base(s);
     SY(s, SW_SWRM, RI(g, 20, 100)); SY(s, SW_MAIN, RI(g, 20, 100)); SY(s, SW_DET, RI(g, 60, 120));
     SY(s, SW_MIX, RI(g, 110, 127)); SY(s, SW_MOCT, 1); SY(s, SW_ANIM, RI(g, 40, 100)); SY(s, SW_NMOD, RI(g, 30, 90));
-    amp_adsr(s, RI(g, 60, 110), 127, 127, RI(g, 90, 120));
+    amp_adsr(s, RI(g, 60, 110), 127, 127, RI(g, 46, 62));   /* (build 96: was 90 .. 120, 13 .. 26 s) */
     filt(s, SH_LP, RI(g, 35, 65), RI(g, 10, 40), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 18, 30), 127);
     sends(s, RI(g, 10, 40), RI(g, 80, 110), RI(g, 20, 60));
