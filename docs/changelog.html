@@ -44,6 +44,59 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-95">Build 95</h2>
+<p>Fixed</p>
+<ul>
+<li>A drone could start with no key held and stay through every sound drawn after it. A note let go under a sound with an AHD envelope goes on through its attack and decay (AHD does not follow the key). If HOME then drew a sound with an ADSR envelope and DECAY 127 (no decay: BREATH, RADIO, RING DRONE, GRAIN FIELD, FB DRONE and others), the voice stayed in its decay at the level it had reached, for good: that stage never reached the sustain, where the key is looked at. It ended only with a sound with a finite decay. WAVY mixes both kinds, so it happened there most: in host runs of random notes and sounds, 3 runs in 3 on WAVY, 3 in 135 on 4-OP. Now an ADSR envelope with its note let go releases from whatever stage it is in. No hanging voice in 400 runs on any machine.</li>
+<li>MANGLE's DESTROY in XOR and FLIP mode made a loud noise out of near silence (a fixed bit pattern XORed into a quiet tail). The error now scales down with the signal under -24 dB, so silence stays silent.</li>
+<li>WAVY's phase distortion aliased when strong: PD reads the quicker half of the wave up to 16 times as fast, from a wave band-limited for the note. The band-limited wave is now chosen for that speed (up to 3 octaves up).</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>WAVY's rhythmic families were revised, with rules for their dirt in place of the grit pass and WRECK drawn after them. Before, drive, bits (down to 3 bits), a lower rate (down to 2 kHz), comb, FOLD and RING stacked: 1.7 to 3.3 of them a sound on average, and 28 to 83% of sounds had three or more. Now one colour leads and a second light one comes now and then (never more than two). A bass keeps its low end clean (drive before the filter; no bits, no lower rate, no ring). A pitched sound keeps 10 bits or more and a rate over 9 kHz; only noise goes to 5.6 bits and 3.3 kHz. Drive is less with high resonance. RING comes as a growl (30 to 110 Hz) or a metal tone (420 Hz to 2.4 kHz).
+<ul>
+<li>CHORD STAB: the second oscillator a third, fifth, seventh or octave over the first.</li>
+<li>RING SCREAM: the ring's ratio from a set (fifths, octaves, and 13, 23 semitones and the tritone for metal), not any; drive after the filter only with a softer resonance; the ratio drifting a little.</li>
+<li>SYNC GRIND: the slave 8 to 36 semitones over the master (was to 60), the master heard under it, drive before the filter, the sync swept by an LFO now and then.</li>
+<li>DIGITAL HASH: broken one way: crushed (5.6 to 9.7 bits), decimated (11 to 3.3 kHz) or driven (RAT).</li>
+<li>PD BUZZ: strong PD, not extreme; drive before the filter; its PD moving now and then.</li>
+<li>GRAIN FIELD and RADIO: bits and rate within the noise rules.</li>
+</ul></li>
+<li>Two WAVY families: PULSE BASS (a square or saw over a sine or triangle an octave down, short, for industrial techno) and METAL HIT (a tuned strike: ring modulation at an inharmonic ratio, a click of noise, a band-pass ringing).</li>
+</ul>
+<h2 id="build-94">Build 94</h2>
+<p>Changed</p>
+<ul>
+<li>The phrase generator (black key 1 in the step view) has many more rhythms. Each role draws from about ten of fifteen shapes: four on the floor, Euclidean, groups of 2, 3 and 4 steps added up to 16 (3+3+2, 3+3+3+3+4 ..), a cell of 3, 5, 6 or 7 steps repeated against the bar, clusters with long gaps, gaps shrinking or growing to the bar's end, a half bar mirrored or answered, bursts, 16ths, offbeats and walks of uneven gaps. The snare picks a feel: a backbeat, displaced, half time, double time, broken or none. Out of 600 phrases per role, the distinct bars went from 63 to 450 for the kick, 54 to 478 for the bass, 44 to 525 for the lead and 170 to 484 for hats.</li>
+<li>Phrases now often have a form over several bars: a fill every 4th time (or 8th, or 2nd) at the bar's end (a run, every other step, hits at random, or silence), a variant bar every 2nd or 3rd time (turned, a few hits moved, or a new shape), or the second half replaced by the first every other time. The form is written with A:B conditions; a step that already has a condition keeps it.</li>
+<li>Now and then a part fits itself to the other tracks: percussion and noise in the gaps of the kick and snare, hats off the kick, a kick off the snare, a bass on the kick's steps or between them, a lead off the drums.</li>
+<li>Now and then a phrase's velocities rise across the bar, fall, alternate loud and soft, or vary a little.</li>
+</ul>
+<h2 id="build-93">Build 93</h2>
+<p>Fixed</p>
+<ul>
+<li>A note could hang for good after HOME. A note held on a sound with an ADSR envelope sits in its sustain. If HOME then drew a sound on the same machine with an AHD envelope (which has no sustain), the voice stayed in sustain at that sound's level of nothing, and letting the key go did not end it: AHD's release only acts on its hold. The next ADSR sound drawn brought the voice back at its own sustain, sounding with nothing held, and it stayed through every sound drawn after (silent on the AHD ones). WAVY's families mix both kinds (CHORD STAB, WAVE PAD and the drones ADSR; DIGITAL HASH and PD BUZZ AHD), so moving between them made it likely. Now a voice in sustain under an AHD sound decays from where it is, and a voice in sustain with its note let go releases.</li>
+</ul>
+<h2 id="build-92">Build 92</h2>
+<p>Fixed</p>
+<ul>
+<li>A step of length INF holds its note until the track plays that step again. If the step was emptied, the phrase drawn again, the track made shorter than it or the pattern changed, the step never came again, and the note went on sounding until STOP with no step to it (the phrase generator gives drone tracks an INF step half the time). An INF note is now let go when the track comes back to its step, when that step has no note or lies past the track's length, and when another pattern comes in.</li>
+<li>WAVY's sustained families sounded long after the note:
+<ul>
+<li>WAVE PAD, RING DRONE, GRAIN FIELD, BREATH and RADIO had releases of up to 23 s (RING DRONE and BREATH 7 to 23 s). They now take 1 to 5 s to fall silent: WAVE PAD and GRAIN FIELD RELEASE 40 to 58, RING DRONE 46 to 62, BREATH 42 to 60, RADIO 30 to 50. Their reverb sends stop at 85.</li>
+<li>GRAIN FIELD's and BREATH's noise had a slow attack of its own (an AHD envelope, which always runs to the top), so after a short note the noise went on rising and was loudest once the note had ended. The noise now starts with the note (ATK 0 to 24); BREATH's fade-in is the AMP envelope's, which falls from where it is when let go.</li>
+<li>BREATH's noise band was drawn apart from its band-pass filter, so the sound sat near silence and swelled up when the LFO brought the two together. The band now sits under the filter, as GRAIN FIELD's has since build 60, and its LFO moves it half as far.</li>
+</ul></li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sounds already in sessions are unchanged; HOME draws the new ranges.</li>
+</ul>
+<h2 id="build-91">Build 91</h2>
+<p>Added</p>
+<ul>
+<li>With a step held and TRIG on, turning KNOB 1 (the step's note) plays the new note on the track for 350 ms, at the step's velocity, with its chord if it has one (the root alone on DRUM tracks). Each turn stops the note before. Pressing the step plays nothing, as before. The audition does not use the step's parameter locks.</li>
+</ul>
 <h2 id="build-90">Build 90</h2>
 <p>Fixed</p>
 <ul>
