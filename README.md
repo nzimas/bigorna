@@ -383,6 +383,10 @@ cannot be step-locked.
 Each track has 16 steps, with its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X), direction, probability and
 swing. **PLAY** starts and stops it.
 
+A clock changed while the sequencer plays takes effect on the next 16th that is also a step of the new clock (for 1/2,
+every second 16th; for 1/4 and 1/8, every fourth and eighth), counted from PLAY or the start of the pattern. The track
+then plays the step it would be on had it run at that clock from the start, so it stays aligned with the other tracks.
+
 On the TRACK page (black key 2 in the step view), KNOB 3 sets PROB, 0 to 100% (100% at first): the chance that each of
 the track's steps plays, decided each time the step comes round. KNOB 4 sets SWING, 50 to 80% (50%, straight, at first):
 the share of each pair of steps the first one takes. The second step of each pair, counted from the track's first
@@ -422,6 +426,9 @@ through), probabilities, and A:B (the A-th time of every B).
 
 **MOD**: KNOB 1 MUTATE (the note moved by up to N steps of the scale, or RND), 2 MUT EVERY (how often), 3 MIDI FX
 (ECHO, ECHO UP, ECHO DN, STUTTER, FLAM, LATE, GRACE, FIFTH, TRIAD, OCT UP, OCT DN, DROP), 4 FX EVERY.
+Times are in the track's steps: ECHO plays three repeats 2 steps apart, at 70, 48 and 30% velocity (ECHO UP and DN
+move each a step of the scale); STUTTER four short repeats half a step apart; FLAM a second hit 30 ms later; LATE
+the note half a step late; GRACE a step of the scale below on time, the note a third of a step later.
 
 ### Phrases
 

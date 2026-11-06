@@ -5711,9 +5711,114 @@ static int cmd_subtrk(const char *dir)
     printf("subtrk: %d failures\n", fails);
     return fails != 0;
 }
+/* (build 90) a track's clock changed while playing: in on the grid, where it would be had it had that clock from the
+ * start; the MIDI FX's later notes where they belong */
+#define CXEXPECT(c, what) do { if (!(c)) { printf("FAIL clkfx: %s\n", what); fails++; } } while (0)
+static void cx_steps(void)                       /* (tracks 1 .. 6: a note on every step, nothing else) */
+{
+    uint32_t t, i;
+    for (t = 0; t < NLANE; t++) {
+        seq_len[t] = 0;
+        seq_dir[t] = DIR_FWD;
+        seq_div[t] = SEQ_DIV1;
+        seq_pms[t] = seq_swg[t] = 0;
+        for (i = 0; i < NSTEP; i++) {
+            seq_note[t][i] = (uint8_t)(t < NTRACK ? 48u + i : 0u);
+            seq_vel[t][i] = 100;
+            seq_glen[t][i] = GLEN_DEF;
+            seq_cond[t][i] = CD_NONE;
+            seq_rtg[t][i] = 0;
+            seq_mut[t][i] = 0;
+            seq_mfx[t][i] = MFX_OFF;
+            seq_fcy[t][i] = 0;
+            seq_chf[t][i] = 0;
+            memset((void *)seq_lid[t][i], PL_NONE, NPL);
+        }
+    }
+}
+static int cmd_clkfx(void)
+{
+    static int32_t out[2 * CTL];
+    static const uint8_t DIRS[3] = {DIR_FWD, DIR_REV, DIR_PING};
+    uint32_t i, d, to, same, applied, blk, sb;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    for (d = 0; d < 3u; d++)
+        for (to = 0; to < NDIV; to++) {          /* (track 2 at the new clock from PLAY; track 1 changed to it 5 1/2
+                                                  * steps in, from 1X) */
+            char m[96];
+            if (to == SEQ_DIV1)
+                continue;
+            seq_run = 0;
+            for (i = 0; i < 4u; i++)
+                mix_block(out);
+            cx_steps();
+            seq_dir[0] = seq_dir[1] = DIRS[d];
+            seq_len[0] = seq_len[1] = 12;
+            seq_div[0] = SEQ_DIV1;
+            seq_div[1] = (uint8_t)to;
+            seq_run = 1;
+            while (seq_rn == 0xFFFFFFFFu || seq_rn < 5u || seq_racc < SEQ_STEP8 / 2u)
+                mix_block(out);
+            seq_div[0] = (uint8_t)to;            /* (the TRACK page's CLOCK, turned) */
+            for (blk = 0, applied = 0xFFFFFFFFu, same = 1; blk < 172u * 16u * 9u; blk++) {
+                mix_block(out);
+                if (applied == 0xFFFFFFFFu && seq_dcur[0] == to)
+                    applied = seq_rn;
+                if (applied != 0xFFFFFFFFu)
+                    same &= seq_pos[0] == seq_pos[1] && seq_tacc[0] == seq_tacc[1] && seq_loop[0] == seq_loop[1];
+            }
+            snprintf(m, sizeof m, "dir %u, 1X to %s: in on the next 1X step of its grid, then as the track that had it",
+                     DIRS[d], DIV_NAME[to]);
+            {
+                uint32_t k = DIV_R8[to] < 8u ? 8u / DIV_R8[to] : 1u;
+                CXEXPECT(applied == (6u + k - 1u) / k * k && same, m);
+            }
+        }
+    /* the MIDI FX: ECHO three, two steps apart; STUTTER four, half a step apart */
+    seq_run = 0;
+    for (i = 0; i < 4u; i++)
+        mix_block(out);
+    cx_steps();
+    for (i = 1; i < NSTEP; i++)
+        seq_note[0][i] = 0;
+    sb = SEQ_STEP8 / (CTL * (uint32_t)clampi(fx_bpm10, 100, 3000) * 8u);
+    for (d = 0; d < 2u; d++) {
+        uint32_t at[8], n = 0, a;
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        seq_mfx[0][0] = d ? MFX_STUT : MFX_ECHO;
+        seq_run = 1;
+        for (blk = 0; blk < 172u * 15u; blk++) {
+            a = seq_sounded[0];
+            mix_block(out);
+            if (seq_sounded[0] != a && n < 8u)
+                at[n++] = blk;
+        }
+        if (getenv("CLKFX_V"))
+            for (i = 0; i < n; i++)
+                printf("clkfx: %s note %u at block %u (sb %u)\n", d ? "STUT" : "ECHO", i, at[i], sb);
+        if (!d)
+            CXEXPECT(n == 4u && at[1] - at[0] >= 2u * sb - 1u && at[1] - at[0] <= 2u * sb + 1u &&
+                     at[3] - at[0] >= 6u * sb - 2u && at[3] - at[0] <= 6u * sb + 2u, "ECHO: three, 2, 4, 6 steps on");
+        else
+            CXEXPECT(n == 5u && at[1] - at[0] >= sb / 2u - 1u && at[1] - at[0] <= sb / 2u + 1u &&
+                     at[4] - at[0] >= 2u * sb - 2u && at[4] - at[0] <= 2u * sb + 2u, "STUTTER: four, half a step apart");
+    }
+    seq_run = 0;
+    printf("clkfx: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
+    if (argc >= 2 && !strcmp(argv[1], "clkfx"))
+        return cmd_clkfx();
     if (argc >= 3 && !strcmp(argv[1], "subtrk"))
         return cmd_subtrk(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "perf"))

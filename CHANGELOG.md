@@ -1,5 +1,23 @@
 # Changelog
 
+## Build 90
+
+Fixed
+- A track's CLOCK changed on the TRACK page while the sequencer played took effect at once, in the middle of a step,
+  and left the track out of step with the others. The change now waits for the next 16th that is also a step of the
+  new clock, counted from PLAY or the start of the pattern, and the track jumps to the step it would be on had it
+  played at that clock from the start (its times through, direction and swing pairs too). Stopped, it applies at
+  once, as before.
+- The MIDI FX on a step's MOD page were hard or impossible to hear: their later notes all fell inside the step
+  itself (ECHO half a step and one step after, STUTTER about 15 ms apart, FLAM 12 ms, LATE a quarter of a step).
+  ECHO, ECHO UP and ECHO DN now play three repeats 2 steps apart, at 70, 48 and 30% of the velocity; STUTTER plays
+  four short repeats half a step apart; FLAM's second hit comes 30 ms later; LATE is half a step late; GRACE's
+  note comes a third of a step after the grace note, which is twice as long. FIFTH, TRIAD, OCT UP, OCT DN and DROP
+  are unchanged.
+
+Compatibility
+- Sessions and patterns are unchanged. Patterns that use ECHO, STUTTER or LATE sound different from before.
+
 ## Build 89
 
 Added

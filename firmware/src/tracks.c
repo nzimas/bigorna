@@ -691,6 +691,13 @@ static const char *const DIV_NAME[NDIV] = {"1/8", "1/4", "1/2", "1X", "2X", "4X"
 static volatile uint8_t seq_div[NLANE] = {SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1,
                                          SEQ_DIV1, SEQ_DIV1};
 static uint32_t seq_tacc[NLANE];
+/* (build 90) the clock each track plays at (seq_div is the one set, as the TRACK page shows it and patterns keep it):
+ * one changed while playing comes in on the grid -- on the reference's next 1X step that is also a step of the new
+ * clock, counted from PLAY or the pattern's start, the track where it would be had it always played at that clock.
+ * The reference: a 1X track's clock (seq_racc, as seq_tacc), the 1X steps gone by (seq_rn) */
+static uint8_t seq_dcur[NLANE] = {SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1, SEQ_DIV1,
+                                  SEQ_DIV1};
+static uint32_t seq_racc, seq_rn;
 /* (build 88) each track's PROB and SWING (TRACK page, KNOB 3, 4): seq_pms its steps' chance of not playing (100 -
  * PROB, so 0 is 100%), each step thrown for as it comes; seq_swg its swing less 50 (SWING 50 .. 80%: the share of a
  * pair of steps the first takes) -- the second of each pair, counted from the track's first step, late by
@@ -777,7 +784,8 @@ static void chord_of(int32_t root, uint32_t form, int32_t *n)   /* the chord's t
 }
 /* the MIDI FX's notes to come: a track's, each so many blocks from now (note 0: a free place) */
 #define FXQ 8u
-typedef struct { uint16_t left; uint8_t note, vel, len8, step; } fxq_t;
+typedef struct { uint16_t left; uint8_t note, vel, len8, step; } fxq_t;   /* (left: up to ~47 s -- an echo of a 1/8
+                                                  * clock below ~15 BPM comes no later) */
 static fxq_t fxq[NLANE][FXQ];
 static void fxq_add(uint32_t t, uint32_t blocks, int32_t note, int32_t vel, uint32_t len8, uint32_t step)
 {
@@ -1084,7 +1092,7 @@ static void seq_trig(uint32_t t, uint32_t p)
     if (!n || !seq_cond_ok(t, seq_cond[t][p]) || !seq_roll(t))
         return;
     {
-        uint32_t r8 = DIV_R8[seq_div[t] % NDIV], rn = brk_rt[t] ? brk_rt[t] : RTG_N[seq_rtg[t][p] % NRTG];
+        uint32_t r8 = DIV_R8[seq_dcur[t] % NDIV], rn = brk_rt[t] ? brk_rt[t] : RTG_N[seq_rtg[t][p] % NRTG];
         uint32_t c = ++seq_plays[t][p], fx = MFX_OFF;
         uint32_t len8 = g >= GLEN_INF ? 0u : (uint32_t)maxi(1, GLEN_8TH[g] * 8 / (int32_t)r8);   /* (in the tempo's
                                                                                               * 16ths) */
@@ -1116,8 +1124,8 @@ static void seq_trig(uint32_t t, uint32_t p)
             return;
         if (fx == MFX_LATE || fx == MFX_GRACE) { /* the note a little late (a grace note a step below before it) */
             if (fx == MFX_GRACE)
-                seq_sound(t, (uint32_t)sc_move((int32_t)n, -1), vel * 3u / 5u, 2u, seq_lid[t][p], seq_lv[t][p]);
-            fxq_add(t, fx == MFX_LATE ? sb / 4u : sb / 6u, (int32_t)n, (int32_t)vel, l8, p);
+                seq_sound(t, (uint32_t)sc_move((int32_t)n, -1), vel * 3u / 5u, 4u, seq_lid[t][p], seq_lv[t][p]);
+            fxq_add(t, fx == MFX_LATE ? sb / 2u : sb / 3u, (int32_t)n, (int32_t)vel, l8, p);
             return;
         }
         if (rn > 1u) {                           /* a ratchet: the hits after the first, as the step goes on */
@@ -1138,19 +1146,22 @@ static void seq_trig(uint32_t t, uint32_t p)
         case MFX_ECHO:
         case MFX_ECHOUP:
         case MFX_ECHODN: {
+            static const uint8_t EV[3] = {70, 48, 30};   /* (each echo's velocity, % of the step's) */
             int32_t e = (int32_t)n, d = fx == MFX_ECHOUP ? 1 : fx == MFX_ECHODN ? -1 : 0;
-            for (k = 1; k <= 2u; k++) {
+            for (k = 1; k <= 3u; k++) {          /* (build 90: three, two steps apart -- an 8th at 1X; were two, half
+                                                  * a step apart, lost in the note itself) */
                 e = sc_move(e, d);
-                fxq_add(t, sb * k / 2u, e, (int32_t)(vel * (k == 1u ? 3u : 9u) / (k == 1u ? 5u : 25u)), l8, p);
+                fxq_add(t, sb * 2u * k, e, (int32_t)(vel * EV[k - 1u] / 100u), l8 < 8u ? l8 : 8u, p);
             }
             break;
         }
-        case MFX_STUT:
-            for (k = 1; k <= 3u; k++)
-                fxq_add(t, sb * k / 8u, (int32_t)n, (int32_t)(vel * (8u - k) / 8u), 1u, p);
+        case MFX_STUT:                           /* (build 90: four repeats half a step apart, 32nds at 1X; were
+                                                  * three in the step's first half, ~15 ms apart) */
+            for (k = 1; k <= 4u; k++)
+                fxq_add(t, sb * k / 2u, (int32_t)n, (int32_t)(vel * (10u - k) / 10u), 2u, p);
             break;
         case MFX_FLAM:
-            fxq_add(t, 16u, (int32_t)n, (int32_t)(vel * 3u / 4u), l8, p);   /* (~12 ms) */
+            fxq_add(t, FS * 30u / 1000u / CTL, (int32_t)n, (int32_t)(vel * 3u / 4u), l8, p);   /* (30 ms; was ~12) */
             break;
         case MFX_FIFTH:
             seq_sound(t, (uint32_t)sc_snap((int32_t)n + 7), vel * 4u / 5u, len8, seq_lid[t][p], seq_lv[t][p]);
@@ -1437,6 +1448,31 @@ static volatile uint8_t seq_pend_mu;             /* (build 65: the pattern waiti
 static volatile uint8_t seq_mu_was;              /* (.. and the mutes it found, bit 7 set: for the main loop) */
 static volatile uint8_t seq_mq, seq_mq_t;        /* (build 78, MUTE QT: MUTE mode's mutes waiting, a bit a track, bit 7
                                                   * set: waiting -- applied as track seq_mq_t begins its time through) */
+/* (build 90) track t's clock changed to r8, on the reference's 1X step seq_rn (one of the new clock's too): its next
+ * step now, the one it would play had it played at r8 from the start -- its times through, its direction's place and
+ * SWING's pairs as they would be by then (PING and RANDOM: from their start, as many steps on) */
+static void seq_clock_in(uint32_t t, uint32_t r8)
+{
+    uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, st = seq_rn * r8 / 8u, per = len, i, m;
+    uint16_t lp;
+    if (seq_dir[t] == DIR_PING && len >= 2u)
+        per = 2u * len - 2u;                     /* (a time through, there and back) */
+    seq_dcur[t] = (uint8_t)(seq_div[t] % NDIV);
+    seq_tacc[t] = SEQ_STEP8 + seq_racc / 8u * r8;   /* (due now: the reference's overshoot, at the new clock) */
+    rt_left[t] = 0;
+    seq_pos[t] = 0xFF;
+    seq_loop[t] = 0;
+    seq_ppd[t] = 0;
+    seq_rnd_n[t] = 0;
+    if (st) {                                    /* (the steps gone by in this time through, from its start) */
+        m = (st - 1u) % per + 1u;
+        for (i = 0; i < m; i++)
+            seq_pos[t] = (uint8_t)seq_next(t, len);
+        lp = (uint16_t)((st - 1u) / per + seq_loop[t]);
+        seq_loop[t] = lp;
+    }
+    sw_odd[t] = (uint8_t)(st % per & 1u);        /* (the step to come a pair's second) */
+}
 static int seq_wraps(uint32_t t)                 /* track t's next step begins its time through again */
 {
     uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, pos = seq_pos[t];
@@ -1633,7 +1669,10 @@ static void seq_block(void)
             seq_rnd_n[t] = 0;
             rt_left[t] = 0;
             sw_odd[t] = 0;
+            seq_dcur[t] = seq_div[t];
         }
+        seq_racc = SEQ_STEP8;
+        seq_rn = 0xFFFFFFFFu;
         memset(seq_plays, 0, sizeof seq_plays);
         for (t = 0; t < NTRACK; t++)             /* (the arpeggiators on the grid from step 1: a note just played --
                                                   * the one that started it, REC or the looper armed -- is step 1's) */
@@ -1647,6 +1686,7 @@ static void seq_block(void)
                                                   * where it would be by then on its clock, the loops too */
             uint32_t spp = xk_spp;
             seq_gcount = spp - 1u;
+            seq_rn = spp - 1u;
             seq_gstep = (uint8_t)((spp - 1u) & 15u);
             for (t = 0; t < NLANE; t++) {
                 uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, p8 = spp * DIV_R8[seq_div[t] % NDIV], st = p8 / 8u;
@@ -1683,7 +1723,10 @@ static void seq_block(void)
             rt_left[t] = 0;
             seq_tacc[t] = SEQ_STEP8;
             sw_odd[t] = 0;
+            seq_dcur[t] = seq_div[t];            /* (its clocks: at once, every track from its first step) */
         }
+        seq_racc = SEQ_STEP8;
+        seq_rn = 0xFFFFFFFFu;
         memset(seq_plays, 0, sizeof seq_plays);
         for (t = 0; t < NTRACK; t++) {           /* (its transpositions: its loops' from now) */
             lp_trn[t] = sb_next.trn[t];
@@ -1746,6 +1789,16 @@ static void seq_block(void)
             }
         brk_last = m;
     }
+    if (seq_racc >= SEQ_STEP8) {                 /* the reference's 1X step: a clock changed, in on its grid */
+        seq_racc -= SEQ_STEP8;
+        seq_rn++;
+        for (t = 0; t < NLANE; t++)
+            if (seq_dcur[t] != seq_div[t]) {
+                uint32_t r8 = DIV_R8[seq_div[t] % NDIV];
+                if (seq_rn % (r8 < 8u ? 8u / r8 : 1u) == 0u)
+                    seq_clock_in(t, r8);
+            }
+    }
     for (t = 0; t < NLANE; t++) {                /* each lane on its own clock (a lane that does not play: in time,
                                                   * silent) */
         if (seq_tacc[t] >= SEQ_STEP8 && seq_tacc[t] >= SEQ_STEP8 + sw_late(t)) {   /* (a pair's second: its swing
@@ -1763,16 +1816,17 @@ static void seq_block(void)
             brk_rt[t] = brk_fl[t] = 0;
             brk_oct[t] = 0;
         } else if (rt_left[t] && seq_tacc[t] >= rt_next[t]) {   /* the ratchet's next hit */
-            uint32_t r8 = DIV_R8[seq_div[t] % NDIV], rn = rt_n[t];
+            uint32_t r8 = DIV_R8[seq_dcur[t] % NDIV], rn = rt_n[t];
             rt_vel[t] = (uint8_t)maxi(1, rt_vel[t] - rt_vel[t] / 8);
             seq_soundc(t, rt_note[t], rt_vel[t], (uint32_t)maxi(1, (int32_t)(64u / r8 / (2u * (rn > 1u ? rn : 2u)))),
                        seq_lid[t][rt_step[t]], seq_lv[t][rt_step[t]], rt_chf[t]);
             rt_next[t] += rt_int[t];
             rt_left[t]--;
         }
-        seq_tacc[t] += adv * DIV_R8[seq_div[t] % NDIV];
+        seq_tacc[t] += adv * DIV_R8[seq_dcur[t] % NDIV];
         seq_tacc_now[t] = seq_tacc[t];
     }
+    seq_racc += adv * DIV_R8[SEQ_DIV1];
     loop_kick();
     fxq_block();
     arp_block(adv, 1);
