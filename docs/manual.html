@@ -62,7 +62,7 @@
 <a href="#drum" class="sub">DRUM</a>
 <a href="#wavy" class="sub">WAVY</a>
 <a href="#hive" class="sub">HIVE</a>
-<a href="#fltr-amp-fx-and-mangle" class="sub">FLTR, AMP, FX and MANGLE</a>
+<a href="#fltr-amp-fx-mangle-and-wreck" class="sub">FLTR, AMP, FX, MANGLE and WRECK</a>
 <a href="#keys-and-scales">Keys and scales</a>
 <a href="#scales" class="sub">Scales</a>
 <a href="#transposition" class="sub">Transposition</a>
@@ -314,7 +314,7 @@
 <p><b>HOME</b> draws a new sound for the chosen track from a recipe of its machine: a family such as TIGHT KICK, METAL HAT, FM BASS or SWARM DRONE, leaning each time towards industrial, IDM or abstract. <b>SHIFT + HOME</b> draws another from the same family; <b>SHIFT + PRESETS</b> moves to the family before or after. The screen shows the machine and the family. There are 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE. Drone, pad and texture families come with LFOs already set.</p>
 <p><b>GEN LOCK</b> (on the session's page, saved with the session): with ON, HOME and SHIFT + HOME draw nothing and the sound stays as it is (GEN LOCK shows), so a press during a performance changes nothing. With OFF (at first, and for sessions saved by older builds), HOME draws as above.</p>
 <h2 id="sound-pages-edit">Sound pages (EDIT)</h2>
-<p>Black key 10 (<b>EDIT</b>) shows the sound's pages: SYN 1 to 4 (the machine's), FLTR 1, FLTR 2, AMP, FX and MANGLE. Each page has 8 parameters: <b>KNOB 1–4</b> set A to D; <b>PRESETS</b> turned right shows E to H, left goes back. <b>OCT− / OCT+</b> move between the pages. EDIT again leaves.</p>
+<p>Black key 10 (<b>EDIT</b>) shows the sound's pages: SYN 1 to 4 (the machine's), FLTR 1, FLTR 2, AMP, FX, MANGLE and WRECK. Each page has 8 parameters: <b>KNOB 1–4</b> set A to D; <b>PRESETS</b> turned right shows E to H, left goes back. <b>OCT− / OCT+</b> move between the pages. EDIT again leaves.</p>
 <h3 id="4-op">4-OP</h3>
 <p>4-operator FM after the Digitone II's FM TONE: operator C and the modulators A, B1 and B2.</p>
 <table>
@@ -348,7 +348,7 @@
 <tr><th>Page</th><th>Parameters</th></tr>
 <tr><td>SYN 1</td><td>TUNE, SWRM WAVE, DETUNE, MIX, MAIN OCT (−2, −1, 0), MAIN WAVE, ANIMATION, NOISE MOD</td></tr>
 </table>
-<h3 id="fltr-amp-fx-and-mangle">FLTR, AMP, FX and MANGLE</h3>
+<h3 id="fltr-amp-fx-mangle-and-wreck">FLTR, AMP, FX, MANGLE and WRECK</h3>
 <p>These pages are the same on every machine.</p>
 <table>
 <tr><th>Page</th><th>Parameters</th></tr>
@@ -357,12 +357,14 @@
 <tr><td>AMP</td><td>ATTACK, HOLD, DECAY, SUSTAIN, RELEASE, RESET, MODE (AHD or ADSR), VOLUME</td></tr>
 <tr><td>FX</td><td>BIT REDUCE, OVERDRIVE, SRR (sample-rate reduction), OD TYPE, the DELAY, REVERB and CHORUS sends, OD ROUTE</td></tr>
 <tr><td>MANGLE</td><td>DESTROY and DST MODE, SLICE, SLICE RATE, SLC DEPTH, SLC EDGE, SLC SHIFT</td></tr>
+<tr><td>WRECK</td><td>FOLD, RING, RING FRQ</td></tr>
 </table>
 <ul>
 <li><b>FILTER</b>: MULTI (multimode), LP4 (4-pole low-pass), LEGACY (low- or high-pass), COMB−, COMB+, EQ.</li>
 <li><b>OD TYPE</b>: VALVE (2 valve-style stages), RAT (a RAT-style clipper, darker as it rises), FOLD (a wavefolder, which bites only once the signal is loud). RAT and FOLD come from the LXR firmware.</li>
 <li><b>DESTROY</b> breaks the sound digitally; DST MODE chooses how: WRAP, XOR, FLIP, DROP.</li>
 <li><b>SLICE</b> is a gate in time with the tempo: 16 patterns at 1/8, 1/16, 1/32 or 1/16 triplets, with its depth, edge and shift.</li>
+<li><b>WRECK</b> comes from the Quasar firmware. <b>FOLD</b> drives the track's signal up to 5 times into a triangle wavefolder. <b>RING</b> mixes in a ring modulator whose sine runs at <b>RING FRQ</b> (20 Hz to 5 kHz), whatever note plays. Both at 0 leave the sound alone. WRECK works on the track's voices together, before MANGLE, and steps can lock it. About 3 in 10 new sounds from HOME come with FOLD or RING. WRECK has no fixed CCs; MIDI LEARN reaches it.</li>
 </ul>
 <h2 id="keys-and-scales">Keys and scales</h2>
 <p>The white keys play the chosen track in the scale: the first key is the root, each key the next degree. The keys that play the root glow dimly. USB and TRS MIDI notes play the chosen track as the keys do (<a href="#midi">MIDI</a>).</p>
@@ -452,6 +454,7 @@
 <p><b>SHIFT + SEQ</b> draws the chosen track's 3 LFOs anew (LFO RANDOM): 2 or 3 of them on, each to a different parameter, with any wave, speed, mode and depth. It takes risks on purpose: press it again for another. LFO settings cannot be step-locked.</p>
 <h2 id="sequencer">Sequencer</h2>
 <p>Each track has 16 steps, with its own length (1 to 16), clock (1/8, 1/4, 1/2, 1X, 2X, 4X), direction, probability and swing. <b>PLAY</b> starts and stops it.</p>
+<p>A clock changed while the sequencer plays takes effect on the next 16th that is also a step of the new clock (for 1/2, every second 16th; for 1/4 and 1/8, every fourth and eighth), counted from PLAY or the start of the pattern. The track then plays the step it would be on had it run at that clock from the start, so it stays aligned with the other tracks.</p>
 <p>On the TRACK page (black key 2 in the step view), KNOB 3 sets PROB, 0 to 100% (100% at first): the chance that each of the track's steps plays, decided each time the step comes round. KNOB 4 sets SWING, 50 to 80% (50%, straight, at first): the share of each pair of steps the first one takes. The second step of each pair, counted from the track's first step, plays late by (SWING - 50) / 50 of a step.</p>
 <h3 id="step-view">Step view</h3>
 <p>Black key 9 (<b>STEP</b>) turns the step view on or off. The white keys are then the chosen track's 16 steps: lit, a note; dim, empty; the step playing the other way round; past the track's length, dark. Steps are silent while you edit them.</p>
@@ -476,7 +479,7 @@
 </table>
 <h3 id="step-pages">Step pages</h3>
 <p><b>TRIG</b>: KNOB 1 the step's note (in the scale), 2 its velocity, 3 its length, 4 its trig condition; with PRESETS turned right, KNOB 1 its RATCHET (the step played 2 to 8 times). The conditions are the Digitone II's: PRE and !PRE (as the last condition was met or not), NEI and !NEI (as the track before met its condition), 1ST and !1ST (the first time through), probabilities, and A:B (the A-th time of every B).</p>
-<p><b>MOD</b>: KNOB 1 MUTATE (the note moved by up to N steps of the scale, or RND), 2 MUT EVERY (how often), 3 MIDI FX (ECHO, ECHO UP, ECHO DN, STUTTER, FLAM, LATE, GRACE, FIFTH, TRIAD, OCT UP, OCT DN, DROP), 4 FX EVERY.</p>
+<p><b>MOD</b>: KNOB 1 MUTATE (the note moved by up to N steps of the scale, or RND), 2 MUT EVERY (how often), 3 MIDI FX (ECHO, ECHO UP, ECHO DN, STUTTER, FLAM, LATE, GRACE, FIFTH, TRIAD, OCT UP, OCT DN, DROP), 4 FX EVERY. Times are in the track's steps: ECHO plays three repeats 2 steps apart, at 70, 48 and 30% velocity (ECHO UP and DN move each a step of the scale); STUTTER four short repeats half a step apart; FLAM a second hit 30 ms later; LATE the note half a step late; GRACE a step of the scale below on time, the note a third of a step later.</p>
 <h3 id="phrases">Phrases</h3>
 <p>In the step view, black key 1 writes a new phrase for the chosen track: steps, notes, velocities, lengths, conditions, ratchets and locks, made for the role of its sound (KICK, SNARE, HAT, PERC, NOISE, BASS, LEAD, STAB, DRONE). On the PHRASE page, DENSITY and COMPLEXITY (0 to 100) thin it out or fill it.</p>
 <h2 id="recording">Recording</h2>
