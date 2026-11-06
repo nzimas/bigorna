@@ -812,6 +812,25 @@ static uint8_t seq_pre[NLANE];           /* the last condition evaluated on the 
 #define SEQ_HOLD 6u                       /* notes a track's steps and loops keep sounding at once */
 static uint8_t sq_note[NLANE][SEQ_HOLD];
 static uint16_t sq_left[NLANE][SEQ_HOLD];   /* blocks left (0xFFFF: INF) */
+/* (build 92) an INF note's step (0xFF: none, or not INF): let go as the track comes to that step again, or as the
+ * step is emptied or left past the length, or a pattern comes in -- before, a step emptied, a phrase drawn again or
+ * a pattern changed left its INF note sounding until STOP, with no step to it. seq_istep: the step seq_trig plays */
+static uint8_t sq_step[NLANE][SEQ_HOLD];
+static uint8_t seq_istep = 0xFF;
+static void seq_inf_off(uint32_t t, uint32_t p, uint32_t len)   /* (track t comes to step p: 0xFF, all of them) */
+{
+    uint32_t i, st;
+    for (i = 0; i < SEQ_HOLD; i++) {
+        st = sq_step[t][i];
+        if (!sq_note[t][i] || sq_left[t][i] != 0xFFFFu || st == 0xFFu)
+            continue;
+        if (p == 0xFFu || st == p || st >= len || !seq_note[t][st]) {
+            note_off(t, sq_note[t][i], SRC_SEQ);
+            sq_note[t][i] = 0;
+            sq_step[t][i] = 0xFF;
+        }
+    }
+}
 static void seq_release(void)
 {
     uint32_t t, i;
@@ -869,6 +888,7 @@ static void seq_sound(uint32_t t, uint32_t n, uint32_t vel, uint32_t len8, const
     note_lid = 0;
     note_vel = 127;
     sq_note[t][k] = (uint8_t)n;
+    sq_step[t][k] = (uint8_t)(len8 ? 0xFFu : seq_istep);
     if (!len8)
         sq_left[t][k] = 0xFFFFu;
     else {   /* (blocks: eighths x the blocks of an eighth, x 16 for its fraction) */
@@ -1141,6 +1161,7 @@ static void seq_trig(uint32_t t, uint32_t p)
             rt_n[t] = (uint8_t)rn;
             rt_chf[t] = seq_chf[t][p];
         }
+        seq_istep = (uint8_t)p;                  /* (its INF notes: this step's) */
         seq_soundc(t, n, vel, len8, seq_lid[t][p], seq_lv[t][p], seq_chf[t][p]);
         switch (fx) {                            /* the MIDI FX's notes with it, and to come */
         case MFX_ECHO:
@@ -1178,6 +1199,7 @@ static void seq_trig(uint32_t t, uint32_t p)
         default:
             break;
         }
+        seq_istep = 0xFF;
     }
     (void)i;
 }
@@ -1724,6 +1746,7 @@ static void seq_block(void)
             seq_tacc[t] = SEQ_STEP8;
             sw_odd[t] = 0;
             seq_dcur[t] = seq_div[t];            /* (its clocks: at once, every track from its first step) */
+            seq_inf_off(t, 0xFF, NSTEP);         /* (the INF notes of the pattern left: let go) */
         }
         seq_racc = SEQ_STEP8;
         seq_rn = 0xFFFFFFFFu;
@@ -1808,6 +1831,7 @@ static void seq_block(void)
             seq_tacc[t] -= SEQ_STEP8;
             rt_left[t] = 0;                      /* (a ratchet not done by the next step: cut) */
             seq_pos[t] = (uint8_t)p;
+            seq_inf_off(t, p, len);              /* (its INF notes: this step's let go, and those of steps gone) */
             brk_vp[t] = 100;
             if ((brk_mask >> LANE_T(t) & 1u) && !(brk_keep >> t & 1u) && brk_shown != 0xFFu)
                 q = brk_step(t, p, len);         /* (BREAK: another step, its own position kept) */

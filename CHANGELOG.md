@@ -1,5 +1,27 @@
 # Changelog
 
+## Build 92
+
+Fixed
+- A step of length INF holds its note until the track plays that step again. If the step was emptied, the phrase
+  drawn again, the track made shorter than it or the pattern changed, the step never came again, and the note went
+  on sounding until STOP with no step to it (the phrase generator gives drone tracks an INF step half the time). An
+  INF note is now let go when the track comes back to its step, when that step has no note or lies past the
+  track's length, and when another pattern comes in.
+- WAVY's sustained families sounded long after the note:
+  - WAVE PAD, RING DRONE, GRAIN FIELD, BREATH and RADIO had releases of up to 23 s (RING DRONE and BREATH 7 to 23 s).
+    They now take 1 to 5 s to fall silent: WAVE PAD and GRAIN FIELD RELEASE 40 to 58, RING DRONE 46 to 62, BREATH
+    42 to 60, RADIO 30 to 50. Their reverb sends stop at 85.
+  - GRAIN FIELD's and BREATH's noise had a slow attack of its own (an AHD envelope, which always runs to the top), so
+    after a short note the noise went on rising and was loudest once the note had ended. The noise now starts with
+    the note (ATK 0 to 24); BREATH's fade-in is the AMP envelope's, which falls from where it is when let go.
+  - BREATH's noise band was drawn apart from its band-pass filter, so the sound sat near silence and swelled up when
+    the LFO brought the two together. The band now sits under the filter, as GRAIN FIELD's has since build 60, and
+    its LFO moves it half as far.
+
+Compatibility
+- Sounds already in sessions are unchanged; HOME draws the new ranges.
+
 ## Build 91
 
 Added

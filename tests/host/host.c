@@ -5846,6 +5846,39 @@ static int cmd_clkfx(void)
         tap(KEY_TRIG);
         tap(KEY_STEP);
     }
+    {   /* (build 92) an INF step's note: let go as the track comes round again once the step is emptied, and by a
+         * pattern coming in -- not held until STOP with no step to it */
+        uint32_t held, k;
+        seq_run = 0;
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+        cx_steps();
+        for (i = 1; i < NSTEP; i++)
+            seq_note[0][i] = 0;
+        seq_glen[0][0] = GLEN_INF;
+        seq_run = 1;
+        for (i = 0; i < 172u * 4u; i++)          /* (a quarter of the bar in) */
+            mix_block(out);
+        for (k = 0, held = 0; k < SEQ_HOLD; k++)
+            held += sq_note[0][k] == 48u && sq_left[0][k] == 0xFFFFu;
+        CXEXPECT(held == 1u, "INF: held");
+        seq_note[0][0] = 0;                      /* (the step emptied as it sounds) */
+        for (i = 0; i < 172u * 14u; i++)
+            mix_block(out);
+        for (k = 0, held = 0; k < SEQ_HOLD; k++)
+            held += sq_note[0][k] != 0;
+        CXEXPECT(held == 0u, "INF: its step emptied, let go as the track comes round");
+        seq_note[0][0] = 48;                     /* (again, and a pattern in) */
+        for (i = 0; i < 172u * 16u; i++)
+            mix_block(out);
+        seq_inf_off(0, 0xFF, NSTEP);
+        for (k = 0, held = 0; k < SEQ_HOLD; k++)
+            held += sq_note[0][k] != 0;
+        CXEXPECT(held == 0u, "INF: all let go (a pattern coming in)");
+        seq_run = 0;
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+    }
     printf("clkfx: %d failures\n", fails);
     return fails != 0;
 }

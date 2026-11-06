@@ -564,10 +564,11 @@ static void r_wt_pad(sound_t *s, gctx_t *g)
     SY(s, WT_TBL2, RI(g, 0, 1)); SY(s, WT_WAV2, RI(g, 0, 120)); SY(s, WT_LEV2, 110);
     SY(s, WT_TUN2, PICK(g, 64, 64, 71, 76)); SY(s, WT_OFS2, RI(g, 46, 54)); SY(s, WT_DRIF, RI(g, 30, 65));
     SY(s, WT_NLEV, RI(g, 0, 30)); SY(s, WT_NBAS, RI(g, 40, 90)); SY(s, WT_NWID, RI(g, 20, 60));
-    amp_adsr(s, RI(g, 45, 100), RI(g, 60, 100), RI(g, 100, 127), RI(g, 55, 95));
+    amp_adsr(s, RI(g, 45, 100), RI(g, 60, 100), RI(g, 100, 127), RI(g, 40, 58));   /* (build 92: REL 1.8 .. 4.4 s
+                                                  * to silence; was 55 .. 95, 4 .. 15 s) */
     filt(s, SH_LP, RI(g, 64, 96), RI(g, 0, 30), RI(g, 0, 12), RI(g, 40, 90), RI(g, 60, 100), RI(g, 40, 100), RI(g, 50, 90), 30);
     band(s, RI(g, 8, 22), 127);
-    sends(s, RI(g, 0, 35), RI(g, 60, 105), RI(g, 10, 50));
+    sends(s, RI(g, 0, 35), RI(g, 50, 85), RI(g, 10, 50));
     dirt(s, RI(g, 5, 20) + g->ind * RI(g, 0, 30) / 100, 0, 0, 0, 0);
     LFO(s, g, 0, LD_SYN(WT_WAV1), LW_TRI, LR_SLOW, 10, 28);
     LFO(s, g, 1, LD_FREQ, LW_SINE, LR_SLOW, 4, 10);
@@ -579,10 +580,10 @@ static void r_ring_drone(sound_t *s, gctx_t *g)
     SY(s, WT_MOD, PICK(g, 1, 2)); SY(s, WT_WAV1, RI(g, 0, 120)); SY(s, WT_TUN2, RI(g, 64, 100)); SY(s, WT_WAV2, RI(g, 0, 120));
     SY(s, WT_LEV2, 0); SY(s, WT_DRIF, RI(g, 40, 90));
     SY(s, WT_NLEV, RI(g, 0, 40)); SY(s, WT_NBAS, RI(g, 20, 70)); SY(s, WT_NWID, RI(g, 20, 60));
-    amp_adsr(s, RI(g, 30, 90), 127, 127, RI(g, 70, 115));
+    amp_adsr(s, RI(g, 30, 90), 127, 127, RI(g, 46, 62));   /* (build 92: 2.5 .. 5 s; was 70 .. 115, 7 .. 23 s) */
     filt(s, SH_LP, RI(g, 60, 92), RI(g, 15, 45), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 14, 30), 127);
-    sends(s, RI(g, 0, 35), RI(g, 50, 95), 0);
+    sends(s, RI(g, 0, 35), RI(g, 45, 85), 0);
     dirt(s, g->ind * RI(g, 20, 70) / 100, 0, 0, 0, 0);
     LFO(s, g, 0, LD_SYN(WT_TUN2), LW_RND, LR_SLOW, 3, 9); SPH(s, g, 0, 70, 120);
     LFO(s, g, 1, LD_SYN(WT_WAV1), LW_TRI, LR_SLOW, 15, 40);
@@ -592,13 +593,15 @@ static void r_grain_field(sound_t *s, gctx_t *g)
 {
     wt_base(s);
     SY(s, WT_LEV1, RI(g, 0, 35)); SY(s, WT_WAV1, RI(g, 0, 120));
-    SY(s, WT_NATK, RI(g, 20, 70)); SY(s, WT_NHLD, 127); SY(s, WT_NDEC, 127); SY(s, WT_NLEV, RI(g, 95, 120));
+    SY(s, WT_NATK, RI(g, 0, 24)); SY(s, WT_NHLD, 127); SY(s, WT_NDEC, 127); SY(s, WT_NLEV, RI(g, 95, 120));   /* (build
+                                                  * 92: the noise with the note -- its AHD attack, slow, went on rising
+                                                  * after a short note; the swell is the AMP's) */
     SY(s, WT_NTYP, RI(g, 0, 2)); SY(s, WT_CHAR, RI(g, 30, 120));
     SY(s, WT_NBAS, RI(g, 20, 85)); SY(s, WT_NWID, RI(g, 15, 60));
-    amp_adsr(s, RI(g, 20, 70), 127, 127, RI(g, 60, 110));
+    amp_adsr(s, RI(g, 20, 70), 127, 127, RI(g, 40, 58));   /* (build 92: was 60 .. 110, 5 .. 21 s) */
     filt(s, SH_BP, RI(g, 55, 100), RI(g, 25, 70), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 22, 40), 127);
-    sends(s, RI(g, 15, 55), RI(g, 45, 95), 0);
+    sends(s, RI(g, 15, 55), RI(g, 45, 85), 0);
     dirt(s, 0, g->ind > 40 && CH(g, 40) ? RI(g, 20, 60) : 0, CH(g, 30 + g->idm * 30 / 100) ? RI(g, 10, 50) : 0, 0, 0);
     LFO(s, g, 0, LD_SYN(WT_NBAS), LW_RND, LR_SLOW, 10, 30); SPH(s, g, 0, 60, 120);
     LFO(s, g, 1, LD_SYN(WT_CHAR), LW_TRI, LR_MED, 10, 35);
@@ -611,14 +614,19 @@ static void r_breath(sound_t *s, gctx_t *g)
 {
     wt_base(s);
     SY(s, WT_LEV1, 0); SY(s, WT_LEV2, 0); SY(s, WT_NLEV, RI(g, 110, 127)); SY(s, WT_NTYP, RI(g, 0, 1));
-    SY(s, WT_CHAR, RI(g, 0, 60)); SY(s, WT_NATK, RI(g, 60, 110)); SY(s, WT_NHLD, 127); SY(s, WT_NDEC, 127);
+    SY(s, WT_CHAR, RI(g, 0, 60)); SY(s, WT_NATK, RI(g, 0, 24)); SY(s, WT_NHLD, 127); SY(s, WT_NDEC, 127);   /* (build 92:
+                                                  * the noise with the note; was 60 .. 110) */
     SY(s, WT_NBAS, RI(g, 30, 80)); SY(s, WT_NWID, RI(g, 30, 80));
-    amp_adsr(s, RI(g, 60, 110), 127, 127, RI(g, 80, 115));
+    amp_adsr(s, RI(g, 60, 104), 127, 127, RI(g, 42, 60));   /* (build 92: REL was 80 .. 115, 10 .. 23 s) */
     filt(s, SH_BP, RI(g, 50, 85), RI(g, 30, 70), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 24, 40), 127);
-    sends(s, RI(g, 20, 60), RI(g, 70, 110), 0);
+    sends(s, RI(g, 20, 60), RI(g, 55, 85), 0);
     LFO(s, g, 0, LD_FREQ, LW_SINE, LR_SLOW, 10, 25);
     LFO(s, g, 1, LD_SYN(WT_NBAS), LW_RND, LR_SLOW, 10, 28); SPH(s, g, 1, 60, 110);
+    SY(s, WT_NBAS, clampi(s->flt[F_FREQ] - 30, 10, 90));   /* (build 92: the noise's band under the band-pass, as
+                                                  * GRAIN FIELD's -- drawn apart, the two met only now and then, the
+                                                  * sound near silence, then swelling up by itself) */
+    s->lfo[1].dep = (uint8_t)(64 + (s->lfo[1].dep - 64) / 2);   /* (its drift half as far) */
     level(s, 108);
 }
 static void r_radio(sound_t *s, gctx_t *g)
@@ -627,7 +635,7 @@ static void r_radio(sound_t *s, gctx_t *g)
     SY(s, WT_MOD, 2); SY(s, WT_WAV1, RI(g, 0, 120)); SY(s, WT_TUN2, RI(g, 20, 110)); SY(s, WT_WAV2, RI(g, 0, 120));
     SY(s, WT_LEV2, 0); SY(s, WT_NLEV, RI(g, 50, 100)); SY(s, WT_NTYP, 2); SY(s, WT_CHAR, RI(g, 20, 100));
     SY(s, WT_NBAS, RI(g, 40, 80)); SY(s, WT_NWID, RI(g, 15, 40));
-    amp_adsr(s, RI(g, 0, 30), 127, RI(g, 80, 127), RI(g, 40, 90));
+    amp_adsr(s, RI(g, 0, 30), 127, RI(g, 80, 127), RI(g, 30, 50));   /* (build 92: was 40 .. 90, 2 .. 13 s) */
     filt(s, SH_BP, RI(g, 65, 95), RI(g, 30, 70), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 40, 70), RI(g, 20, 50));
     sends(s, RI(g, 20, 60), RI(g, 30, 70), 0);
