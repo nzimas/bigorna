@@ -21,6 +21,7 @@ typedef struct {
     uint8_t tbl[2];
     int32_t wav[2];              /* Q15 along the table */
     int32_t pd[2];               /* the breakpoint, Q16 of a cycle (0x8000: straight) */
+    uint16_t pdk[2];             /* (build 95) how much faster PD reads its quicker half, Q8 (256: straight), to x 8 */
     int32_t lev[2];              /* Q15 */
     uint8_t mod, rset;
     int32_t drif;                /* the drift's depth, semitones Q16 */
@@ -54,6 +55,10 @@ static void wt_cook(wtck_t *c, const sound_t *s)
         c->tbl[k] = (uint8_t)(p[k ? WT_TBL2 : WT_TBL1] != 0);
         c->wav[k] = clampi(p[k ? WT_WAV2 : WT_WAV1], 0, 120) * Q15 / 127;   /* (as the original: v / 127 along it) */
         c->pd[k] = 2048 + clampi(pd, 0, 100) * (65536 - 4096) / 100;   /* 3 % .. 97 % of the cycle */
+        {
+            int32_t sh = c->pd[k] < 32768 ? c->pd[k] : 65536 - c->pd[k];   /* (its shorter half) */
+            c->pdk[k] = (uint16_t)clampi((int32_t)((32768u << 8) / (uint32_t)sh), 256, 2048);
+        }
         c->lev[k] = clampi(p[k ? WT_LEV2 : WT_LEV1], 0, 127) * clampi(p[k ? WT_LEV2 : WT_LEV1], 0, 127) * Q15 / 16129;   /* p^2 */
     }
     c->mod = (uint8_t)clampi(p[WT_MOD], 0, 3);
@@ -126,6 +131,12 @@ FAST static void wt_render(wtv_t *v, const wtck_t *c, int32_t note16, int32_t *o
             inc[k] = 0;
         {   /* (the level from the pitch without the drift: one that moves would flip at a boundary, clicking) */
             uint32_t lv_inc = note_inc(k == 1u && c->mod == 2 ? p16 : p16 - v->dr);
+            /* (build 95: PD reads its quicker half up to 16 times as fast -- the waves' level chosen at that speed,
+             * up to 3 octaves up, so a strong PD buzzes, not aliases) */
+            {
+                uint64_t li = ((uint64_t)lv_inc * c->pdk[k]) >> 8;
+                lv_inc = li > 0x7FFFFFFFu ? 0x7FFFFFFFu : (uint32_t)li;
+            }
             if (c->tbl[k])
                 morph_set(&m[k], WV_HARM0, WV_HARM_N, c->wav[k], lv_inc);
             else

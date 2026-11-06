@@ -90,6 +90,12 @@ static void env_release(env_t *e, const envck_t *c)           /* a note let go *
 /* a block on; returns the level, Q24 */
 FAST static int32_t env_step(env_t *e, const envck_t *c, int gate)
 {
+    /* (build 95) an ADSR envelope with its note let go releases, whatever stage it is in: a note let go under an AHD
+     * sound goes on through its attack or decay, and an ADSR sound drawn under it then (one with DECAY 127, no decay,
+     * most of all) held it at that level for good, its decay never reaching the sustain where the gate is looked
+     * at -- a drone with nothing held, through every sound drawn after until one with a finite decay */
+    if (!gate && c->adsr && e->st >= EV_ATT && e->st <= EV_SUS)
+        e->st = EV_REL;
     switch (e->st) {
     case EV_DEL:
         if (e->n)

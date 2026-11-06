@@ -543,18 +543,79 @@ static void r_fb_drone(sound_t *s, gctx_t *g)
     level(s, 108);
 }
 
+/* (build 95) WAVY's dirt, by rules -- the rhythmic families draw their own (no grit pass, no WRECK drawn after them):
+ *   one colour leads, a second light one now and then, never more than two of drive, bits, SRR, FOLD, RING, comb;
+ *   a bass keeps its low end: its drive before the filter, no bits, no lower rate, no ring, FOLD light;
+ *   a pitched sound keeps 10 bits or more (BIT REDUCE 24) and a rate over 9 kHz (SRR 24); noise goes to 5.6 bits
+ *   (50) and ~3.3 kHz (45);
+ *   high resonance with strong drive is less of it; RING comes as a growl (30 .. 110 Hz) or a metal (420 Hz ..
+ *   2.4 kHz), not anywhere between */
+enum { WV_BASS, WV_TONE, WV_NOISE };
+static int wv_ndirt(const sound_t *s)
+{
+    return (s->fx[X_OD] > 40) + (s->fx[X_BR] != 0) + (s->fx[X_SRR] != 0) + (s->mg[M_FOLD] != 0) + (s->mg[M_RING] != 0) +
+           (s->fmach == FLT_CBM || s->fmach == FLT_CBP);
+}
+static void wv_colour(sound_t *s, gctx_t *g, int kind, int32_t p)   /* (a second colour, light, at p %) */
+{
+    int32_t c;
+    if (!CH(g, p))
+        return;
+    c = RI(g, 0, 3);
+    if (c == 0 && kind != WV_BASS)
+        s->fx[X_BR] = (uint8_t)(kind == WV_NOISE ? RI(g, 25, 45) : RI(g, 12, 24));
+    else if (c <= 1)
+        s->mg[M_FOLD] = (uint8_t)RI(g, 12, kind == WV_BASS ? 30 : 42);
+    else if (c == 2 || kind == WV_BASS) {
+        if (s->fx[X_OD])
+            s->fx[X_ODT] = (uint8_t)PICK(g, 1, 1, 2);   /* (RAT, or the FOLD drive) */
+        else
+            s->fx[X_OD] = (uint8_t)RI(g, 20, 45);
+    } else {
+        s->mg[M_RING] = (uint8_t)RI(g, 25, kind == WV_NOISE ? 70 : 55);
+        s->mg[M_RFRQ] = (uint8_t)(CH(g, 50) ? RI(g, 10, 40) : RI(g, 70, 110));
+    }
+}
+static void wv_rules(sound_t *s, int kind)
+{
+    s->fx[X_BR] = (uint8_t)clampi(s->fx[X_BR], 0, kind == WV_BASS ? 0 : kind == WV_TONE ? 24 : 50);
+    s->fx[X_SRR] = (uint8_t)clampi(s->fx[X_SRR], 0, kind == WV_BASS ? 0 : kind == WV_TONE ? 24 : 45);
+    s->mg[M_FOLD] = (uint8_t)clampi(s->mg[M_FOLD], 0, kind == WV_BASS ? 30 : 45);
+    s->mg[M_RING] = (uint8_t)clampi(s->mg[M_RING], 0, kind == WV_BASS ? 0 : kind == WV_TONE ? 55 : 70);
+    if (kind == WV_BASS)
+        s->fx[X_ODRT] = 0;
+    s->fx[X_OD] = (uint8_t)clampi(s->fx[X_OD], 0, 95);
+    if (s->fx[X_OD] > 60 && s->flt[F_RESO] > 70)
+        s->flt[F_RESO] = 70;
+    while (wv_ndirt(s) > 2) {                    /* (the lightest go first) */
+        if (s->mg[M_RING])
+            s->mg[M_RING] = 0;
+        else if (s->mg[M_FOLD])
+            s->mg[M_FOLD] = 0;
+        else if (s->fx[X_SRR])
+            s->fx[X_SRR] = 0;
+        else if (s->fx[X_BR])
+            s->fx[X_BR] = 0;
+        else
+            break;
+    }
+}
+
 /* WAVY */
 static void r_chord_stab(sound_t *s, gctx_t *g)
 {
     wt_base(s);
-    SY(s, WT_WAV1, RI(g, 0, 50)); SY(s, WT_LEV1, 112);
-    SY(s, WT_TUN2, PICK(g, 67, 71, 71, 76)); SY(s, WT_WAV2, RI(g, 0, 50)); SY(s, WT_LEV2, RI(g, 95, 112));
-    SY(s, WT_OFS2, RI(g, 47, 53)); SY(s, WT_DRIF, RI(g, 5, 25));
-    amp_adsr(s, 0, RI(g, 34, 56), RI(g, 0, 15), RI(g, 28, 48));
-    filt(s, SH_LP, RI(g, 72, 100), RI(g, 10, 35), RI(g, 12, 28), 0, RI(g, 28, 50), 0, RI(g, 25, 45), 0);
-    band(s, RI(g, 8, 22), 127);
-    sends(s, RI(g, 20, 60), RI(g, 25, 65) + g->abs_ * 20 / 100, 0);
-    dirt(s, RI(g, 15, 35), 0, 0, 0, 0);
+    SY(s, WT_TBL1, CH(g, 25)); SY(s, WT_WAV1, RI(g, 50, 100)); SY(s, WT_LEV1, 112);
+    SY(s, WT_TUN2, PICK(g, 67, 68, 71, 71, 74, 76));   /* (a third, minor or major, a fifth, a seventh, the octave) */
+    SY(s, WT_WAV2, RI(g, 50, 100)); SY(s, WT_LEV2, RI(g, 90, 110));
+    SY(s, WT_OFS2, RI(g, 47, 53)); SY(s, WT_DRIF, RI(g, 5, 20));
+    amp_adsr(s, 0, RI(g, 34, 56), RI(g, 0, 15), RI(g, 28, 45));
+    filt(s, SH_LP, RI(g, 62, 92), RI(g, 10, 40), RI(g, 15, 35), 0, RI(g, 26, 46), 0, RI(g, 25, 40), 30);
+    band(s, RI(g, 8, 20), 127);
+    sends(s, RI(g, 20, 55), RI(g, 25, 60) + g->abs_ * 20 / 100, 0);
+    dirt(s, RI(g, 10, 40), 0, 0, 0, 0);
+    wv_colour(s, g, WV_TONE, 40);
+    wv_rules(s, WV_TONE);
     level(s, 116);
 }
 static void r_wt_pad(sound_t *s, gctx_t *g)
@@ -602,7 +663,8 @@ static void r_grain_field(sound_t *s, gctx_t *g)
     filt(s, SH_BP, RI(g, 55, 100), RI(g, 25, 70), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 22, 40), 127);
     sends(s, RI(g, 15, 55), RI(g, 45, 85), 0);
-    dirt(s, 0, g->ind > 40 && CH(g, 40) ? RI(g, 20, 60) : 0, CH(g, 30 + g->idm * 30 / 100) ? RI(g, 10, 50) : 0, 0, 0);
+    dirt(s, 0, g->ind > 40 && CH(g, 40) ? RI(g, 25, 45) : 0, CH(g, 30 + g->idm * 30 / 100) ? RI(g, 12, 35) : 0, 0, 0);
+    wv_rules(s, WV_NOISE);   /* (build 95: was 3.5 .. 9 bits, ~13 .. 2.7 kHz, both at once now and then) */
     LFO(s, g, 0, LD_SYN(WT_NBAS), LW_RND, LR_SLOW, 10, 30); SPH(s, g, 0, 60, 120);
     LFO(s, g, 1, LD_SYN(WT_CHAR), LW_TRI, LR_MED, 10, 35);
     if (s->syn[WT_NBAS] > s->flt[F_FREQ] - 30)     /* (the noise's band kept under the band-pass, its LFO's reach
@@ -639,7 +701,8 @@ static void r_radio(sound_t *s, gctx_t *g)
     filt(s, SH_BP, RI(g, 65, 95), RI(g, 30, 70), 0, 0, 64, 0, 64, 0);
     band(s, RI(g, 40, 70), RI(g, 20, 50));
     sends(s, RI(g, 20, 60), RI(g, 30, 70), 0);
-    dirt(s, RI(g, 20, 60), CH(g, 50) ? RI(g, 20, 60) : 0, RI(g, 10, 50), 0, 0);
+    dirt(s, RI(g, 15, 45), CH(g, 35) ? RI(g, 25, 40) : 0, RI(g, 10, 30), 0, 0);
+    wv_rules(s, WV_NOISE);   /* (build 95: was bits to 4.5, a rate to 2.7 kHz, and drive, all three at once) */
     LFO(s, g, 0, LD_SYN(WT_NBAS), LW_RND, LR_SLOW, 10, 28);
     LFO(s, g, 1, LD_FREQ, LW_RND, LR_MED, 10, 25);
     level(s, 104);
@@ -863,49 +926,115 @@ static void r_fm_clank(sound_t *s, gctx_t *g)
 }
 static void r_ring_scream(sound_t *s, gctx_t *g)
 {
+    int32_t r;
     wt_base(s);
-    SY(s, WT_MOD, PICK(g, 1, 2, 2)); SY(s, WT_WAV1, RI(g, 40, 120)); SY(s, WT_TBL1, RI(g, 0, 1));
-    SY(s, WT_TUN2, RI(g, 70, 124)); SY(s, WT_WAV2, RI(g, 40, 120)); SY(s, WT_LEV2, 0); SY(s, WT_PD1, RI(g, 10, 90));
-    SY(s, WT_DRIF, RI(g, 0, 60));
-    amp_adsr(s, 0, RI(g, 30, 70), RI(g, 40, 120), RI(g, 15, 40));
-    filt(s, SH_BP, RI(g, 70, 110), RI(g, 50, 110), RI(g, -30, 30), 0, RI(g, 30, 60), 40, 40, 60);
-    band(s, RI(g, 25, 50), 127);
-    dirt(s, RI(g, 50, 110), CH(g, 40) ? RI(g, 30, 70) : 0, 0, 1, 0);
-    sends(s, RI(g, 0, 40), RI(g, 0, 40), 0);
-    level(s, 104);
+    SY(s, WT_MOD, PICK(g, 1, 1, 2)); SY(s, WT_WAV1, RI(g, 40, 100)); SY(s, WT_TBL1, CH(g, 25));
+    SY(s, WT_TUN2, PICK(g, 71, 76, 83, 88, 77, 87, 70));   /* (a fifth, octaves, a twelfth; 13 and 23 semitones and the
+                                                            * tritone, the metal ones) */
+    SY(s, WT_OFS2, RI(g, 45, 55)); SY(s, WT_WAV2, RI(g, 0, 60)); SY(s, WT_LEV2, 0); SY(s, WT_PD1, RI(g, 25, 75));
+    SY(s, WT_DRIF, RI(g, 5, 40));
+    amp_adsr(s, 0, RI(g, 30, 65), RI(g, 50, 110), RI(g, 15, 38));
+    r = RI(g, 35, 85);
+    filt(s, SH_BP, RI(g, 70, 100), r, RI(g, -20, 25), 0, RI(g, 30, 55), 40, 40, 60);
+    band(s, RI(g, 20, 40), 127);
+    dirt(s, RI(g, 35, 85) - maxi(0, r - 65), 0, 0, r <= 60, 0);   /* (after the filter only with a softer resonance) */
+    sends(s, RI(g, 0, 40), RI(g, 10, 45), 0);
+    LFO(s, g, 0, LD_SYN(WT_TUN2), LW_TRI, LR_SLOW, 1, 3);   /* (the ring's ratio wandering a little) */
+    wv_colour(s, g, WV_TONE, 50);
+    wv_rules(s, WV_TONE);
+    level(s, 106);
 }
 static void r_sync_grind(sound_t *s, gctx_t *g)
 {
     wt_base(s);
-    SY(s, WT_MOD, 3); SY(s, WT_TUN2, PICK(g, 52, 64, 64)); SY(s, WT_TUN1, RI(g, 76, 124));
-    SY(s, WT_WAV1, RI(g, 60, 120)); SY(s, WT_PD1, RI(g, 0, 100)); SY(s, WT_LEV1, 120); SY(s, WT_LEV2, RI(g, 0, 60));
-    amp_adsr(s, 0, RI(g, 30, 60), RI(g, 60, 120), RI(g, 10, 30));
-    filt(s, SH_LP, RI(g, 60, 95), RI(g, 50, 105), RI(g, 15, 40), 0, RI(g, 20, 50), RI(g, 0, 40), RI(g, 20, 40), 30);
-    dirt(s, RI(g, 70, 120), RI(g, 0, 60), 0, 1, 0);
+    SY(s, WT_MOD, 3); SY(s, WT_TUN2, PICK(g, 52, 64, 64));   /* (the master: the note, or an octave under it) */
+    SY(s, WT_TUN1, RI(g, 72, 100));              /* (the slave 8 .. 36 semitones over it) */
+    SY(s, WT_WAV1, RI(g, 70, 110)); SY(s, WT_PD1, RI(g, 30, 70)); SY(s, WT_LEV1, 112);
+    SY(s, WT_WAV2, RI(g, 0, 50)); SY(s, WT_LEV2, RI(g, 55, 90));   /* (the master heard: the note under the grind) */
+    amp_adsr(s, 0, RI(g, 30, 60), RI(g, 60, 115), RI(g, 10, 28));
+    filt(s, SH_LP, RI(g, 55, 85), RI(g, 20, 60), RI(g, 15, 38), 0, RI(g, 20, 45), RI(g, 0, 40), RI(g, 20, 35), 30);
+    dirt(s, RI(g, 30, 75), 0, 0, 0, 0);          /* (before the filter: it takes the drive's top off) */
+    if (CH(g, 60))
+        LFO(s, g, 0, LD_SYN(WT_TUN1), LW_TRI, PICK(g, LR_SLOW, LR_MED), 2, 5);   /* (the sync swept) */
+    wv_colour(s, g, WV_BASS, 40);
+    wv_rules(s, WV_BASS);
     level(s, 112);
 }
 static void r_digital_hash(sound_t *s, gctx_t *g)
 {
+    int32_t how;
     noise_base(s);
     SY(s, WT_NTYP, PICK(g, 1, 2, 2)); SY(s, WT_CHAR, RI(g, 30, 120)); SY(s, WT_NDEC, RI(g, 14, 40)); SY(s, WT_NHLD, RI(g, 0, 20));
     SY(s, WT_NBAS, RI(g, 30, 90)); SY(s, WT_NWID, RI(g, 20, 80)); SY(s, WT_NLEV, 127);
     SY(s, WT_LEV1, CH(g, 40) ? RI(g, 40, 90) : 0); SY(s, WT_MOD, 2); SY(s, WT_WAV1, RI(g, 60, 120));
     amp_hit(s, 0, RI(g, 0, 10), RI(g, 25, 45));
-    drum_filter(s, g, SH_LP, 95, 127, 0, 40, 0, RI(g, 20, 50));
-    dirt(s, RI(g, 20, 80), RI(g, 50, 110), RI(g, 20, 90), 1, CH(g, 50));
+    drum_filter(s, g, SH_LP, 85, 120, 0, 40, 0, RI(g, 15, 40));
+    how = RI(g, 0, 2);                           /* (one way of breaking it: crushed, decimated, or driven) */
+    if (how == 0)
+        dirt(s, RI(g, 10, 35), RI(g, 25, 48), 0, 0, 0);   /* (5.6 .. 9.7 bits) */
+    else if (how == 1)
+        dirt(s, RI(g, 10, 35), 0, RI(g, 22, 45), 0, 0);   /* (~11 .. 3.3 kHz) */
+    else {
+        dirt(s, RI(g, 45, 85), 0, 0, 1, 0);
+        s->fx[X_ODT] = 1;                        /* (RAT) */
+    }
+    wv_colour(s, g, WV_NOISE, 35);
+    wv_rules(s, WV_NOISE);
     pan(s, RI(g, -24, 24));
     level(s, 110);
 }
 static void r_pd_buzz(sound_t *s, gctx_t *g)
 {
     wt_base(s);
-    SY(s, WT_WAV1, RI(g, 80, 120)); SY(s, WT_PD1, PICK(g, 0, 5, 95, 100)); SY(s, WT_LEV1, 120);
-    SY(s, WT_TUN2, PICK(g, 64, 64, 52, 71)); SY(s, WT_WAV2, RI(g, 80, 120)); SY(s, WT_PD2, PICK(g, 0, 10, 90, 100));
-    SY(s, WT_LEV2, RI(g, 80, 115)); SY(s, WT_OFS2, RI(g, 40, 60));
+    SY(s, WT_WAV1, RI(g, 40, 110)); SY(s, WT_PD1, CH(g, 50) ? RI(g, 12, 30) : RI(g, 70, 88)); SY(s, WT_LEV1, 116);
+    SY(s, WT_TUN2, PICK(g, 64, 52, 52, 71)); SY(s, WT_WAV2, RI(g, 0, 80)); SY(s, WT_PD2, RI(g, 25, 75));
+    SY(s, WT_LEV2, RI(g, 70, 105)); SY(s, WT_OFS2, RI(g, 44, 56));
     amp_hit(s, 0, RI(g, 0, 20), RI(g, 30, 55));
-    filt(s, SH_LP, RI(g, 70, 105), RI(g, 30, 90), RI(g, 10, 40), 0, RI(g, 20, 45), 0, 30, 30);
-    dirt(s, RI(g, 60, 120), CH(g, 40) ? RI(g, 25, 70) : 0, 0, 1, 0);
+    filt(s, SH_LP, RI(g, 55, 92), RI(g, 20, 60), RI(g, 12, 38), 0, RI(g, 20, 45), 0, 30, 30);
+    dirt(s, RI(g, 25, 70), 0, 0, 0, 0);
+    if (CH(g, 50))
+        LFO(s, g, 0, LD_SYN(WT_PD1), LW_TRI, LR_MED, 3, 8);   /* (the buzz's edge moving) */
+    wv_colour(s, g, WV_BASS, 40);
+    wv_rules(s, WV_BASS);
     pan(s, RI(g, -16, 16));
+    level(s, 114);
+}
+
+/* (build 95) an industrial techno bass: a square or saw (PD its pulse's width), a sine or triangle an octave
+ * under it, short; drive before the filter */
+static void r_pulse_bass(sound_t *s, gctx_t *g)
+{
+    wt_base(s);
+    SY(s, WT_WAV1, PICK(g, 80, 100, 120, 120)); SY(s, WT_PD1, RI(g, 20, 45)); SY(s, WT_LEV1, 112);
+    SY(s, WT_TUN2, 52); SY(s, WT_WAV2, PICK(g, 0, 40)); SY(s, WT_LEV2, RI(g, 60, 95));
+    SY(s, WT_RSET, 1);
+    if (CH(g, 50))
+        amp_hit(s, 0, RI(g, 0, 12), RI(g, 28, 48));
+    else
+        amp_adsr(s, 0, RI(g, 30, 55), RI(g, 40, 100), RI(g, 10, 25));
+    filt(s, SH_LP, RI(g, 40, 72), RI(g, 15, 55), RI(g, 18, 42), 0, RI(g, 18, 40), 0, RI(g, 18, 32), 40);
+    dirt(s, RI(g, 20, 60), 0, 0, 0, 0);
+    wv_colour(s, g, WV_BASS, 30);
+    wv_rules(s, WV_BASS);
+    level(s, 118);
+}
+/* (build 95) a tuned metal strike: ring modulation at an inharmonic ratio, a click of noise on it, a short decay,
+ * a band-pass ringing */
+static void r_metal_hit(sound_t *s, gctx_t *g)
+{
+    wt_base(s);
+    SY(s, WT_MOD, 1); SY(s, WT_WAV1, RI(g, 0, 50)); SY(s, WT_TBL1, CH(g, 30));
+    SY(s, WT_TUN2, PICK(g, 77, 81, 83, 87, 91, 94)); SY(s, WT_OFS2, RI(g, 40, 60)); SY(s, WT_WAV2, RI(g, 0, 45));
+    SY(s, WT_LEV2, 0); SY(s, WT_RSET, 1);
+    SY(s, WT_NLEV, RI(g, 30, 80)); SY(s, WT_NHLD, 0); SY(s, WT_NDEC, RI(g, 6, 18));
+    SY(s, WT_NBAS, RI(g, 60, 100)); SY(s, WT_NWID, RI(g, 20, 50));
+    amp_hit(s, 0, RI(g, 0, 8), RI(g, 22, 50));
+    filt(s, SH_BP, RI(g, 75, 105), RI(g, 25, 70), 0, 0, 64, 0, 64, 64);
+    band(s, RI(g, 20, 45), 127);
+    sends(s, RI(g, 10, 45), RI(g, 15, 55), 0);
+    wv_colour(s, g, WV_TONE, 35);
+    wv_rules(s, WV_TONE);
+    pan(s, RI(g, -20, 20));
     level(s, 112);
 }
 static void r_swarm_grind(sound_t *s, gctx_t *g)
@@ -1014,6 +1143,7 @@ static const recipe_t RECIPES[] = {
     {"HORNET", ENG_SWM, FLT_LP4, 0, r_hornet},
     {"SWARM PAD", ENG_SWM, FLT_LP4, 1, r_swarm_pad},      {"SWARM DRONE", ENG_SWM, FLT_LP4, 1, r_swarm_drone},
     {"DARK WASH", ENG_SWM, FLT_LP4, 1, r_dark_wash},
+    {"PULSE BASS", ENG_WAV, FLT_LP4, 0, r_pulse_bass},    {"METAL HIT", ENG_WAV, FLT_MM, 0, r_metal_hit},   /* (build 95) */
 };
 #define NRECIPE (sizeof RECIPES / sizeof RECIPES[0])
 
@@ -1100,7 +1230,9 @@ static void gen_sound(sound_t *s, uint32_t m, int32_t fam, int32_t avoid, uint32
     s->fmach = RECIPES[fam].fmach;
     s->flt[F_BWRT] = 0;
     RECIPES[fam].fn(s, &g);
-    if (!RECIPES[fam].amb) {
+    if (!RECIPES[fam].amb && m == ENG_WAV)       /* (build 95: WAVY's dirt its recipe's own, by its rules) */
+        grit_lfo(s, &g, 0);
+    else if (!RECIPES[fam].amb) {
         int32_t od0 = s->fx[X_OD];
         grit(s, &g);
         grit_lfo(s, &g, str_has(RECIPES[fam].name, "KICK"));

@@ -1,5 +1,38 @@
 # Changelog
 
+## Build 95
+
+Fixed
+- A drone could start with no key held and stay through every sound drawn after it. A note let go under a sound with
+  an AHD envelope goes on through its attack and decay (AHD does not follow the key). If HOME then drew a sound with
+  an ADSR envelope and DECAY 127 (no decay: BREATH, RADIO, RING DRONE, GRAIN FIELD, FB DRONE and others), the voice
+  stayed in its decay at the level it had reached, for good: that stage never reached the sustain, where the key is
+  looked at. It ended only with a sound with a finite decay. WAVY mixes both kinds, so it happened there most: in
+  host runs of random notes and sounds, 3 runs in 3 on WAVY, 3 in 135 on 4-OP. Now an ADSR envelope with its note let
+  go releases from whatever stage it is in. No hanging voice in 400 runs on any machine.
+- MANGLE's DESTROY in XOR and FLIP mode made a loud noise out of near silence (a fixed bit pattern XORed into a quiet
+  tail). The error now scales down with the signal under -24 dB, so silence stays silent.
+- WAVY's phase distortion aliased when strong: PD reads the quicker half of the wave up to 16 times as fast, from a
+  wave band-limited for the note. The band-limited wave is now chosen for that speed (up to 3 octaves up).
+
+Changed
+- WAVY's rhythmic families were revised, with rules for their dirt in place of the grit pass and WRECK drawn after
+  them. Before, drive, bits (down to 3 bits), a lower rate (down to 2 kHz), comb, FOLD and RING stacked: 1.7 to 3.3 of
+  them a sound on average, and 28 to 83% of sounds had three or more. Now one colour leads and a second light one
+  comes now and then (never more than two). A bass keeps its low end clean (drive before the filter; no bits, no lower
+  rate, no ring). A pitched sound keeps 10 bits or more and a rate over 9 kHz; only noise goes to 5.6 bits and
+  3.3 kHz. Drive is less with high resonance. RING comes as a growl (30 to 110 Hz) or a metal tone (420 Hz to 2.4 kHz).
+  - CHORD STAB: the second oscillator a third, fifth, seventh or octave over the first.
+  - RING SCREAM: the ring's ratio from a set (fifths, octaves, and 13, 23 semitones and the tritone for metal), not
+    any; drive after the filter only with a softer resonance; the ratio drifting a little.
+  - SYNC GRIND: the slave 8 to 36 semitones over the master (was to 60), the master heard under it, drive before the
+    filter, the sync swept by an LFO now and then.
+  - DIGITAL HASH: broken one way: crushed (5.6 to 9.7 bits), decimated (11 to 3.3 kHz) or driven (RAT).
+  - PD BUZZ: strong PD, not extreme; drive before the filter; its PD moving now and then.
+  - GRAIN FIELD and RADIO: bits and rate within the noise rules.
+- Two WAVY families: PULSE BASS (a square or saw over a sine or triangle an octave down, short, for industrial techno)
+  and METAL HIT (a tuned strike: ring modulation at an inharmonic ratio, a click of noise, a band-pass ringing).
+
 ## Build 94
 
 Changed

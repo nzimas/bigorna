@@ -1120,11 +1120,12 @@ static int cmd_projects(const char *dir)
         tap(KEY_STEP);
     }
     {   /* every recipe's phrase: notes in the scale, room in the pattern, back the same from a pattern */
-        uint32_t f, t, i, l, locks = 0, bad = 0, roles[NRO];
+        uint32_t f, ff, t, i, l, locks = 0, bad = 0, roles[NRO];
         static pat_t pp;
         memset(roles, 0, sizeof roles);
-        for (f = 0; f < NRECIPE; f++)
-            for (t = 0; t < NTRACK; t++) {
+        for (ff = 0; ff < NRECIPE; ff++)         /* (from build 95's families on, DARK WASH last: what follows plays
+                                                  * the tracks as this leaves them) */
+            for (f = (ff + 56u) % NRECIPE, t = 0; t < NTRACK; t++) {
                 gen_sound(&ui.snd[t][RECIPES[f].mach], RECIPES[f].mach, (int32_t)f, -1, f * 7u + t);
                 ui.eng[t] = RECIPES[f].mach;
                 phrase_new(t);
@@ -2168,9 +2169,9 @@ static int cmd_projects(const char *dir)
         k = ui.eng[ui.sel];
         btn(B_SAVE, 0);
         turn(EN_PRESET, 2);
-        btn(B_SAVE, 0);
-        turn(EN_PRESET, 3);
-        EXPECT(ui.eng[ui.sel] == k, "PRESETS on the sessions' pages leaves the machine");
+        EXPECT(ui.page == PG_PAT && ui.eng[ui.sel] == k, "PRESETS on the sessions' pages leaves the machine");
+        btn(B_SAVE, 0);                          /* (build 95: checked on the grid -- turned after it closed, on the
+                                                  * main page, it passed only while the machine was the last) */
         btn(B_SAVE, 1);
         btn(B_GLO, 0);
         tap(KEY_EDIT);                           /* the EDIT pages: OCT the pages, PRESETS the half, never the machine */
@@ -5913,6 +5914,34 @@ static int cmd_clkfx(void)
         for (k = 0, left = 0; k < NVOICE; k++)
             left += vox[k].sounding;
         CXEXPECT(!left, "ADSR, AHD drawn under a held note, let go, ADSR again: no voice left sounding");
+    }
+    {   /* (build 95) a note let go on an AHD sound with a long decay, an ADSR one with DECAY 127 (no decay) drawn
+         * while it decays: the voice ends -- it stayed at its level for good, the decay never reaching the sustain */
+        sound_t sa, sb;
+        uint32_t k, left;
+        tracks_init();
+        vox_age = 0;
+        memset(ck_buf, 0, sizeof ck_buf);
+        gen_sound(&sa, ENG_WAV, -1, -1, 12);
+        sa.amp[A_MODE] = 0; sa.amp[A_ATK] = 0; sa.amp[A_HOLD] = 10; sa.amp[A_DEC] = 100;
+        sb = sa;
+        sb.amp[A_MODE] = 1; sb.amp[A_DEC] = 127; sb.amp[A_SUS] = 127; sb.amp[A_REL] = 30;
+        ck_cook(&ck_buf[0][0], &sa);
+        ck_buf[0][1] = ck_buf[0][0];
+        ck_pub[0] = ck_use[0] = 0;
+        ev_post(EV_ON, 0, 48, 127);
+        for (i = 0; i < 100u; i++)
+            mix_block(out);
+        ev_post(EV_OFF, 0, 48, 0);
+        for (i = 0; i < 100u; i++)
+            mix_block(out);
+        ck_cook(&ck_buf[0][1], &sb);             /* (ADSR, no decay, nothing held) */
+        ck_pub[0] = 1;
+        for (i = 0; i < 2756u * 2u; i++)
+            mix_block(out);
+        for (k = 0, left = 0; k < NVOICE; k++)
+            left += vox[k].sounding;
+        CXEXPECT(!left, "AHD let go, ADSR with no decay drawn while it decays: no voice left sounding");
     }
     {   /* (build 94) a kick's phrase, 200 times: many bars, not one; forms over bars (a variant on B:B) */
         static uint32_t seen[2048];

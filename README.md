@@ -119,7 +119,7 @@ the other 5 are free for other parts. A track not on DRUM has none (ST-A is the 
 **HOME** draws a new sound for the chosen track from a recipe of its machine: a family such as TIGHT KICK, METAL HAT,
 FM BASS or SWARM DRONE, leaning each time towards industrial, IDM or abstract. **SHIFT + HOME** draws another from the
 same family; **SHIFT + PRESETS** moves to the family before or after. The screen shows the machine and the family.
-There are 56 families: 29 for DRUM, 9 for 4-OP, 10 for WAVY, 8 for HIVE. Drone, pad and texture families come with
+There are 58 families: 29 for DRUM, 9 for 4-OP, 12 for WAVY, 8 for HIVE. Drone, pad and texture families come with
 LFOs already set.
 
 **GEN LOCK** (on the session's page, saved with the session): with ON, HOME and SHIFT + HOME draw nothing and the
@@ -166,6 +166,13 @@ noise only. Modulating C, it gives metallic, grainy hits. With **NOISE RST** on,
 | SYN 1 | TUNE, WAVE, PD and LEVEL for each oscillator |
 | SYN 2 | OFS 1, TABLE 1, MOD (OFF, RING, RING FIX, SYNC), RESET, OFS 2, TABLE 2, DRIFT |
 | SYN 3 | NS ATK, NS HOLD, NS DECAY, NS LEVEL, NS BASE, NS WIDTH, NS TYPE (GRAIN, TUNED, S+H), NS CHAR |
+
+Its families: CHORD STAB, RING SCREAM, SYNC GRIND, DIGITAL HASH, PD BUZZ, PULSE BASS and METAL HIT, and the
+dark-ambient WAVE PAD, RING DRONE, GRAIN FIELD, BREATH and RADIO. HOME draws their dirt by rules: one colour leads
+(drive, bits, a lower rate, FOLD, RING), a second light one now and then, never more than two. A bass keeps its low
+end clean (drive before the filter; no bits, no lower rate, no ring). A pitched sound keeps 10 bits or more and a
+rate over 9 kHz; only noise goes to 5.6 bits and 3.3 kHz. RING comes as a growl (30 to 110 Hz) or a metal tone
+(420 Hz to 2.4 kHz).
 
 ### HIVE
 

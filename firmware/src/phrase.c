@@ -39,6 +39,7 @@ static const uint8_t RO_OF[] = {
     RO_DRONE, RO_DRONE, RO_DRONE, RO_DRONE, RO_DRONE,   /* WAVE PAD, RING DRONE, GRAIN FIELD, BREATH, RADIO */
     RO_BASS, RO_LEAD, RO_STAB, RO_BASS, RO_LEAD,    /* SUB SWARM, SWARM LEAD, SWARM STAB, SWARM GRIND, HORNET */
     RO_DRONE, RO_DRONE, RO_DRONE,                /* SWARM PAD, SWARM DRONE, DARK WASH */
+    RO_BASS, RO_PERC,                            /* PULSE BASS, METAL HIT (build 95) */
 };
 typedef char ro_fits[sizeof RO_OF == NRECIPE ? 1 : -1];
 

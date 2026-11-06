@@ -7,6 +7,7 @@
  *               XOR    the low bits XORed with a fixed pattern, more of them as it goes up: a noise that follows
  *                      the signal, then breaks it
  *               FLIP   one bit flipped, a higher one as it goes up: a square error riding the wave
+ *                      (both, from build 95, scaled down with the signal under -24 dB: silence stays silent)
  *               DROP   samples dropped and held, more often and longer as it goes up: data errors, crackle
  *             (fading in over its first eight steps)
  *   SLICE     a gate in time with the tempo (the sequencer's steps; stopped, a clock of its own at the tempo): one of
@@ -89,11 +90,13 @@ FAST static void mangle_block(uint32_t t, int32_t *x, const uint8_t *m)
                 y = (int16_t)(uint16_t)(uint32_t)mulq12(s, gw);         /* (two's complement: it wraps) */
                 break;
             case 1:
-                y = (int16_t)(uint16_t)((uint32_t)s ^ xm);
+            case 2: {   /* (build 95: the error scaled down under -24 dB -- a fixed pattern XORed in made a loud noise
+                         * of a tail or near silence) */
+                int32_t lv = absi(s) << 4;
+                y = (int16_t)(uint16_t)((uint32_t)s ^ (mode == 1u ? xm : fb));
+                y = s + mulq15(y - s, lv < Q15 ? lv : Q15);
                 break;
-            case 2:
-                y = (int16_t)(uint16_t)((uint32_t)s ^ fb);
-                break;
+            }
             default:
                 q->rnd = q->rnd * 1664525u + 1013904223u;
                 if (q->hold_n) {
