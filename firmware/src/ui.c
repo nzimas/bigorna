@@ -294,6 +294,8 @@ static void pat_grid_open(void);
 static void pat_poll(void);
 static uint8_t seq_pend_k;                       /* (projects.c: the pattern waiting to play) */
 static void tempo_apply(void);
+static int32_t tempo_now(void);
+static void tempo_set(int32_t v);
 static int8_t pat_clip_from;                     /* (projects.c: the pattern copied, -1 none) */
 static void pat_clear(uint32_t k);
 static void prj_grid_open(void);                 /* (projects.c: the SESSIONS grid, and its white keys; build 82) */
@@ -2353,9 +2355,8 @@ static void ui_input(void)
     }
     if ((s = e_pre) != 0 && step_page() && ui.mod) {   /* (MOD: one page, no halves) */
         ;
-    } else if ((s = e_pre) != 0 && ui.page == PG_TEMPO) {   /* TEMPO: PRESETS the session's tempo */
-        ui.tempo = (int16_t)clampi(ui.tempo + s, 10, 300);
-        tempo_apply();
+    } else if ((s = e_pre) != 0 && ui.page == PG_TEMPO) {   /* TEMPO: PRESETS the pattern's tempo */
+        tempo_set(tempo_now() + s);              /* (build 97: the pattern's tempo) */
         prj_dirty = 1;
         ui.force = 1;
     } else if ((s = e_pre) != 0 && ui.learn && (ui.page == PG_EDIT || ui.page == PG_FXP) && !step_page()) {
@@ -3482,7 +3483,7 @@ static void draw_tempo_page(void)
 {
     char n[8];
     int ext = midi_slave();                      /* (following a clock: its tempo, EXT; build 46) */
-    int32_t v = ext ? (fx_bpm10 + 5) / 10 : ui.tempo;
+    int32_t v = ext ? (fx_bpm10 + 5) / 10 : tempo_now();
     if (!ui.force && ui.shown_page == PG_TEMPO && ui.shown_rows[0] == v + ext * 1000)
         return;
     fmt_int(n, v);

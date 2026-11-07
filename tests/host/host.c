@@ -884,11 +884,11 @@ static int cmd_projects(const char *dir)
         fm1_in.buttons = 0;
         ui_input();
         fm1_ms += 2000;
-        EXPECT(ui.page == PG_PAT && pat_dirty && !(pat_store[0].used && pat_store[0].seq[SEQ_NREC] == 2u &&
+        EXPECT(ui.page == PG_PAT && pat_dirty && !(pat_store[0].used && pat_store[0].seq[SEQ_NREC] == 3u &&
                pat_store[0].seq[SEQ_REC4 + 6u + 1u] == n0), "SAVE held on the grid: nothing saved");
         wkey_hold(0);
         EXPECT(pat_cur == 0u && pat_store[0].used && !pat_dirty && pat_store[0].seq[SEQ_FMT] == SEQ_V4 &&
-               pat_store[0].seq[SEQ_NREC] == 2u && pat_store[0].seq[SEQ_REC4 + 6u + 1u] == n0,
+               pat_store[0].seq[SEQ_NREC] == 3u && pat_store[0].seq[SEQ_REC4 + 6u + 1u] == n0,
                "white key 1 held on the grid saves the pattern playing, its steps");
         EXPECT(ui.page == PG_PAT, "the grid stays");
         {   /* (written into session 3's flash) */
@@ -4781,6 +4781,111 @@ static int cmd_pstate(const char *dir)
     return fails != 0;
 }
 
+/* (build 97) a pattern holds each lane's sends (DELAY, REVERB, CHORUS) and its tempo, and gives them back when it
+ * plays; a pattern without them (saved before, or empty) leaves them as they are */
+#define PSNDX(c, what) do { if (!(c)) { printf("FAIL patsnd: %s\n", what); fails++; } } while (0)
+static int cmd_patsnd(void)
+{
+    int32_t out[2 * CTL];
+    uint32_t i, e0, e1;
+    int fails = 0;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    seq_note[0][0] = 60;
+    e0 = ui.eng[0];
+    e1 = e0 == ENG_WAV ? ENG_FMT : ENG_WAV;
+    ui.snd[0][ui.eng[0]].fx[X_REV] = 100;
+    ui.snd[0][ui.eng[0]].fx[X_DEL] = 20;
+    ui.snd[3][ui.eng[3]].fx[X_CHR] = 77;
+    tempo_set(100);
+    PSNDX(!prj_save(0) && pat_snd(&pat_store[0]) && pat_store[0].tempo == 100u, "(session 1 saved; pattern 1 with its sends, its tempo)");
+    pat_switch(1);
+    PSNDX(pat_cur == 1u && lane_snd(0)->fx[X_REV] == 100u && tempo_now() == 100, "an empty pattern: the sends and tempo left as they play");
+    lane_snd(0)->fx[X_REV] = 5;
+    lane_snd(3)->fx[X_CHR] = 0;
+    pat_poll();
+    PSNDX(pat_dirty, "a send changed: the pattern changed");
+    seq_note[1][4] = 62;
+    PSNDX(!pat_save(1) && !pat_dirty, "pattern 2 saved");
+    tempo_set(140);
+    pat_poll();
+    PSNDX(pat_dirty, "the tempo changed: the pattern changed");
+    PSNDX(!pat_save(1) && pat_store[1].tempo == 140u, "pattern 2 saved, at 140");
+    pat_switch(0);
+    PSNDX(lane_snd(0)->fx[X_REV] == 100u && lane_snd(0)->fx[X_DEL] == 20u && lane_snd(3)->fx[X_CHR] == 77u &&
+            tempo_now() == 100 && fx_bpm10 == 1000 && !pat_dirty && ui.dirty[0], "pattern 1: its sends and tempo back, the sound published");
+    ui_publish();
+    PSNDX(ck_buf[0][ck_pub[0]].snd.fx[X_REV] == 100u, "(the sound playing has pattern 1's reverb send)");
+    pat_switch(1);
+    PSNDX(lane_snd(0)->fx[X_REV] == 5u && !lane_snd(3)->fx[X_CHR] && tempo_now() == 140, "pattern 2: its own");
+    /* each pattern's machine: the sends go to the sound of the machine it plays */
+    ui.eng[0] = e1;
+    lanes_apply(0);
+    ui.snd[0][e1].fx[X_REV] = 33;
+    PSNDX(!pat_save(1), "(pattern 2 saved, track 1 on WAVY)");
+    pat_switch(0);
+    PSNDX(ui.eng[0] == e0 && ui.snd[0][e0].fx[X_REV] == 100u && ui.snd[0][e1].fx[X_REV] == 33u, "pattern 1: its machine, its send");
+    pat_switch(1);
+    PSNDX(ui.eng[0] == e1 && ui.snd[0][e1].fx[X_REV] == 33u, "pattern 2: WAVY, its send");
+    /* the flash holds them */
+    PSNDX(!prj_save(0), "(session 1 saved at pattern 2)");
+    lane_snd(0)->fx[X_REV] = 1;
+    tempo_set(90);
+    PSNDX(!prj_load(0) && pat_cur == 1u && lane_snd(0)->fx[X_REV] == 33u && tempo_now() == 140 && !pat_dirty,
+            "the session loaded: its pattern's sends and tempo");
+    pat_switch(0);
+    PSNDX(lane_snd(0)->fx[X_REV] == 100u && tempo_now() == 100, "and pattern 1's, from the flash");
+    /* a pattern saved before build 97: no sends, no tempo -- left as they play; its steps as ever */
+    {
+        pat_t *q = &pat_store[2];
+        *q = pat_store[1];
+        q->seq[SEQ_NREC]--;                      /* (the sends record, the last, gone) */
+        q->tempo = 0;
+        PSNDX(!pat_snd(q), "(a pattern without the record)");
+    }
+    pat_switch(2);
+    PSNDX(pat_cur == 2u && lane_snd(0)->fx[X_REV] == 33u && ui.eng[0] == e1 && tempo_now() == 100 && seq_note[1][4] == 62u,
+            "a pattern of build 96: the sends and tempo left as they play, its steps");
+    {   /* an earlier build's decoder: the notes read, the record not taken for a step */
+        static seqbuf_t b;
+        uint32_t t, n = 0;
+        pat_decode(&pat_store[1], &b);
+        for (t = 0; t < NLANE; t++)
+            for (i = 0; i < NSTEP; i++)
+                n += b.note[t][i] != 0;
+        PSNDX(n == 1u && b.note[1][4] == 62u, "the steps decoded as ever beside the record");
+    }
+    /* switched while playing: at the end of the chosen track's time through */
+    seq_run = 1;
+    pat_switch(1);
+    pat_switch(0);
+    for (i = 0; i < 4000u && seq_pend; i++) {
+        mix_block(out);
+        pat_poll();
+    }
+    PSNDX(!seq_pend && pat_cur == 0u && lane_snd(0)->fx[X_REV] == 100u && tempo_now() == 100, "taken in playing: pattern 1's");
+    seq_run = 0;
+    /* a full pattern: every step of every track a note -- the notes all kept */
+    {
+        uint32_t t, n = 0;
+        static seqbuf_t b;
+        for (t = 0; t < NTRACK; t++)
+            for (i = 0; i < NSTEP; i++)
+                seq_note[t][i] = (uint8_t)(48 + i);
+        PSNDX(!pat_save(3), "(pattern 4 saved, 96 notes)");
+        pat_decode(&pat_store[3], &b);
+        for (t = 0; t < NTRACK; t++)
+            for (i = 0; i < NSTEP; i++)
+                n += b.note[t][i] != 0;
+        PSNDX(n == 96u && pat_store[3].tempo == 100u, "96 notes: every one kept, the tempo too");
+    }
+    printf("patsnd: %d failures\n", fails);
+    return fails != 0;
+}
+
 /* (build 64) BREAK on the PATTERNS grid; the 3rd black key held and a white key held 0.8 s: the break saved there */
 #define BEXPECT(c, what) do { if (!(c)) { printf("FAIL brksave: %s\n", what); fails++; } } while (0)
 static uint32_t bs_kw[16];
@@ -5978,6 +6083,8 @@ int main(int argc, char **argv)
         return cmd_patsave();
     if (argc >= 3 && !strcmp(argv[1], "newses"))
         return cmd_newses(argv[2]);
+    if (argc >= 2 && !strcmp(argv[1], "patsnd"))
+        return cmd_patsnd();
     if (argc >= 3 && !strcmp(argv[1], "pstate"))
         return cmd_pstate(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "brksave"))

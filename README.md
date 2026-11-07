@@ -478,15 +478,18 @@ shows NO ROOM, and a pattern saved into another slot shows LOOPS LOST for the lo
 
 ## Tempo
 
-**Hold PLAY** (0.8 s) for the TEMPO page: **PRESETS** sets the session's tempo, 10 to 300 BPM. A track button leaves
-it.
+**Hold PLAY** (0.8 s) for the TEMPO page: **PRESETS** sets the pattern's tempo, 10 to 300 BPM. A track button leaves
+it. Each pattern keeps its own tempo. A pattern saved before build 97, or an empty one, has none and plays on at the
+tempo playing; the session keeps the last tempo set, for a session loaded at such a pattern.
 
 ## Patterns
 
 A session has 16 patterns. A pattern holds every track's and subtrack's steps (with their length, clock, direction,
-probability, swing and transposition), its loops, and each track's mute, subtrack mutes, machine, octave, level, pan, sidechain, CHORD mode
-and arpeggiator.
-The sounds, the effects, the tempo, the scale and the root belong to the session.
+probability, swing and transposition), its loops, its tempo, and each track's mute, subtrack mutes, machine, octave, level, pan, sidechain, CHORD mode,
+arpeggiator and DELAY, REVERB and CHORUS sends (the sends of the sound on the machine the track plays, and of each
+subtrack). A pattern switch gives the sends to those sounds. A pattern saved before build 97 leaves the sends as they
+play; so does one so full of steps that the sends do not fit (more than about 90 notes).
+The sounds (apart from their sends), the effects themselves, the scale and the root belong to the session.
 
 **SAVE** opens the PATTERNS grid; SAVE again leaves it. The white keys are the 16 patterns, the one playing brighter.
 On the screen the pattern playing is green (orange with changes not saved), saved patterns white, empty ones grey, and

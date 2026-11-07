@@ -3,9 +3,9 @@
  *
  * 16 sessions, four 4 KB sectors each: the session (every track's machine, its sound on each machine, octave, level
  * and pan; the send effects; the tempo, root and scale), then its 16 patterns, six a sector (a pattern, 680 bytes:
- * each track's 16 steps and its length; its tempo, kept for later, GLOBAL -- the session's -- for now; from build 62
+ * each track's 16 steps and its length; its tempo (from build 97 its own; 0, before, the session's); from build 62
  * the tracks' state as it was saved -- muted, machine, octave, level, pan, sidechain, CHORD mode, arpeggiator --
- * given back when it plays).
+ * given back when it plays; from build 97 each lane's sends, SEQ_SND).
  * The session playing is kept in RAM whole, its 16 patterns with it; the pattern playing is one of them, its steps
  * in the sequencer's (tracks.c) as they are edited.
  * (In the code a session is a "project".)
@@ -227,6 +227,12 @@ typedef char px_fits[NENG <= 4 && CHF_N <= 8 && NCP_SCS <= 8 && NARP == 8 && LEV
 #define SEQ_OLD_VEL 104u         /* .. its velocity (0: VEL_DEF, as build 9 left it) */
 #define SEQ_OLD_GLEN 200u        /* .. its length + 1 (0: GLEN_DEF) */
 #define SEQ_OLD_COND 296u        /* .. its trig condition */
+/* (build 97) each lane's sends -- DELAY, REVERB, CHORUS -- the pattern's: a record at the end of its records, after
+ * every other (SEQ_SND, then the six tracks' three; then each shared lane's track | subtrack << 4 -- 0: free -- and
+ * its three). It takes its room after the notes, before the chords, MOD and locks; a pattern without it (saved
+ * before build 97, or too full for it) leaves the sends as they are. Earlier builds stop reading at it, the last */
+#define SEQ_SND 0xFDu
+#define SEQ_SND_N (1u + NTRACK * 3u + NXL * 4u)
 typedef char prj_fits[sizeof(prj_head_t) + sizeof(prj_body_t) <= PRJ_SECT ? 1 : -1];
 /* a session as builds 7 .. 17 saved it: the sound without MANGLE (read, and made a session of now, by prj_read) */
 typedef struct {
@@ -776,7 +782,7 @@ static void prj_scan(int flash_ok)
 /* the tempo playing: the pattern's, or (GLOBAL) the project's; the delay follows it */
 static void tempo_apply(void)
 {
-    fx_bpm10 = (pat_tempo ? pat_tempo : ui.tempo) * 10;
+    fx_bpm10 = (pat_tempo ? pat_tempo : ui.tempo) * 10;   /* (tempo_now) */
     fx_cook_all();
 }
 static uint32_t pl_n(uint32_t t, uint32_t i)    /* step i of track t: its locks */
@@ -933,6 +939,88 @@ static uint32_t px_mutes_of(const pat_t *p)
         m |= (uint32_t)(s[t * (p->st == PX_ON ? PX_T : PX_T1)] & 1u) << t;
     return m;
 }
+/* (build 97) the tempo playing: the pattern's, or (none: saved before build 97, or empty) the session's */
+static int32_t tempo_now(void) { return pat_tempo ? pat_tempo : ui.tempo; }
+/* (build 97) the tempo set (TEMPO, the session's page): the pattern's, and the session's -- the tempo of a pattern
+ * without one */
+static void tempo_set(int32_t v)
+{
+    ui.tempo = (int16_t)clampi(v, TEMPO_MIN, TEMPO_MAX);
+    pat_tempo = (uint16_t)ui.tempo;
+    tempo_apply();
+}
+/* (build 97) each lane's sends and the tempo as they play, as px_base notes them */
+#define SN_B (NLANE * 3u + 2u)
+static uint8_t sn_base[SN_B];
+static void sn_take(uint8_t *x)
+{
+    uint32_t l, v = (uint32_t)tempo_now();
+    for (l = 0; l < NLANE; l++, x += 3) {
+        const sound_t *s = lane_snd(l);
+        x[0] = s->fx[X_DEL];
+        x[1] = s->fx[X_REV];
+        x[2] = s->fx[X_CHR];
+    }
+    x[0] = (uint8_t)v;
+    x[1] = (uint8_t)(v >> 8);
+}
+static void px_note_base(void)                   /* (what plays noted as the pattern's) */
+{
+    px_take(px_base);
+    sn_take(sn_base);
+}
+/* (build 97) a pattern's sends record (SEQ_SND), past its id; 0 if it has none */
+static const uint8_t *pat_snd(const pat_t *p)
+{
+    uint32_t o = SEQ_REC4, r;
+    if (!p->used || p->seq[SEQ_FMT] != SEQ_V4)
+        return 0;
+    for (r = 0; r < p->seq[SEQ_NREC] && o + 6u <= PAT_SEQ_ROOM; r++) {
+        uint32_t id = p->seq[o], c = p->seq[o + 5u];
+        if (id == SEQ_SND)
+            return o + SEQ_SND_N <= PAT_SEQ_ROOM ? p->seq + o + 1u : 0;
+        if (id == SEQ_LANE) {
+            o += SEQ_LANE_N;
+            continue;
+        }
+        if (id >= SEQ_XPL + NXL * NSTEP)
+            return 0;
+        o += 6u + (c >> 7 ? 3u : 0u) + (c >> 6 & 1u) + (c & 63u) * 3u;
+    }
+    return 0;
+}
+/* .. given: each track's sound on its machine takes the pattern's sends, and each shared lane's, if it is the same
+ * track's subtrack here */
+static void sn_give(const pat_t *p)
+{
+    const uint8_t *x = pat_snd(p);
+    uint32_t l;
+    if (!x)
+        return;
+    for (l = 0; l < NLANE; l++) {
+        const uint8_t *v = x + 3u * l;
+        sound_t *s = lane_snd(l);
+        if (l >= NTRACK) {
+            v = x + 3u * NTRACK + 4u * (l - NTRACK);
+            if (!v[0] || !ln_s[l] || ln_t[l] != (v[0] & 15u) || ln_s[l] != (v[0] >> 4))
+                continue;
+            v++;
+        }
+        if (s->fx[X_DEL] != (v[0] & 127u) || s->fx[X_REV] != (v[1] & 127u) || s->fx[X_CHR] != (v[2] & 127u)) {
+            s->fx[X_DEL] = (uint8_t)(v[0] & 127u);
+            s->fx[X_REV] = (uint8_t)(v[1] & 127u);
+            s->fx[X_CHR] = (uint8_t)(v[2] & 127u);
+            ui.dirty[l] = 1;                     /* (published again) */
+            ui.force = 1;
+        }
+    }
+}
+/* (build 97) a pattern's tempo, playing: its own, or (none) the tempo playing left as it is */
+static void pat_tempo_of(const pat_t *p)
+{
+    if (p->used && p->tempo >= TEMPO_MIN && p->tempo <= TEMPO_MAX)
+        pat_tempo = p->tempo;
+}
 /* the pattern's state: given (its own, or -- one saved before build 62, or empty -- what plays, left so), noted */
 static void px_load(const pat_t *p)
 {
@@ -948,16 +1036,18 @@ static void px_load(const pat_t *p)
         }
         px_give(x);
     }
-    px_take(px_base);
+    sn_give(p);                                  /* (build 97: after the machines, its sounds the ones they play) */
+    px_note_base();
 }
 /* the state changed since the pattern playing was loaded or saved: the pattern changed (each pass of the main loop) */
 static void px_note(void)
 {
-    uint8_t x[NTRACK * PX_T];
+    uint8_t x[NTRACK * PX_T], y[SN_B];
     if (pat_dirty)
         return;
     px_take(x);
-    if (memcmp(x, px_base, sizeof x))
+    sn_take(y);
+    if (memcmp(x, px_base, sizeof x) || memcmp(y, sn_base, sizeof y))
         pat_dirty = 1;
 }
 /* steps b, and the tracks' state playing, as a pattern. Every step with a note fits (96 of 6 bytes: 576 of the
@@ -967,10 +1057,10 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
 {
     static uint8_t md[NLANE][NSTEP], ch[NLANE][NSTEP], nl[NLANE][NSTEP], ok[NLANE][NSTEP];
     uint32_t t, i, r, more, o = SEQ_REC4, n = 0, room = SEQ_PX - SEQ_REC4;
-    int ps = 0;
+    int ps = 0, sn = 0;
     memset(p, 0, sizeof *p);
     p->used = 1;
-    p->tempo = pat_tempo;
+    p->tempo = (uint16_t)tempo_now();             /* (build 97: always its own) */
     p->seq[SEQ_FMT] = SEQ_V4;
     {
         uint8_t x[NTRACK * PX_T];
@@ -1011,6 +1101,10 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
                 ok[t][i] = 1;
                 room -= 6u;
             }
+    if (room >= SEQ_SND_N) {                     /* (build 97) the sends, if they fit */
+        sn = 1;
+        room -= SEQ_SND_N;
+    }
     for (t = 0; t < NLANE; t++)
         for (i = 0; i < NSTEP; i++)
             if (ok[t][i] && b->chf[t][i] && room >= 1u) {
@@ -1073,6 +1167,18 @@ static void pat_encode(pat_t *p, const seqbuf_t *b)
                 p->seq[at] |= 0x40u;
             n++;
         }
+    }
+    if (sn) {                                    /* (build 97) the sends, last */
+        p->seq[o++] = SEQ_SND;
+        for (t = 0; t < NLANE; t++) {
+            const sound_t *s = lane_snd(t);
+            if (t >= NTRACK)
+                p->seq[o++] = (uint8_t)(ln_s[t] ? ln_t[t] | ln_s[t] << 4 : 0u);
+            p->seq[o++] = s->fx[X_DEL];
+            p->seq[o++] = s->fx[X_REV];
+            p->seq[o++] = s->fx[X_CHR];
+        }
+        n++;
     }
     p->seq[SEQ_NREC] = (uint8_t)n;
 }
@@ -1268,7 +1374,7 @@ static void pat_give(uint32_t k, int follow)
     memcpy(ui.trn, s->trn, NLANE);
     sb_done();
     pat_cur = (uint8_t)k;
-    pat_tempo = p->used ? p->tempo : 0;
+    pat_tempo_of(p);
     pat_dirty = pat_dirtyv[k];
     px_load(p);
     tempo_apply();
@@ -1298,7 +1404,7 @@ static int pat_flush(uint32_t k)
 static int pat_save(uint32_t k)
 {
     pat_take(&pat_store[k]);
-    px_take(px_base);
+    px_note_base();
     pat_cur = (uint8_t)k;
     pat_dirty = 0;
     pat_dirtyv[k] = 0;
@@ -1404,7 +1510,7 @@ static void pat_save_as(uint32_t k)
         }
         pat_cur = (uint8_t)k;
         pat_dirty = 0;
-        px_take(px_base);
+        px_note_base();
         prj_dirty = 1;
         rc = pat_flush(k);
     } else {                                     /* (PERFORMANCE: the one playing plays on, it goes back to it) */
@@ -1559,7 +1665,7 @@ static void pat_brk_save(uint32_t k)
         seq_pend = 0;                            /* (it was waiting to play: as it was, not now) */
     if (k == pat_cur) {                          /* (the one playing: its steps the break's, at the end of the chosen
                                                   * track's time through) */
-        px_take(px_base);
+        px_note_base();
         pat_dirty = 0;
         seq_pend = 0;
         RING_PUBLISH();
@@ -1651,6 +1757,7 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     memset(ui.key_arp, 0, sizeof ui.key_arp);
     ui.solo = 0xFF;                              /* (the mutes loaded: no solo to undo) */
     ui.tempo = (int16_t)clampi(b->tempo, TEMPO_MIN, TEMPO_MAX);
+    pat_tempo = 0;                               /* (build 97: the pattern given next sets its own) */
     ui.root = (uint8_t)(b->root % 12u);
     ui.scale = (uint8_t)(b->scale < NSCALE ? b->scale : 0);
     ui.sel = (uint8_t)(b->sel < NTRACK ? b->sel : 0);
@@ -1696,7 +1803,7 @@ static int prj_save(uint32_t k)              /* the loops into the store, the pa
     if ((rc = lop_save(k, &gen, &nsec)) != 0)
         return rc;
     pat_take(&pat_store[pat_cur]);
-    px_take(px_base);
+    px_note_base();
     pat_dirty = 0;
     prj_take((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
     ((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->loop_gen = gen;
@@ -1937,7 +2044,7 @@ static void prj_press(int sh)
     if (pj.edit) {                               /* the value set: the focus back on the rows */
         pj.edit = 0;
         if (pj.row == PR_TEMPO)
-            ui.tempo = pj.val;
+            ui.tempo = pat_tempo = pj.val;       /* (build 97: the pattern's; the session's too, for one without) */
         else if (pj.row == PR_CTRL)
             ses_ctrl = (uint8_t)pj.val;
         else if (pj.row == PR_GLK)
@@ -2032,7 +2139,7 @@ static void prj_press(int sh)
         break;
     default:                                     /* TEMPO, MUTE QT, CTRL, GEN LOCK: the focus on the value */
         pj.edit = 1;
-        pj.val = pj.row == PR_TEMPO ? ui.tempo : pj.row == PR_CTRL ? ses_ctrl : pj.row == PR_GLK ? ses_glk : ses_muq;
+        pj.val = pj.row == PR_TEMPO ? tempo_now() : pj.row == PR_CTRL ? ses_ctrl : pj.row == PR_GLK ? ses_glk : ses_muq;
         break;
     }
 }
@@ -2164,7 +2271,7 @@ static void pat_poll(void)
     memcpy(ui.gen_cx, sb_next.cx, NLANE);
     memcpy(ui.trn, sb_next.trn, NLANE);
     pat_cur = seq_pend_k;
-    pat_tempo = pat_store[pat_cur].used ? pat_store[pat_cur].tempo : 0;
+    pat_tempo_of(&pat_store[pat_cur]);
     pat_dirty = pat_dirtyv[pat_cur];
     px_mu_over = -1;
     if (was & 0x80u)
@@ -2218,7 +2325,7 @@ static void prj_quick_save(void)
 /* (the FM-1's RAM has no room for a session's copy: the snapshot lives in prj_buf, the flash's buffer, which nothing
  * else uses meanwhile -- sessions, GLOBAL SETUP and the backup wait, and the patterns' sectors are written as it
  * goes off (pat_flush, setup_write, bk_handle); the steps in pat_clip, as copying waits too. A CRC checks it back) */
-typedef struct { prj_body_t b; uint8_t px[NTRACK * PX_T]; } perf_snap_t;
+typedef struct { prj_body_t b; uint8_t px[NTRACK * PX_T]; uint8_t sn[SN_B]; } perf_snap_t;
 typedef char perf_fits[sizeof(perf_snap_t) <= PRJ_SECT ? 1 : -1];
 #define PERF_SNAP ((perf_snap_t *)(void *)prj_buf)
 static uint16_t perf_crc;
@@ -2233,6 +2340,7 @@ static int perf_enter(void)
     pat_take(&pat_clip);
     prj_take(&PERF_SNAP->b);
     memcpy(PERF_SNAP->px, px_base, sizeof PERF_SNAP->px);
+    memcpy(PERF_SNAP->sn, sn_base, sizeof PERF_SNAP->sn);
     perf_seal();
     perf_dirty[0] = prj_dirty;
     perf_dirty[1] = pat_dirty;
@@ -2363,6 +2471,7 @@ static int perf_exit(void)
                                                   * pattern's again) */
             px_give(PERF_SNAP->px);
         memcpy(px_base, PERF_SNAP->px, sizeof px_base);
+        memcpy(sn_base, PERF_SNAP->sn, sizeof sn_base);
         pat_dirty = perf_dirty[1];
         pat_dirtyv[pat_cur] = perf_dirty[2];
     }
@@ -2489,7 +2598,7 @@ static void prj_field(uint32_t r, uint32_t k, const char *val, uint16_t fg, int 
 /* row k's value as it reads (the value being set, while the focus is on it) */
 static void prj_value(uint32_t k, char *v, uint32_t n)
 {
-    int32_t x = pj.edit && pj.row == k ? pj.val : k == PR_TEMPO ? ui.tempo : k == PR_CTRL ? ses_ctrl :
+    int32_t x = pj.edit && pj.row == k ? pj.val : k == PR_TEMPO ? tempo_now() : k == PR_CTRL ? ses_ctrl :
                 k == PR_GLK ? ses_glk : ses_muq;
     v[0] = 0;
     if (k == PR_TEMPO)

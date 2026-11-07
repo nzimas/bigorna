@@ -1,5 +1,20 @@
 # Changelog
 
+## Build 97
+
+Changed
+- A pattern holds each track's DELAY, REVERB and CHORUS sends, and each subtrack's, and gives them back when it
+  plays (switched while stopped, or taken in at the end of the chosen track's time through). They go to the sound on
+  the machine the track plays in that pattern. They are saved as one record at the end of the pattern's steps, with
+  room after the notes and before chords, MOD and locks. A pattern too full of steps for it (more than about 90 notes)
+  leaves the sends as they play, and so does a pattern saved before this build. Earlier builds read the patterns
+  saved by this one as before.
+- A pattern holds its own tempo. The TEMPO page and the session page's TEMPO set the tempo of the pattern playing;
+  switching patterns changes the tempo to the new pattern's. A pattern saved before this build, or an empty one,
+  plays on at the tempo playing. The session still saves the last tempo set, used when it loads at a pattern
+  without one.
+- A send or tempo changed marks the pattern as changed (orange on the PATTERNS grid), as its steps do.
+
 ## Build 96
 
 Changed
