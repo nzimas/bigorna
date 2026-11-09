@@ -2563,6 +2563,18 @@ static void budget_guard(void)
 }
 
 /* one block: Q15 stereo, interleaved */
+/* the SCREEN READER's voice (speech.c) over the music, the music lower: to the outputs, not to USB. In the flash, as
+ * vo_block: the RAM for the audio's hot path is full */
+static int32_t vo_buf[CTL] NOINIT;
+static __attribute__((noinline)) void vo_mix(int32_t *out, const int32_t *l, const int32_t *r)
+{
+    uint32_t i;
+    vo_block(vo_buf, CTL);
+    for (i = 0; i < CTL; i++) {
+        out[2u * i] = ceiling(mulq12(mulq15(l[i], 32768 - vce.dk) + vo_buf[i], master_q12));
+        out[2u * i + 1u] = ceiling(mulq12(mulq15(r[i], 32768 - vce.dk) + vo_buf[i], master_q12));
+    }
+}
 static void mix_block(int32_t *out)
 {
     int32_t l_[CTL], r_[CTL], dlin[CTL], rvin[CTL], chin[CTL];
@@ -2684,12 +2696,15 @@ static void mix_block(int32_t *out)
     }
     TL_FX(3, FAR(cp_block)(l_, r_))                            /* the compressor: the master's, the returns in it (a pad's tails duck) */
     met_block(l_, r_);
-    for (i = 0; i < CTL;) {
-        REP4({
-            out[2u * i] = ceiling(mulq12(l_[i], master_q12));
-            out[2u * i + 1u] = ceiling(mulq12(r_[i], master_q12));
-        })
-    }
+    if (vo_live)                                  /* (the SCREEN READER speaking; nothing to say, nothing done) */
+        vo_mix(out, l_, r_);
+    else
+        for (i = 0; i < CTL;) {
+            REP4({
+                out[2u * i] = ceiling(mulq12(l_[i], master_q12));
+                out[2u * i + 1u] = ceiling(mulq12(r_[i], master_q12));
+            })
+        }
 #if defined(FELUCCA_UAC) && FELUCCA_UAC
     if (USB_STEMS())
         for (i = 0; i < CTL; i++)

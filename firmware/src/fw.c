@@ -51,6 +51,7 @@ bootguard_t bootguard __attribute__((section(".noinit")));
 #include "libc.c"
 #include "lcd.c"
 #include "dsp.h"
+#include "speech.c"              /* (the SCREEN READER: before gfx.c, which hands it the words) */
 #include "gfx.c"
 #include "sound.h"
 #include "voice.c"

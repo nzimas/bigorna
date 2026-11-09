@@ -237,7 +237,7 @@ FAST static void fd_render(fdv_t *v, const fdck_t *c, int32_t note16, int32_t *o
     ic[FD_B] = (uint32_t)clampi((int32_t)(((uint64_t)inc * c->rb16) >> 16), 0, 0x7FFFFFFF);
     morph_sc(&wv[FD_C], SC_DRUM0, SC_DRUM_N, c->opc);
     morph_sc(&wv[FD_A], SC_DRUM0, SC_DRUM_N, c->opab);
-    wv[FD_B] = wv[FD_A];
+    FAR(memcpy)(&wv[FD_B], &wv[FD_A], sizeof wv[FD_A]);      /* (not an assignment: its memcpy, in the flash, may lie beyond a call's reach) */
     /* the envelopes, a block on */
     v->ea = c->enda + (int32_t)(((int64_t)(v->ea - c->enda) * c->deca) >> 16);
     v->eb = c->endb + (int32_t)(((int64_t)(v->eb - c->endb) * c->decb) >> 16);

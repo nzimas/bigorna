@@ -2592,9 +2592,10 @@ static void prj_field(uint32_t r, uint32_t k, const char *val, uint16_t fg, int 
             if (over > sp)
                 sq += (over - sp + n - 1) / n;
         }
+        cv_cap(y, &FONT_S, s, c);
         for (; *s; s++) {
             char one[2] = {*s, 0};
-            x = cv_text(x, y, &FONT_S, one, c) - sq - (*s == ' ' ? sp : 0);
+            x = cv_text_px(x, y, &FONT_S, one, c) - sq - (*s == ' ' ? sp : 0);
         }
     }
     cv_rect(0, 36, 240, 1, RGB(50, 50, 50));

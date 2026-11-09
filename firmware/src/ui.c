@@ -28,6 +28,7 @@
  *   the 7th black key         (the step view off; in it, with SHIFT) PERFORMANCE on or off (lit while on; build 82,
  *                             after Quasar): the state kept, given back as it goes off; meanwhile KNOB 1 .. 4 move
  *                             every track with notes (projects.c)
+ *   SHIFT + the 8th black key   the SCREEN READER on or off, from any page (speech.c; build 99)
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
  *                             16 steps, silent (build 70): a key on an empty step puts the track's last note played
@@ -118,6 +119,7 @@ static const uint8_t KEY_DIR[3] = {13, 15, 17};  /* (the 6th .. 8th: REVERSE, PI
 static const char *const DIR_NAME[NDIR] = {"FORWARD", "REVERSE", "PING-PONG", "RANDOM"};
 #define SHOWN_DIAL 30u               /* (ui.shown_page: the dial up; the step's own page) */
 #define SHOWN_STEP 31u
+#define KEY_READER 17u               /* (the 8th: with SHIFT, the SCREEN READER on or off; KEY_DIR's RANDOM without) */
 #define KEY_NONE 0xFFu
 
 static const uint16_t TRACK_COL[NTRACK] = {RGB(255, 214, 0), RGB(0, 214, 255), RGB(255, 92, 210),
@@ -148,6 +150,7 @@ static struct {
     uint8_t last_note[NLANE];    /* the note last played on each lane (0: none yet): what a step is given */
     uint8_t last_chf[NLANE];    /* .. and its chord (form + 1; 0: a note alone) */
     uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode, and its form (CH_*) */
+    uint8_t rd_flip;             /* SHIFT + the 8th black key: the SCREEN READER to turn on or off (reader_tick) */
     uint8_t mute_mode;           /* MUTE mode (the 2nd black key): the tracks' buttons mute, held 1 s solo (build 35) */
     uint8_t brk, brk_shown;      /* BREAK (the 3rd black key held): the tracks under it; the way last said (build 37) */
     uint8_t learn, lsel, listen; /* MIDI LEARN (the 4th black key, build 48): on; the row chosen on the page (0 .. 7);
@@ -2407,6 +2410,11 @@ static void ui_input(void)
     }
     keys = fm1_in.notes;
     ch = keys ^ ui.keys;
+    if ((ch & keys) >> KEY_READER & 1u && keys >> KEY_SHIFT & 1u) {   /* SHIFT + the 8th black key: the SCREEN READER on or off
+                                                                       * (anywhere; the key does nothing else) */
+        ui.rd_flip = 1;
+        ch &= ~(1u << KEY_READER);
+    }
     {   /* (build 79) a DRUM track's button held and a white key 1 .. 4: its subtrack ST-A .. ST-D chosen (taken if new).
          * (build 81) SHIFT with it: a subtrack taken, let go soon, muted or playing again; held 0.8 s, one past ST-A
          * given up. The key plays nothing */
@@ -3037,11 +3045,12 @@ static void draw_number(void)
 {
     char d[2] = {(char)('1' + ui.sel), 0};
     CV_AREA(0, BAND_A, 240, BAND_B - BAND_A, C_BLACK) {
+        cv_note("TRACK");                        /* (the SCREEN READER: the number is the track's) */
         cv_text_c(3, &FONT_XL, d, trk_mute[ui.sel] ? RGB(80, 80, 80) : TRACK_COL[ui.sel]);   /* (muted: dark grey) */
         {   /* top left: the pattern playing (P3; orange with changes not saved); one waiting to play: it and the one
              * playing in turn */
             char pn[8] = "P";
-            fmt_int(pn + 1, (seq_pend == 1u && (fm1_ms / 300u) & 1u ? seq_pend_k : pat_cur) + 1);
+            fmt_int(pn + 1, (seq_pend == 1u && (sp.on || (fm1_ms / 300u) & 1u) ? seq_pend_k : pat_cur) + 1);   /* (the SCREEN READER: no blinking, or it would never stop reading it) */
             cv_text(4, 2, &FONT_S, pn, pat_dirty ? RGB(255, 140, 0) : C_WHITE);
             if (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD)   /* (CHORD mode: its form, left, under the
                                                                       * pattern; DRUM: none) */
@@ -3069,6 +3078,7 @@ static void draw_number(void)
             int32_t x = draw_batt(237, 2 + ((int32_t)FONT_S.h - 10) / 2);   /* (the battery, top right; then the octave) */
             if (ui.oct[ui.sl]) {                     /* the octave, top right: +1, -2 */
                 char o[4] = {ui.oct[ui.sl] < 0 ? '-' : '+', (char)('0' + (ui.oct[ui.sl] < 0 ? -ui.oct[ui.sl] : ui.oct[ui.sl])), 0, 0};
+                cv_note("OCTAVE");                   /* (the SCREEN READER: what the number is) */
                 x -= text_w(&FONT_S, o);
                 cv_text(x, 2, &FONT_S, o, C_WHITE);
             }

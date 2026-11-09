@@ -67,7 +67,8 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **SAVE** | [PATTERNS](#patterns) grid; SAVE again leaves it. |
 | **SAVE held** (0.8 s) | save the session. On the PATTERNS grid: nothing (hold a white key to save a pattern). |
 | **SHIFT + SAVE** | [SESSIONS](#sessions) grid; SHIFT + SAVE again leaves it. |
-| **SHIFT + SAVE held** (0.8 s) | [GLOBAL SETUP](#global-setup): MIDI, AUDIO and START. |
+| **SHIFT + SAVE held** (0.8 s) | [GLOBAL SETUP](#global-setup): MIDI, AUDIO, SETTINGS and START. |
+| **SHIFT + black key 8** | [Screen reader](#screen-reader) on or off, from any page. |
 | **MASTER** | output level. |
 | MIDI in (USB and TRS) | notes and CCs for each track ([MIDI](#midi)). |
 
@@ -560,6 +561,9 @@ was or goes back a level. A track button leaves. Changes are saved as you leave.
 **STEREO** (at first): the master. **TRACKS**: the six tracks, each on its own mono channel. Changed, the FM-1 leaves
 the USB for a moment and comes back as the new device; the sound on the headphones goes on.
 
+**SETTINGS** has two: **SCREEN READER** (OFF at first) and **SPEECH RATE** (1, slowest, to 5, fastest; 2 at first). See
+[Screen reader](#screen-reader).
+
 **START**: how the FM-1 starts. **NEW** (at first): with a new session, as Tonitor starts: new sounds on every track, a
 scale and root at random, tempo 120. Hold SAVE to keep it. **LAST**: with the last session loaded or saved.
 
@@ -657,6 +661,26 @@ through USB-C). A host that works at 48 kHz converts the sound itself.
   10 minutes with no device.
 - **MacBook Air M5 (macOS), over USB-C:** FM-1 Bigorna, 2 input channels, 44,100 Hz, every packet in order with 6
   tracks playing.
+
+## Screen reader
+
+The FM-1 can speak what its screen shows, for players who cannot see it. The voice is made on the FM-1 itself; no
+computer or internet is needed.
+
+| Action | Result |
+| --- | --- |
+| **SHIFT + black key 8** | on or off, from any page; it says "screen reader on" or "screen reader off" |
+| **GLOBAL SETUP > SETTINGS > SCREEN READER** | ON or OFF |
+| **GLOBAL SETUP > SETTINGS > SPEECH RATE** | 1 (slowest) to 5 (fastest); heard as you set it |
+
+It speaks what changes on the screen once it settles: the track and its machine and sound, a knob's parameter and
+value, messages, and on lists the page's title and the chosen row. Words it has no pronunciation for are spelled out.
+
+While it speaks the music is 6 dB lower. The voice follows MASTER and is not sent over USB audio, in STEREO or TRACKS.
+While the reader is on, a pattern waiting to play shows its number without blinking.
+
+Speaking takes some of the CPU, so with many voices sounding, the longest release tails may be let go sooner. When the
+reader is off, the audio does no work for it beyond one check.
 
 ## Screen
 

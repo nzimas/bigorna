@@ -77,6 +77,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 }
 
 #include "dsp.h"
+#include "speech.c"
 #include "gfx.c"
 #include "sound.h"
 #include "voice.c"
@@ -3210,7 +3211,7 @@ static int cmd_projects(const char *dir)
             /* START (build 77): at the top level, set as a row is; kept after the bindings, read back */
             ui.page = PG_MAIN;
             save_held(1);
-            turn(EN_PRESET, 2);                  /* (START) */
+            turn(EN_PRESET, 3);                  /* (START) */
             btn(B_SAVE, 0);
             EXPECT(set.edit && !set_boot, "START: SAVE moves the focus to its value");
             turn(EN_PRESET, 1);
@@ -4818,6 +4819,144 @@ static int cmd_pstate(const char *dir)
 
 /* (build 98) PAT SW: END, a pattern waits for the chosen track's time through; NOW, it comes in with the next 16th */
 #define PNOWX(c, what) do { if (!(c)) { printf("FAIL patnow: %s\n", what); fails++; } } while (0)
+/* build 99: the SCREEN READER (GLOBAL SETUP > SETTINGS, speech.c): off, nothing said; on, the screen read, the voice heard;
+ * playing, nothing said unless something on the screen is news; off at once silent; SHIFT + the 8th black key; kept */
+static uint32_t rd_peak;
+static void rd_frames(uint32_t n)                /* n passes of the main loop, 40 ms each, the audio running */
+{
+    int32_t out[2 * CTL];
+    uint32_t i, b;
+    while (n--) {
+        ui_input();
+        ui_draw();
+        reader_tick();
+        fm1_ms += 40;
+        for (b = 0; b < 40u * 44100u / 1000u / CTL; b++) {
+            mix_block(out);
+            pat_poll();
+            for (i = 0; i < 2u * CTL; i++)
+                if ((uint32_t)abs(out[i]) > rd_peak)
+                    rd_peak = (uint32_t)abs(out[i]);
+        }
+    }
+}
+static void rd_forget(void)
+{
+    sp_said_n = 0;
+    sp_said[0] = 0;
+}
+#define RDX(c, what) do { if (!(c)) { printf("FAIL reader: %s (said: %s)\n", what, sp_said); fails++; } } while (0)
+static int cmd_reader(void)
+{
+    uint32_t i;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    speech_boot();
+    setup_load();
+    master_q12 = 4096;
+    fm1_ms = 5000;
+    RDX(!set_reader && set_rate == 1u, "off at first, SPEECH RATE 2");
+    ui.force = 1;
+    rd_forget();
+    rd_peak = 0;
+    rd_frames(20);
+    RDX(!sp_said_n && !vo_busy() && !rd_peak, "off, yet something was said");
+    set_reader = 1;                              /* on: the screen read as it is */
+    rd_frames(40);
+    RDX(strstr(sp_said, "TRACK 1") != 0, "the track view is not read");
+    RDX(rd_peak >= 2000u, "the voice is not heard");
+    printf("reader: the track view said: %s", sp_said);
+    /* the sequencer playing: nothing new on the screen, nothing said */
+    seq_note[0][0] = 60;
+    seq_run = 1;
+    rd_frames(30);
+    rd_forget();
+    rd_frames(120);
+    RDX(!sp_said_n, "the track view chatters as the sequencer plays");
+    /* a pattern waiting: said once, not over and over */
+    pat_switch(1);
+    rd_forget();
+    rd_frames(25);
+    RDX(strstr(sp_said, "P2") != 0, "the pattern waiting is not read");
+    printf("reader: a pattern waiting said: %s", sp_said);
+    for (i = 0, rd_forget(); i < 20u; i++)
+        rd_frames(1);
+    RDX(!sp_said_n, "the pattern waiting is read over and over");
+    seq_run = 0;
+    rd_frames(120);
+    rd_forget();
+    /* GLOBAL SETUP: the row chosen is what is read */
+    save_held(1);
+    rd_frames(10);
+    RDX(strstr(sp_said, "GLOBAL SETUP") && strstr(sp_said, "MIDI"), "GLOBAL SETUP is not read");
+    rd_forget();
+    turn(EN_PRESET, 2);
+    rd_frames(10);
+    RDX(strstr(sp_said, "SETTINGS") && !strstr(sp_said, "AUDIO"), "the row chosen is not what is read");
+    rd_forget();
+    btn(B_SAVE, 0);                              /* SETTINGS: SCREEN READER */
+    rd_frames(10);
+    RDX(set.lvl == 2u && set.part == SET_PAUD + 1u && strstr(sp_said, "SCREEN READER ON"), "SETTINGS' row is not read");
+    printf("reader: SETTINGS said: %s", sp_said);
+    turn(EN_PRESET, 1);                          /* SPEECH RATE: 5 */
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, 3);
+    btn(B_SAVE, 0);
+    RDX(set_rate == 4u && set.dirty, "SPEECH RATE not set");
+    rd_frames(10);
+    turn(EN_PRESET, -1);                         /* SCREEN READER off: at once silent */
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, -1);
+    btn(B_SAVE, 0);
+    RDX(!set_reader, "not turned off");
+    rd_forget();
+    reader_tick();
+    rd_peak = 0;
+    rd_frames(10);
+    RDX(!sp_said_n && !vce.speaking, "off, yet it speaks on");
+    /* SHIFT + the 8th black key: on, said so; off, said so; the key plays nothing and sets no direction */
+    btn(B_SAVE, 1);
+    btn(B_SAVE, 1);
+    setup_poll();
+    RDX(ui.page == PG_MAIN, "GLOBAL SETUP not left");
+    setup_load();
+    RDX(set_rate == 4u, "SPEECH RATE not kept");
+    rd_frames(10);
+    rd_forget();
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    ui_input();
+    tap(KEY_READER);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    ui_input();
+    rd_frames(30);
+    RDX(set_reader && strstr(sp_said, "SCREEN READER ON"), "SHIFT + the key: not turned on");
+    RDX(ui.key_note[KEY_READER] == 0u, "SHIFT + the key: a note held");
+    rd_forget();
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    ui_input();
+    tap(KEY_READER);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    ui_input();
+    rd_frames(5);
+    RDX(!set_reader && strstr(sp_said, "SCREEN READER OFF"), "SHIFT + the key: not turned off");
+    setup_load();
+    RDX(!set_reader, "off not kept");
+    {   /* (a record as build 98 wrote it: the reader off, SPEECH RATE 2, the USB setting kept) */
+        set_usba = 1;
+        setup_write();
+        prj_flash_read(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN);
+        prj_head_fill(SET_MAGIC, 0, SET_LEN98);
+        prj_flash_erase(SET_SECT);
+        prj_flash_prog(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN98);
+        set_rate = 3;
+        setup_load();
+        RDX(set_usba == 1u && !set_reader && set_rate == 1u, "build 98's record");
+    }
+    printf("reader: %s\n", fails ? "FAILED" : "ok");
+    return fails ? 1 : 0;
+}
 static int cmd_patnow(void)
 {
     int32_t out[2 * CTL];
@@ -6178,6 +6317,8 @@ int main(int argc, char **argv)
         return cmd_newses(argv[2]);
     if (argc >= 2 && !strcmp(argv[1], "patsnd"))
         return cmd_patsnd();
+    if (argc >= 2 && !strcmp(argv[1], "reader"))
+        return cmd_reader();
     if (argc >= 2 && !strcmp(argv[1], "patnow"))
         return cmd_patnow();
     if (argc >= 3 && !strcmp(argv[1], "pstate"))

@@ -521,6 +521,7 @@ static void fm1_main(void)
         ui_input();
         ui_leds();
         ui_draw();
+        reader_tick();                               /* (the SCREEN READER: what changed on the screen, spoken) */
 #if TELEMETRY
         tele_send();
 #endif
@@ -551,6 +552,7 @@ void fm1_cstart(void)
         *d = 0;
     for (d = _pool_start; d < _pool_end; d++)
         *d = 0;
+    speech_boot();                                   /* (the SCREEN READER's state, .noinit: silent, before anything draws) */
     for (s = _data_load, d = _data_start; d < _data_end; s++, d++)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)

@@ -39,7 +39,7 @@ LDR_CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unuse
 CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
-BUILD = 98                          # the build number: the version (build 1, build 2, ..), one more each build
+BUILD = 99                          # the build number: the version (build 1, build 2, ..), one more each build
 PRODUCT = f"FM-1_8{BUILD:03d}"      # package identity: FM-1_8 and the build, three digits
 VERSION = f"BUILD {BUILD}"
 
@@ -84,6 +84,8 @@ def generate():
     GEN.mkdir(parents=True, exist_ok=True)
     for tool, out in (("gen_tables.py", "fw_tables.h"), ("gen_font.py", "fw_font.h"), ("gen_logo.py", "fw_logo.h")):
         subprocess.run([sys.executable, str(SRC / "tools" / tool), str(GEN / out)], check=True)
+    subprocess.run([sys.executable, str(SRC / "tools" / "gen_speech.py"), str(SRC / "tools" / "speech_words.txt"),
+                    str(GEN / "speech_dict.h")], check=True, stdout=subprocess.DEVNULL)   # the SCREEN READER's words
 
 
 # ---- update loader (SLOOP's, unchanged)

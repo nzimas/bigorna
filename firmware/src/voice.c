@@ -346,7 +346,8 @@ static void vc_off(vchain_t *v, const vck_t *c)
 }
 
 AINL int32_t sat16(int32_t x) { return clampi(x, -32767, 32767); }
-FAST static void vc_srr(vchain_t *v, const vck_t *c, int32_t *x)
+/* (in the flash, not FAST: only a voice with SRR up runs it, and the RAM for the hot path is full; build 99) */
+static __attribute__((noinline)) void vc_srr(vchain_t *v, const vck_t *c, int32_t *x)
 {
     uint32_t i, inc = c->srr_inc;
     for (i = 0; i < CTL;) {
@@ -603,7 +604,7 @@ FAST static int vc_block(vchain_t *v, const vck_t *c, int32_t *x, int32_t note16
     fl = env_step(&v->fe, &c->fe, v->gate);
     a1 = env_step(&v->ae, &c->ae, v->gate);
     if (c->srr_inc)                              /* (SRR: always before the filter) */
-        vc_srr(v, c, x);
+        FAR(vc_srr)(v, c, x);
     if (c->od_g && !c->od_post)
         vc_od(v, c, x);
     if (c->bw_on && c->bw_pre)

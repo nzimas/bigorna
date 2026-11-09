@@ -23,10 +23,12 @@ AINL void *far_ptr(void *p) { void *volatile q = p; return q; }
 #define FAR(fn) ((__typeof__(&fn))far_ptr((void *)&fn))
 #ifdef HOST
 #define POOL
+#define NOINIT
 #define FAST                     /* (the host: no RAM code) */
 #define DLYMEM
 #else
 #define POOL __attribute__((section(".pool")))
+#define NOINIT __attribute__((section(".noinit")))   /* (not cleared at the start: whoever uses it, does) */
 #ifndef FAST_RAM
 #define FAST_RAM 1               /* 1: the audio's hot path (FAST) runs from RAM (app.ld .fast_text) */
 #endif

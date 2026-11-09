@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 99
+
+Added
+- Screen reader, as Tonitor's: the FM-1 speaks what its screen shows, through its own audio outputs, with a built-in
+  formant speech synthesizer. It reads what changes on the screen once it settles: the track and its machine and sound,
+  a knob's parameter and value, messages, and on lists the page's title and the chosen row. A word with no
+  pronunciation is spelled out. The dictionary has Bigorna's words added, and abbreviations are said in full (FLTR:
+  filter). The music drops 6 dB while it speaks; the voice follows MASTER and is not sent over USB audio. Off at first.
+- GLOBAL SETUP has a SETTINGS section, after AUDIO: SCREEN READER (ON / OFF) and SPEECH RATE (1 to 5, 2 at first).
+  SHIFT + black key 8 turns the reader on or off from any page, and says which. Settings kept by earlier builds load as
+  they were, the reader off; earlier builds do not read the settings kept by this one (they start at their defaults).
+
+Changed
+- SHIFT + black key 8 no longer sets RANDOM in the step view or plays its note in CHROMATIC. The key alone does as before.
+- While the reader is on, a pattern waiting to play shows its number without blinking.
+- A voice's SRR runs from the flash, not RAM, to leave room for this build; a voice with SRR at 0 is unaffected.
+
 ## Build 98
 
 Added
