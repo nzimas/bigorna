@@ -4820,7 +4820,7 @@ static int cmd_pstate(const char *dir)
 /* (build 98) PAT SW: END, a pattern waits for the chosen track's time through; NOW, it comes in with the next 16th */
 #define PNOWX(c, what) do { if (!(c)) { printf("FAIL patnow: %s\n", what); fails++; } } while (0)
 /* build 99: the SCREEN READER (GLOBAL SETUP > SETTINGS, speech.c): off, nothing said; on, the screen read, the voice heard;
- * playing, nothing said unless something on the screen is news; off at once silent; SHIFT + the 8th black key; kept */
+ * playing, nothing said unless something on the screen is news; off at once silent; SHIFT + the 6th black key; kept */
 static uint32_t rd_peak;
 static void rd_frames(uint32_t n)                /* n passes of the main loop, 40 ms each, the audio running */
 {
@@ -4916,7 +4916,7 @@ static int cmd_reader(void)
     rd_peak = 0;
     rd_frames(10);
     RDX(!sp_said_n && !vce.speaking, "off, yet it speaks on");
-    /* SHIFT + the 8th black key: on, said so; off, said so; the key plays nothing and sets no direction */
+    /* SHIFT + the 6th black key: on, said so; off, said so; the key plays nothing and sets no direction */
     btn(B_SAVE, 1);
     btn(B_SAVE, 1);
     setup_poll();
@@ -4955,6 +4955,210 @@ static int cmd_reader(void)
         RDX(set_usba == 1u && !set_reader && set_rate == 1u, "build 98's record");
     }
     printf("reader: %s\n", fails ? "FAILED" : "ok");
+    return fails ? 1 : 0;
+}
+/* build 100: a note left hanging on a sound with a sustain: a key let go while a page has the keys; a loop's note as long
+ * as the loop; the panic. (Session 13, HIVE, SUB SWARM: a key let go under SHIFT + REC held went on for good) */
+#define HGX(c, what) do { if (!(c)) { printf("FAIL hang: %s\n", what); fails++; } } while (0)
+static void hg_pass(uint32_t ms)
+{
+    int32_t o[2 * CTL];
+    uint32_t b = ms * 44100u / 1000u / CTL;
+    ui_input();
+    ui_publish();
+    fm1_ms += ms;
+    while (b--)
+        mix_block(o);
+}
+static uint32_t hg_gated(void)
+{
+    uint32_t k, n = 0;
+    for (k = 0; k < NVOICE; k++)
+        n += vox[k].gate != 0;
+    return n;
+}
+static uint32_t hg_up(void)
+{
+    uint32_t k, n = 0;
+    for (k = 0; k < NVOICE; k++)
+        n += vox[k].sounding != 0;
+    return n;
+}
+static uint32_t hg_key(uint32_t w)
+{
+    uint32_t k = 0;
+    while (white_ix(k) != (int32_t)w)
+        k++;
+    return k;
+}
+static void hg_init(void)
+{
+    int32_t o[2 * CTL];
+    seq_run = 0;
+    mix_block(o);
+    mix_block(o);
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    speech_boot();
+    setup_load();
+    lp_init();
+    lrp = 0;
+    gen_sound(&ui.snd[1][ENG_SWM], ENG_SWM, 53, -1, 7u);   /* SWARM PAD */
+    ui.eng[1] = ENG_SWM;
+    ui.sel = 1;
+    sel_sync();
+    mark(1);
+    fm1_ms = 5000;
+    hg_pass(40);
+    hg_pass(40);
+}
+static int cmd_hang(void)
+{
+    uint32_t key, i, seed = 1234u;
+    hg_init();
+    HGX(ui.snd[1][ENG_SWM].amp[A_MODE] == 1u, "(the sound has a sustain)");
+    /* a key held, SHIFT + REC pressed and held, the key let go under it */
+    key = hg_key(3);
+    fm1_in.notes |= 1u << key;
+    hg_pass(40);
+    hg_pass(100);
+    HGX(hg_gated() == 1u, "(the key sounds)");
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    fm1_in.buttons |= 1u << PANEL_BTN[B_REC];
+    host_press = 1u << PANEL_BTN[B_REC];
+    hg_pass(40);
+    hg_pass(40);
+    fm1_in.notes &= ~(1u << key);
+    hg_pass(40);
+    hg_pass(40);
+    HGX(!hg_gated(), "a key let go under SHIFT + REC held still holds its note");
+    fm1_in.buttons &= ~(1u << PANEL_BTN[B_REC]);
+    hg_pass(40);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    hg_pass(40);
+    ui.lrec = 0;
+    if (lrp)
+        loop_drop();
+    hg_pass(9000);
+    HGX(!hg_up(), "a key let go under SHIFT + REC: still sounding 9 s on");
+    /* a key held, a DRUM track's button held, the key let go under it */
+    hg_init();
+    ui.eng[0] = ENG_FMD;
+    mark(0);
+    hg_pass(40);
+    key = hg_key(1);
+    fm1_in.notes |= 1u << key;
+    hg_pass(40);
+    fm1_in.buttons |= 1u << PANEL_BTN[TRACK_BTN[0]];
+    hg_pass(40);
+    fm1_in.notes &= ~(1u << key);
+    hg_pass(40);
+    fm1_in.buttons = 0;
+    hg_pass(40);
+    hg_pass(40);
+    HGX(!hg_gated(), "a key let go under a DRUM track's button still holds its note");
+    /* a loop's note held as long as the loop: over before it comes round */
+    hg_init();
+    seq_run = 1;
+    hg_pass(40);
+    btn(B_REC, 1);
+    hg_pass(40);
+    HGX(ui.lrec == 1u, "(the looper armed)");
+    key = hg_key(5);
+    fm1_in.notes |= 1u << key;
+    hg_pass(40);
+    hg_pass(40);
+    HGX(ui.lrec == 2u && lrp, "(the loop recording)");
+    hg_pass(2100);                               /* (120 BPM: past a bar) */
+    {
+        loop_t *p = lrp;
+        host_press = 1u << PANEL_BTN[B_REC];
+        ui_input();
+        HGX(p->len == 16u && p->n == 1u && LEV_LEN(p->ev[0]) < 16u * 8u, "a note as long as the loop is not cut before its repeat");
+    }
+    fm1_in.notes &= ~(1u << key);
+    hg_pass(40);
+    /* the panic: a key held, a step's INF note, an arpeggio latched: all stopped, the sequencer playing on */
+    hg_init();
+    seq_note[1][0] = 60;
+    seq_glen[1][0] = GLEN_INF;
+    seq_len[1] = 16;
+    seq_run = 1;
+    key = hg_key(3);
+    fm1_in.notes |= 1u << key;
+    hg_pass(40);
+    hg_pass(300);
+    HGX(hg_gated() >= 2u, "(a key and an INF step sound)");
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    hg_pass(40);
+    fm1_in.notes |= 1u << KEY_ARP;
+    ui_input();
+    {
+        int32_t o[2 * CTL];
+        for (i = 0; i < 2u; i++)
+            mix_block(o);
+        HGX(!hg_gated(), "the panic: a note still held");
+        for (i = 0; i < 20u; i++)
+            mix_block(o);
+        HGX(!hg_up(), "the panic: a voice still sounding");
+    }
+    HGX(seq_run && ui.key_track[key] == KEY_NONE, "the panic: the sequencer stopped, or the key still holds");
+    HGX(!arp_on[1], "the panic: the arpeggiator's key was taken for it");
+    fm1_in.notes &= ~(1u << KEY_ARP | 1u << KEY_SHIFT | 1u << key);
+    ui_input();
+    seq_run = 0;
+    /* keys, buttons held and let go in any order, the looper, PLAY: all let go, stopped, nothing left */
+    for (i = 0; i < 300u && !fails; i++) {
+        uint32_t s;
+        hg_init();
+        for (s = 0; s < 200u; s++) {
+            uint32_t r;
+            seed = seed * 1664525u + 1013904223u;
+            r = seed >> 16;
+            switch (r % 9u) {
+            case 0: case 1: case 2:
+                fm1_in.notes ^= 1u << hg_key(r >> 8 & 7u);
+                break;
+            case 3:
+                fm1_in.notes ^= 1u << KEY_SHIFT;
+                break;
+            case 4:
+                if (!(fm1_in.buttons >> PANEL_BTN[B_REC] & 1u))
+                    host_press = 1u << PANEL_BTN[B_REC];
+                fm1_in.buttons ^= 1u << PANEL_BTN[B_REC];
+                break;
+            case 5:
+                fm1_in.buttons ^= 1u << PANEL_BTN[TRACK_BTN[r >> 8 & 3u]];
+                break;
+            case 6:
+                host_press = 1u << PANEL_BTN[B_PLAY];
+                break;
+            default:
+                break;
+            }
+            hg_pass(10u + (r >> 4) % 200u);
+        }
+        fm1_in.notes = 0;
+        fm1_in.buttons = 0;
+        hg_pass(40);
+        hg_pass(40);
+        seq_run = 0;
+        if (ui.lrec) {
+            if (lrp)
+                loop_drop();
+            ui.lrec = 0;
+        }
+        { int32_t o[2 * CTL]; seq_release(); mix_block(o); }
+        hg_pass(40);
+        if (hg_gated())
+            printf("FAIL hang: run %u: a note held with nothing held\n", i), fails++;
+        hg_pass(9000);
+        if (hg_up())
+            printf("FAIL hang: run %u: still sounding 9 s after all was let go\n", i), fails++;
+    }
+    printf("hang: %s\n", fails ? "FAILED" : "ok (300 runs of keys, SHIFT, REC, track buttons, PLAY)");
     return fails ? 1 : 0;
 }
 static int cmd_patnow(void)
@@ -6319,6 +6523,8 @@ int main(int argc, char **argv)
         return cmd_patsnd();
     if (argc >= 2 && !strcmp(argv[1], "reader"))
         return cmd_reader();
+    if (argc >= 2 && !strcmp(argv[1], "hang"))
+        return cmd_hang();
     if (argc >= 2 && !strcmp(argv[1], "patnow"))
         return cmd_patnow();
     if (argc >= 3 && !strcmp(argv[1], "pstate"))

@@ -277,10 +277,10 @@ CONTROLS = [
     ([26], "black key 3", '<b>Held</b>: <a href="#break">BREAK</a>; <b>SHIFT +</b>, on every track. In the step view: '
                           "TRIG."),
     ([27], "black key 4", '<a href="#midi-learn">MIDI LEARN</a>. In the step view: MOD.'),
-    ([28], "black key 5", '<a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page.'),
+    ([28], "black key 5", '<a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page. <b>SHIFT +</b>: panic, every note stops.'),
     ([29, 30, 31], ["black key 6", "black key 7", "black key 8"],
      'In the step view: track\'s direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes. '
-     '<b>SHIFT +</b> black key 8: <a href="#screen-reader">screen reader</a>.'),
+     '<b>SHIFT +</b> black key 6: <a href="#screen-reader">screen reader</a>.'),
     ([32], "black key 9", '<b>STEP</b>: <a href="#step-view">step view</a>. <b>SHIFT +</b>: empty the '
                           "chosen track's steps."),
     ([33], "black key 10", '<b>EDIT</b>: <a href="#sound-pages-edit">sound pages</a> (not the EDIT button, T5).'),

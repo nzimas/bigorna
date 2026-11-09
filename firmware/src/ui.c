@@ -28,7 +28,8 @@
  *   the 7th black key         (the step view off; in it, with SHIFT) PERFORMANCE on or off (lit while on; build 82,
  *                             after Quasar): the state kept, given back as it goes off; meanwhile KNOB 1 .. 4 move
  *                             every track with notes (projects.c)
- *   SHIFT + the 8th black key   the SCREEN READER on or off, from any page (speech.c; build 99)
+ *   SHIFT + the 5th black key   every note stopped: the panic, from any page (tracks.c, all_notes_off; build 100)
+ *   SHIFT + the 6th black key   the SCREEN READER on or off, from any page (speech.c; build 99)
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
  *                             16 steps, silent (build 70): a key on an empty step puts the track's last note played
@@ -119,7 +120,7 @@ static const uint8_t KEY_DIR[3] = {13, 15, 17};  /* (the 6th .. 8th: REVERSE, PI
 static const char *const DIR_NAME[NDIR] = {"FORWARD", "REVERSE", "PING-PONG", "RANDOM"};
 #define SHOWN_DIAL 30u               /* (ui.shown_page: the dial up; the step's own page) */
 #define SHOWN_STEP 31u
-#define KEY_READER 17u               /* (the 8th: with SHIFT, the SCREEN READER on or off; KEY_DIR's RANDOM without) */
+#define KEY_READER 13u               /* (the 6th: with SHIFT, the SCREEN READER on or off; KEY_DIR's REVERSE without) */
 #define KEY_NONE 0xFFu
 
 static const uint16_t TRACK_COL[NTRACK] = {RGB(255, 214, 0), RGB(0, 214, 255), RGB(255, 92, 210),
@@ -150,7 +151,7 @@ static struct {
     uint8_t last_note[NLANE];    /* the note last played on each lane (0: none yet): what a step is given */
     uint8_t last_chf[NLANE];    /* .. and its chord (form + 1; 0: a note alone) */
     uint8_t chord_on[NTRACK], chord_form[NTRACK];   /* each track's CHORD mode, and its form (CH_*) */
-    uint8_t rd_flip;             /* SHIFT + the 8th black key: the SCREEN READER to turn on or off (reader_tick) */
+    uint8_t rd_flip;             /* SHIFT + the 6th black key: the SCREEN READER to turn on or off (reader_tick) */
     uint8_t mute_mode;           /* MUTE mode (the 2nd black key): the tracks' buttons mute, held 1 s solo (build 35) */
     uint8_t brk, brk_shown;      /* BREAK (the 3rd black key held): the tracks under it; the way last said (build 37) */
     uint8_t learn, lsel, listen; /* MIDI LEARN (the 4th black key, build 48): on; the row chosen on the page (0 .. 7);
@@ -1110,8 +1111,12 @@ static void loop_end(void)
     for (i = 0; i < NKEY; i++)                   /* (keys still held: their notes to here) */
         if (ui.lk_ev[i] != 0xFFFFu)
             loop_release(i);
-    for (i = 0; i < p->n; i++)                   /* (a note at the end is the loop's first) */
+    for (i = 0; i < p->n; i++) {                 /* (a note at the end is the loop's first) */
         p->ev[i].step = (uint16_t)(p->ev[i].step % len);
+        if (LEV_LEN(p->ev[i]) >= len * 8u)       /* (held as long as the loop or more: over just before it comes round --
+                                                  * else it runs into itself each time, a drone; build 100) */
+            p->ev[i].len8 = LEV_PACK(len * 8u - 1u, LEV_SUB(p->ev[i]));
+    }
     for (i = 1; i < p->n; i++) {                 /* (in order of steps) */
         lev_t e = p->ev[i];
         for (j = i; j > 0u && p->ev[j - 1u].step > e.step; j--)
@@ -1684,6 +1689,15 @@ static void key_off(uint32_t k)
             ev_post(ui.key_arp[k] ? EV_ARP_OFF : EV_OFF, ui.key_track[k], ui.key_cn[k][j], 0);
     ui.key_arp[k] = 0;
     ui.key_cn[k][0] = ui.key_cn[k][1] = ui.key_cn[k][2] = 0;
+}
+/* a key's note over: no longer the key's, and what REC or the looper was timing it for ended */
+static void key_done(uint32_t k)
+{
+    ui.key_track[k] = KEY_NONE;
+    if (ui.rec_step[k] != 0xFFu)
+        rec_release(k);
+    if (ui.lk_ev[k] != 0xFFFFu)
+        loop_release(k);
 }
 
 /* SHIFT and a white key: step i of the chosen track. Pressed on an empty step, the track's last note put there; let go
@@ -2410,7 +2424,29 @@ static void ui_input(void)
     }
     keys = fm1_in.notes;
     ch = keys ^ ui.keys;
-    if ((ch & keys) >> KEY_READER & 1u && keys >> KEY_SHIFT & 1u) {   /* SHIFT + the 8th black key: the SCREEN READER on or off
+    {   /* (build 100) a key up, its release gone by, yet still holding its note: let go. A page that takes the keys for itself
+         * (SHIFT + REC held, a DRUM track's button held) skipped its release, and on a sound with a sustain the note then
+         * sounded for good. Here, before any page takes the keys, so that none can skip it */
+        uint32_t q;
+        for (q = 0; q < NKEY; q++)
+            if (ui.key_track[q] != KEY_NONE && !((keys | ch) >> q & 1u)) {
+                key_off(q);
+                key_done(q);
+            }
+    }
+    if ((ch & keys) >> KEY_ARP & 1u && keys >> KEY_SHIFT & 1u) {   /* SHIFT + the 5th black key: the panic, from any page */
+        uint32_t q;
+        for (q = 0; q < NKEY; q++)               /* (the keys held: silent until pressed again) */
+            if (ui.key_track[q] != KEY_NONE) {
+                ui.key_arp[q] = 0;
+                ui.key_cn[q][0] = ui.key_cn[q][1] = ui.key_cn[q][2] = 0;
+                key_done(q);
+            }
+        ev_post(EV_PANIC, 0, 0, 0);
+        say("NOTES OFF", 900);
+        ch &= ~(1u << KEY_ARP);
+    }
+    if ((ch & keys) >> KEY_READER & 1u && keys >> KEY_SHIFT & 1u) {   /* SHIFT + the 6th black key: the SCREEN READER on or off
                                                                        * (anywhere; the key does nothing else) */
         ui.rd_flip = 1;
         ch &= ~(1u << KEY_READER);
@@ -2830,11 +2866,7 @@ static void ui_input(void)
             step_up();
         else if (ui.key_track[k] != KEY_NONE) {
             key_off(k);
-            ui.key_track[k] = KEY_NONE;
-            if (ui.rec_step[k] != 0xFFu)
-                rec_release(k);
-            if (ui.lk_ev[k] != 0xFFFFu)
-                loop_release(k);
+            key_done(k);
         }
     }
     ui.keys = keys;

@@ -1,5 +1,25 @@
 # Changelog
 
+## Build 100
+
+Fixed
+- A note could hang for good after being let go. With SHIFT + REC held, or a DRUM track's button held, the keys belong to
+  that gesture and a key let go then was not seen. On a sound with a sustain (SWARM PAD, SUB SWARM and other pads) the
+  note went on sounding. Reproduced with session 13's HIVE track. Any key that is up
+  but still holding its note is now let go, on every page.
+- A loop's note held as long as the loop or longer ran into its own repeat and sounded like a drone. It now ends an
+  eighth of a step before it comes round.
+- A DRUM subtrack given up while one of its voices was fading left that voice silent and taken, one voice fewer
+  to play with, and the note waiting for it was not played.
+
+Added
+- Panic: SHIFT + black key 5 stops every note from any page: keys, steps (INF too), loops' notes sounding, MIDI FX still
+  to come, arpeggiators (latched too), and notes sent over MIDI. Voices fade out in about 9 ms. The sequencer plays on,
+  so its next notes sound. Keys still held stay silent until pressed again.
+
+Changed
+- The screen reader's gesture is SHIFT + black key 6 (it was SHIFT + black key 8 in build 99, which was not released).
+
 ## Build 99
 
 Added
@@ -9,11 +29,11 @@ Added
   pronunciation is spelled out. The dictionary has Bigorna's words added, and abbreviations are said in full (FLTR:
   filter). The music drops 6 dB while it speaks; the voice follows MASTER and is not sent over USB audio. Off at first.
 - GLOBAL SETUP has a SETTINGS section, after AUDIO: SCREEN READER (ON / OFF) and SPEECH RATE (1 to 5, 2 at first).
-  SHIFT + black key 8 turns the reader on or off from any page, and says which. Settings kept by earlier builds load as
+  SHIFT + black key 6 turns the reader on or off from any page, and says which. Settings kept by earlier builds load as
   they were, the reader off; earlier builds do not read the settings kept by this one (they start at their defaults).
 
 Changed
-- SHIFT + black key 8 no longer sets RANDOM in the step view or plays its note in CHROMATIC. The key alone does as before.
+- SHIFT + black key 6 no longer sets REVERSE in the step view or plays its note in CHROMATIC. The key alone does as before.
 - While the reader is on, a pattern waiting to play shows its number without blinking.
 - A voice's SRR runs from the flash, not RAM, to leave room for this build; a voice with SRR at 0 is unaffected.
 

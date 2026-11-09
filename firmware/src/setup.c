@@ -17,7 +17,7 @@
  *                     as the new device (build 98, as Tonitor's; a section of one part: it opens on its rows)
  *   SETTINGS  SCREEN READER                                      ON / OFF: the screen's words spoken (speech.c)
  *             SPEECH RATE                                        1 (slowest) .. 5 (fastest), 2 at first
- *                     (SHIFT + the 8th black key: the SCREEN READER on or off from anywhere, without sight; build 99)
+ *                     (SHIFT + the 6th black key: the SCREEN READER on or off from anywhere, without sight; build 99)
  *   START  NEW (a new session, its sounds, scale and root drawn at random, as Tonitor starts) / LAST (the last session
  *          loaded or saved); a value at the top level, set as a row is (build 77) */
 
@@ -279,7 +279,7 @@ static void setup_poll(void)
 static void reader_tick(void)
 {
     static uint8_t was;
-    if (ui.rd_flip) {                            /* SHIFT + the 8th black key: on or off, kept, and said */
+    if (ui.rd_flip) {                            /* SHIFT + the 6th black key: on or off, kept, and said */
         ui.rd_flip = 0;
         set_reader = (uint8_t)!set_reader;
         setup_write();

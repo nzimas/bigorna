@@ -197,7 +197,7 @@ static int32_t usb_trk[NTRACK][CTL];             /* (GLOBAL SETUP's USB TRACKS: 
 #endif
 
 /* --------------------------------------------------------------- events --- */
-enum { EV_ON, EV_OFF, EV_STOP, EV_ARP_ON, EV_ARP_OFF, EV_ARP_CLR };   /* (EV_ARP_*: build 52) */
+enum { EV_ON, EV_OFF, EV_STOP, EV_ARP_ON, EV_ARP_OFF, EV_ARP_CLR, EV_PANIC };   /* (EV_ARP_*: build 52; EV_PANIC: build 100) */
 typedef struct { uint8_t type, track, note, val; } ev_t;
 #define EVQ 64u
 static ev_t evq[EVQ];
@@ -586,6 +586,18 @@ static void trk_hush(uint32_t t)                 /* (the ISR's: track t's notes 
             v->fade = FADE;
     }
 }
+static void seq_release(void);
+/* (build 100) SHIFT + the 5th black key: everything sounding stopped -- the sequencer's notes, MIDI FX still to come, the
+ * arpeggiators' notes (latched too), every voice faded out and every note sent over MIDI let go. The sequencer plays on */
+static void all_notes_off(void)
+{
+    uint32_t t;
+    seq_release();
+    for (t = 0; t < NTRACK; t++) {
+        arp_clear(t);
+        trk_hush(t);
+    }
+}
 static void events_take(void)
 {
     while (ev_r != ev_w) {
@@ -616,6 +628,9 @@ static void events_take(void)
             break;
         case EV_STOP:
             trk_hush(e.track);
+            break;
+        case EV_PANIC:
+            all_notes_off();
             break;
         default:
             break;
@@ -2563,6 +2578,19 @@ static void budget_guard(void)
 }
 
 /* one block: Q15 stereo, interleaved */
+/* (build 100) a subtrack given up, a voice of its still fading: its lane is no longer played, so the fade never ended -- the
+ * voice silent and taken for good, and the note waiting for it never played. Ended here, each block */
+static void lanes_reap(void)
+{
+    uint32_t k;
+    for (k = 0; k < NVOICE; k++)
+        if (vox[k].sounding && vox[k].track >= NTRACK && !ln_s[vox[k].track]) {
+            if (vox[k].pend)
+                voice_take(k);
+            else
+                voice_silence(k);
+        }
+}
 /* the SCREEN READER's voice (speech.c) over the music, the music lower: to the outputs, not to USB. In the flash, as
  * vo_block: the RAM for the audio's hot path is full */
 static int32_t vo_buf[CTL] NOINIT;
@@ -2606,6 +2634,7 @@ static void mix_block(int32_t *out)
         } else
             mg_pos = (mg_pos + CTL * mg_dpos) & ((16u << 24) - 1u);
     }
+    lanes_reap();
     budget_guard();
     if (shed_req) {
         if (!shed_voice(0) && shed_req > 1u)

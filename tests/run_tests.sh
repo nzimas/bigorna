@@ -30,6 +30,7 @@ build/host pstate build/screens
 build/host patsnd
 build/host patnow
 build/host reader
+build/host hang
 build/host brksave build/screens
 build/host loopin build/screens
 build/host lptrn build/screens

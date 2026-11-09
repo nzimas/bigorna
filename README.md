@@ -68,7 +68,8 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **SAVE held** (0.8 s) | save the session. On the PATTERNS grid: nothing (hold a white key to save a pattern). |
 | **SHIFT + SAVE** | [SESSIONS](#sessions) grid; SHIFT + SAVE again leaves it. |
 | **SHIFT + SAVE held** (0.8 s) | [GLOBAL SETUP](#global-setup): MIDI, AUDIO, SETTINGS and START. |
-| **SHIFT + black key 8** | [Screen reader](#screen-reader) on or off, from any page. |
+| **SHIFT + black key 5** | Panic: every note stops, from any page. The sequencer plays on. |
+| **SHIFT + black key 6** | [Screen reader](#screen-reader) on or off, from any page. |
 | **MASTER** | output level. |
 | MIDI in (USB and TRS) | notes and CCs for each track ([MIDI](#midi)). |
 
@@ -669,7 +670,7 @@ computer or internet is needed.
 
 | Action | Result |
 | --- | --- |
-| **SHIFT + black key 8** | on or off, from any page; it says "screen reader on" or "screen reader off" |
+| **SHIFT + black key 6** | on or off, from any page; it says "screen reader on" or "screen reader off" |
 | **GLOBAL SETUP > SETTINGS > SCREEN READER** | ON or OFF |
 | **GLOBAL SETUP > SETTINGS > SPEECH RATE** | 1 (slowest) to 5 (fastest); heard as you set it |
 
