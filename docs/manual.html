@@ -283,7 +283,7 @@
 <tr><td><b>SAVE</b></td><td><a href="#patterns">PATTERNS</a> grid; SAVE again leaves it.</td></tr>
 <tr><td><b>SAVE held</b> (0.8 s)</td><td>save the session. On the PATTERNS grid: nothing (hold a white key to save a pattern).</td></tr>
 <tr><td><b>SHIFT + SAVE</b></td><td><a href="#sessions">SESSIONS</a> grid; SHIFT + SAVE again leaves it.</td></tr>
-<tr><td><b>SHIFT + SAVE held</b> (0.8 s)</td><td><a href="#global-setup">GLOBAL SETUP</a>: START and MIDI.</td></tr>
+<tr><td><b>SHIFT + SAVE held</b> (0.8 s)</td><td><a href="#global-setup">GLOBAL SETUP</a>: MIDI, AUDIO and START.</td></tr>
 <tr><td><b>MASTER</b></td><td>output level.</td></tr>
 <tr><td>MIDI in (USB and TRS)</td><td>notes and CCs for each track (<a href="#midi">MIDI</a>).</td></tr>
 </table>
@@ -497,13 +497,13 @@
 </table>
 <p>A loop belongs to the pattern it was recorded in. Another pattern does not play it, and an empty pattern plays nothing. When a pattern comes in, its loops start with its steps. Saving, copying or pasting a pattern takes its loops along; emptying it removes them. All patterns share room for 40 loops and 4608 notes: when it is full, arming a loop shows NO ROOM, and a pattern saved into another slot shows LOOPS LOST for the loops that did not fit.</p>
 <h2 id="tempo">Tempo</h2>
-<p><b>Hold PLAY</b> (0.8 s) for the TEMPO page: <b>PRESETS</b> sets the session's tempo, 10 to 300 BPM. A track button leaves it.</p>
+<p><b>Hold PLAY</b> (0.8 s) for the TEMPO page: <b>PRESETS</b> sets the pattern's tempo, 10 to 300 BPM. A track button leaves it. Each pattern keeps its own tempo. A pattern saved before build 97, or an empty one, has none and plays on at the tempo playing; the session keeps the last tempo set, for a session loaded at such a pattern.</p>
 <h2 id="patterns">Patterns</h2>
-<p>A session has 16 patterns. A pattern holds every track's and subtrack's steps (with their length, clock, direction, probability, swing and transposition), its loops, and each track's mute, subtrack mutes, machine, octave, level, pan, sidechain, CHORD mode and arpeggiator. The sounds, the effects, the tempo, the scale and the root belong to the session.</p>
+<p>A session has 16 patterns. A pattern holds every track's and subtrack's steps (with their length, clock, direction, probability, swing and transposition), its loops, its tempo, and each track's mute, subtrack mutes, machine, octave, level, pan, sidechain, CHORD mode, arpeggiator and DELAY, REVERB and CHORUS sends (the sends of the sound on the machine the track plays, and of each subtrack). A pattern switch gives the sends to those sounds. A pattern saved before build 97 leaves the sends as they play; so does one so full of steps that the sends do not fit (more than about 90 notes). The sounds (apart from their sends), the effects themselves, the scale and the root belong to the session.</p>
 <p><b>SAVE</b> opens the PATTERNS grid; SAVE again leaves it. The white keys are the 16 patterns, the one playing brighter. On the screen the pattern playing is green (orange with changes not saved), saved patterns white, empty ones grey, and the white square is the cursor: it opens on the pattern playing, and <b>PRESETS</b> moves it.</p>
 <table>
 <tr><th>To</th><th>Do this</th></tr>
-<tr><td>Play a pattern</td><td>press and release its white key. While the sequencer plays, it starts at the end of the chosen track's steps</td></tr>
+<tr><td>Play a pattern</td><td>press and release its white key. While the sequencer plays, it starts as the session's PAT SW says: END (at first), at the end of the chosen track's steps; NOW, from its first step with the next 16th of the tempo</td></tr>
 <tr><td>Save the pattern playing into a slot</td><td>hold the slot's white key 0.8 s; the slot may be empty or not. That slot plays from then on; the pattern saved from keeps what it held, its mutes included</td></tr>
 <tr><td>Save its changes in its own slot</td><td>hold its own white key 0.8 s</td></tr>
 <tr><td>Copy a pattern</td><td>SHIFT + hold its key 0.8 s</td></tr>
@@ -514,7 +514,7 @@
 <p>A changed pattern keeps its changes when you switch away, until the session is saved or loaded. A pattern that unmutes a track starts that track cleanly, without notes left over from the muted time. Every note is always saved; on a pattern crowded with locks, the last locks may be left out. MUTE mode, BREAK and PERFORMANCE work on the grid too, and MIDI program changes 0 to 15 choose patterns 1 to 16 (<a href="#midi">MIDI</a>).</p>
 <h2 id="sessions">Sessions</h2>
 <p>16 sessions are kept in the FM-1's flash. A session holds everything: every track's and subtrack's sounds and settings, the effects, the tempo, the scale and root, the 16 patterns with their loops, and the pattern playing.</p>
-<p><b>SHIFT + SAVE</b> opens the SESSIONS grid, laid out as the PATTERNS grid; SHIFT + SAVE again leaves it. The white keys are the 16 slots (lit dimly; the session playing brighter). On the screen the session playing is green (orange with changes not saved), saved sessions white, empty ones grey, and the white square is the cursor: it opens on the session playing, and <b>PRESETS</b> moves it. <b>SAVE</b> opens the page of the slot under the cursor: BACK, LOAD, SAVE, COPY, DELETE, TEMPO, MUTE QT (<a href="#mute-mode">MUTE mode</a>), CTRL (<a href="#performance">PERFORMANCE</a>) and GEN LOCK (<a href="#sounds">Sounds</a>). SAVE runs the row chosen, or moves to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it as it was); SHIFT + SAVE goes back to the grid. On the page, loading over changes not saved, saving over another session, copying over one and deleting ask first: NO or YES on PRESETS.</p>
+<p><b>SHIFT + SAVE</b> opens the SESSIONS grid, laid out as the PATTERNS grid; SHIFT + SAVE again leaves it. The white keys are the 16 slots (lit dimly; the session playing brighter). On the screen the session playing is green (orange with changes not saved), saved sessions white, empty ones grey, and the white square is the cursor: it opens on the session playing, and <b>PRESETS</b> moves it. <b>SAVE</b> opens the page of the slot under the cursor: BACK, LOAD, SAVE, COPY, DELETE, TEMPO, MUTE QT (<a href="#mute-mode">MUTE mode</a>), PAT SW (how a pattern comes in while the sequencer plays: END or NOW, <a href="#patterns">Patterns</a>), CTRL (<a href="#performance">PERFORMANCE</a>) and GEN LOCK (<a href="#sounds">Sounds</a>). SAVE runs the row chosen, or moves to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it as it was); SHIFT + SAVE goes back to the grid. On the page, loading over changes not saved, saving over another session, copying over one and deleting ask first: NO or YES on PRESETS.</p>
 <table>
 <tr><th>To</th><th>Do this</th></tr>
 <tr><td>Load a session</td><td>press and release its white key: it loads at once. With changes not saved, UNSAVED: AGAIN shows; press the same key again within 2 s. Or its page, LOAD</td></tr>
@@ -530,6 +530,7 @@
 <p>The website's <a href="https://nzimas.github.io/bigorna/backup.html">Backup page</a> (desktop Chrome, Edge or Opera, over USB MIDI) copies every session, with its patterns and loops, and GLOBAL SETUP to a file on the computer, and writes them back. Use it before installing another firmware: Bigorna keeps its sessions where Tonitor keeps its own, so either may overwrite the other's. A restore puts each session back into its own slot and leaves the others; RESTORED S3 (or SETUP) shows as each lands.</p>
 <h2 id="global-setup">GLOBAL SETUP</h2>
 <p><b>SHIFT + SAVE held</b> (0.8 s) opens GLOBAL SETUP: the FM-1's own settings, kept apart from the sessions. <b>PRESETS</b> moves through the entries; <b>SAVE</b> opens one, or moves to a value and sets it; <b>SHIFT + SAVE</b> leaves a value as it was or goes back a level. A track button leaves. Changes are saved as you leave.</p>
+<p><b>AUDIO</b> has one setting, <b>USB</b>: what the FM-1 sends to a computer as USB audio (<a href="#usb-audio">USB audio</a>). <b>STEREO</b> (at first): the master. <b>TRACKS</b>: the six tracks, each on its own mono channel. Changed, the FM-1 leaves the USB for a moment and comes back as the new device; the sound on the headphones goes on.</p>
 <p><b>START</b>: how the FM-1 starts. <b>NEW</b> (at first): with a new session, as Tonitor starts: new sounds on every track, a scale and root at random, tempo 120. Hold SAVE to keep it. <b>LAST</b>: with the last session loaded or saved.</p>
 <h3 id="midi">MIDI</h3>
 <p>MIDI goes over the USB cable both ways (the FM-1 shows up as FM-1 Bigorna) and comes in through the 3.5 mm MIDI IN jack (TRS Type A). The settings follow the Model:Cycles' MIDI CONFIG:</p>
@@ -575,7 +576,13 @@
 </table>
 <p>A learned sound parameter moves on the track it was learned on; an effect's moves for all. Each CC and channel controls one parameter, and each parameter has one CC. Up to 64 are kept, with GLOBAL SETUP. RECEIVE CC must be on.</p>
 <h2 id="usb-audio">USB audio</h2>
-<p>Plugged into a computer, a phone or a tablet, the FM-1 is also a USB audio input named FM-1 Bigorna: its master output in stereo, 16-bit, 44.1 kHz. Record or monitor it like any class-compliant audio interface; nothing to install. The headphone jack plays on as usual. The USB sound does not follow the MASTER knob, so a recording keeps its level whatever the headphones are set to. MIDI goes on alongside on the same cable.</p>
+<p>Plugged into a computer, a phone or a tablet, the FM-1 is also a USB audio input named FM-1 Bigorna, 16-bit, 44.1 kHz. <b>GLOBAL SETUP &gt; AUDIO &gt; USB</b> chooses what it sends:</p>
+<table>
+<tr><th>USB</th><th>Channels</th></tr>
+<tr><td><b>STEREO</b></td><td>2: the master output, with the effects and the compressor</td></tr>
+<tr><td><b>TRACKS</b></td><td>6: tracks 1–6, each mono, its subtracks in it, after its level, mute and sidechain ducking; before its pan, the DELAY, REVERB and CHORUS and the compressor</td></tr>
+</table>
+<p>Record or monitor it like any class-compliant audio interface; nothing to install. The headphone jack plays on as usual, the master in both cases. The USB sound does not follow the MASTER knob, so a recording keeps its level whatever the headphones are set to. MIDI goes on alongside on the same cable.</p>
 <p>The other end must be a USB host: a computer, or a phone or tablet that takes USB audio devices (on Android, most do through USB-C). A host that works at 48 kHz converts the sound itself.</p>
 <p><b>Tested with:</b></p>
 <ul>
