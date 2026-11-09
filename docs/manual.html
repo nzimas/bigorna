@@ -88,6 +88,7 @@
 <a href="#midi" class="sub">MIDI</a>
 <a href="#midi-learn" class="sub">MIDI LEARN</a>
 <a href="#usb-audio">USB audio</a>
+<a href="#screen-reader">Screen reader</a>
 <a href="#screen">Screen</a>
 <a href="#rescue">Rescue</a>
 </nav>
@@ -226,8 +227,8 @@
 <tr id="ctl-25" data-n="25"><td class="n"><a href="#fig-keys">25</a></td><td><b>black key 2</b></td><td rowspan="1"><a href="#mute-mode">MUTE mode</a>. In the step view: TRACK page.</td></tr>
 <tr id="ctl-26" data-n="26"><td class="n"><a href="#fig-keys">26</a></td><td><b>black key 3</b></td><td rowspan="1"><b>Held</b>: <a href="#break">BREAK</a>; <b>SHIFT +</b>, on every track. In the step view: TRIG.</td></tr>
 <tr id="ctl-27" data-n="27"><td class="n"><a href="#fig-keys">27</a></td><td><b>black key 4</b></td><td rowspan="1"><a href="#midi-learn">MIDI LEARN</a>. In the step view: MOD.</td></tr>
-<tr id="ctl-28" data-n="28"><td class="n"><a href="#fig-keys">28</a></td><td><b>black key 5</b></td><td rowspan="1"><a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page.</td></tr>
-<tr id="ctl-29" data-n="29"><td class="n"><a href="#fig-keys">29</a></td><td><b>black key 6</b></td><td rowspan="3">In the step view: track's direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes.</td></tr>
+<tr id="ctl-28" data-n="28"><td class="n"><a href="#fig-keys">28</a></td><td><b>black key 5</b></td><td rowspan="1"><a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page. <b>SHIFT +</b>: panic, every note stops.</td></tr>
+<tr id="ctl-29" data-n="29"><td class="n"><a href="#fig-keys">29</a></td><td><b>black key 6</b></td><td rowspan="3">In the step view: track's direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes. <b>SHIFT +</b> black key 6: <a href="#screen-reader">screen reader</a>.</td></tr>
 <tr id="ctl-30" data-n="30"><td class="n"><a href="#fig-keys">30</a></td><td><b>black key 7</b></td></tr>
 <tr id="ctl-31" data-n="31"><td class="n"><a href="#fig-keys">31</a></td><td><b>black key 8</b></td></tr>
 <tr id="ctl-32" data-n="32"><td class="n"><a href="#fig-keys">32</a></td><td><b>black key 9</b></td><td rowspan="1"><b>STEP</b>: <a href="#step-view">step view</a>. <b>SHIFT +</b>: empty the chosen track's steps.</td></tr>
@@ -283,7 +284,9 @@
 <tr><td><b>SAVE</b></td><td><a href="#patterns">PATTERNS</a> grid; SAVE again leaves it.</td></tr>
 <tr><td><b>SAVE held</b> (0.8 s)</td><td>save the session. On the PATTERNS grid: nothing (hold a white key to save a pattern).</td></tr>
 <tr><td><b>SHIFT + SAVE</b></td><td><a href="#sessions">SESSIONS</a> grid; SHIFT + SAVE again leaves it.</td></tr>
-<tr><td><b>SHIFT + SAVE held</b> (0.8 s)</td><td><a href="#global-setup">GLOBAL SETUP</a>: MIDI, AUDIO and START.</td></tr>
+<tr><td><b>SHIFT + SAVE held</b> (0.8 s)</td><td><a href="#global-setup">GLOBAL SETUP</a>: MIDI, AUDIO, SETTINGS and START.</td></tr>
+<tr><td><b>SHIFT + black key 5</b></td><td>Panic: every note stops, from any page. The sequencer plays on.</td></tr>
+<tr><td><b>SHIFT + black key 6</b></td><td><a href="#screen-reader">Screen reader</a> on or off, from any page.</td></tr>
 <tr><td><b>MASTER</b></td><td>output level.</td></tr>
 <tr><td>MIDI in (USB and TRS)</td><td>notes and CCs for each track (<a href="#midi">MIDI</a>).</td></tr>
 </table>
@@ -531,6 +534,7 @@
 <h2 id="global-setup">GLOBAL SETUP</h2>
 <p><b>SHIFT + SAVE held</b> (0.8 s) opens GLOBAL SETUP: the FM-1's own settings, kept apart from the sessions. <b>PRESETS</b> moves through the entries; <b>SAVE</b> opens one, or moves to a value and sets it; <b>SHIFT + SAVE</b> leaves a value as it was or goes back a level. A track button leaves. Changes are saved as you leave.</p>
 <p><b>AUDIO</b> has one setting, <b>USB</b>: what the FM-1 sends to a computer as USB audio (<a href="#usb-audio">USB audio</a>). <b>STEREO</b> (at first): the master. <b>TRACKS</b>: the six tracks, each on its own mono channel. Changed, the FM-1 leaves the USB for a moment and comes back as the new device; the sound on the headphones goes on.</p>
+<p><b>SETTINGS</b> has two: <b>SCREEN READER</b> (OFF at first) and <b>SPEECH RATE</b> (1, slowest, to 5, fastest; 2 at first). See <a href="#screen-reader">Screen reader</a>.</p>
 <p><b>START</b>: how the FM-1 starts. <b>NEW</b> (at first): with a new session, as Tonitor starts: new sounds on every track, a scale and root at random, tempo 120. Hold SAVE to keep it. <b>LAST</b>: with the last session loaded or saved.</p>
 <h3 id="midi">MIDI</h3>
 <p>MIDI goes over the USB cable both ways (the FM-1 shows up as FM-1 Bigorna) and comes in through the 3.5 mm MIDI IN jack (TRS Type A). The settings follow the Model:Cycles' MIDI CONFIG:</p>
@@ -589,6 +593,17 @@
 <li><b>POCO X7 Pro (HyperOS), over USB-C:</b> the phone's camera app records video with the FM-1's sound. Switch on OTG first (Settings &gt; Additional settings &gt; OTG), with nothing plugged into the phone; HyperOS turns it off again after 10 minutes with no device.</li>
 <li><b>MacBook Air M5 (macOS), over USB-C:</b> FM-1 Bigorna, 2 input channels, 44,100 Hz, every packet in order with 6 tracks playing.</li>
 </ul>
+<h2 id="screen-reader">Screen reader</h2>
+<p>The FM-1 can speak what its screen shows, for players who cannot see it. The voice is made on the FM-1 itself; no computer or internet is needed.</p>
+<table>
+<tr><th>Action</th><th>Result</th></tr>
+<tr><td><b>SHIFT + black key 6</b></td><td>on or off, from any page; it says "screen reader on" or "screen reader off"</td></tr>
+<tr><td><b>GLOBAL SETUP &gt; SETTINGS &gt; SCREEN READER</b></td><td>ON or OFF</td></tr>
+<tr><td><b>GLOBAL SETUP &gt; SETTINGS &gt; SPEECH RATE</b></td><td>1 (slowest) to 5 (fastest); heard as you set it</td></tr>
+</table>
+<p>It speaks what changes on the screen once it settles: the track and its machine and sound, a knob's parameter and value, messages, and on lists the page's title and the chosen row. Words it has no pronunciation for are spelled out.</p>
+<p>While it speaks the music is 6 dB lower. The voice follows MASTER and is not sent over USB audio, in STEREO or TRACKS. While the reader is on, a pattern waiting to play shows its number without blinking.</p>
+<p>Speaking takes some of the CPU, so with many voices sounding, the longest release tails may be let go sooner. When the reader is off, the audio does no work for it beyond one check.</p>
 <h2 id="screen">Screen</h2>
 <p>Few words, very large type, high contrast, and a colour for each track. The track's view shows, from the top: the pattern playing (orange with changes not saved) and the chord form (or ARP) at the top left; the battery, the octave and the transposition (T+2) at the top right, with REC or LOOP while recording (otherwise PERF, in red, while <a href="#performance">PERFORMANCE</a> is on); the track's number, its machine and its sound's family.</p>
 <p>The battery shows 3 green bars when full, then 2 green, 1 amber, and 1 red when it runs low. On USB power it shows a white bolt instead.</p>
