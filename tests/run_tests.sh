@@ -24,6 +24,7 @@ build/host arp build/screens
 build/host newses build/screens
 build/host pstate build/screens
 build/host patsnd
+build/host patnow
 build/host brksave build/screens
 build/host loopin build/screens
 build/host lptrn build/screens

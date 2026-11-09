@@ -255,13 +255,15 @@ void fm1_timer5_irq(void)
         uart_midi_poll();                        /* (the TRS jack: build 47) */
     if (++sub == 10u)
         sub = 0;
-    if (dbg.in_audio) {
 #if FELUCCA_UAC
-        if (owed & 1u)
-            uac_service();                       /* (owed stays: usb_poll runs after the render, as before) */
+    uac_service();                               /* (build 98, as Tonitor's build 62) USB audio's packet each 1 ms frame,
+                                                  * looked to every tick (10 kHz), also while a half renders: six channels
+                                                  * take ~0.4 ms on the wire, and a look each 0.5 ms now and then queues
+                                                  * the next too late for the next frame */
 #endif
+    if (dbg.in_audio) {
         t5_nested_ticks += fm1_ticks() - t0;
-        return;
+        return;                                  /* (owed stays: usb_poll runs after the render, as before) */
     }
     if (owed & 1u)
         usb_poll();
@@ -464,6 +466,9 @@ static void fm1_main(void)
                                                       * half the voices' room. Said, not silent) */
         say("1 CORE", 4000);
     audio_init();
+#if FELUCCA_UAC
+    uac_set_nch(set_usba ? UAC_NMAX : 2u);           /* (GLOBAL SETUP's AUDIO: USB comes up once, as it was left) */
+#endif
     usb_start();
     uart_midi_init();                                /* the TRS MIDI IN jack (before TIMER5: PORTH) */
     fm1_timer5_start(isr_timer5, 4);

@@ -34,6 +34,18 @@
 #undef FELUCCA_UAC_48K
 #define FELUCCA_UAC_48K 0
 #endif
+#ifndef UAC_NBLK
+#define UAC_NBLK 2u              /* the channels of the block the audio hands over (BIGORNA: 8 -- the master L R, then
+                                  * the six tracks; build 98, after TONITOR's build 62) */
+#endif
+#ifndef UAC_NMAX
+#define UAC_NMAX 2u              /* the most channels sent (BIGORNA: 6 -- GLOBAL SETUP's AUDIO: STEREO, TRACKS) */
+#endif
+_Static_assert(UAC_NMAX >= 2u && (UAC_NMAX & 1u) == 0u && UAC_NMAX <= UAC_NBLK, "channels in pairs");
+_Static_assert(!FELUCCA_UAC_48K || UAC_NMAX == 2u, "the 48 kHz resampler is stereo");
+/* the channels sent now (2 or UAC_NMAX) and the block's first of them: set while USB is off (uac_set_nch) */
+static uint8_t uac_nch = 2u, uac_src;
+#define UAC_FW (uac_nch >> 1)    /* a frame's words: two 16-bit channels a word */
 enum { S_FADDR = 0, S_POWER = 1, S_INTRTX1 = 2, S_INTRTX2 = 3, S_INTRRX1 = 4, S_INTRRX2 = 5, S_INTRUSB = 6,
        S_INTRTX1E = 7, S_INTRTX2E = 8, S_INTRRX1E = 9, S_INTRRX2E = 10, S_INTRUSBE = 11, S_FRAME1 = 12,
        S_FRAME2 = 13, S_INDEX = 14,
@@ -71,8 +83,13 @@ static struct {
  * band: ~5.8 ms). Measured under load (65 % CPU): a 64..112 band started renders at
  * 48..119 with no glitch; one render was once seen 29 frames under the floor: a packet (46) must
  * still be in hand then. */
-#define UA_N 512u                /* ring, frames (16-bit L | R << 16); a power of two */
-#if HALF_FRAMES >= 256u          /* (BIGORNA: 256-frame halves -- the 96 .. 160 band, as above) */
+#define UA_N 512u                /* ring, frames (UAC_FW words each: 16-bit channels, two a word); a power of two */
+#if HALF_FRAMES >= 256u && UAC_NMAX > 2u   /* (build 98, as TONITOR with six channels: the band as high as the ring takes,
+                                            * 3.6 .. 4.7 ms ahead) */
+#define UA_PRIME 182u
+#define UA_LO 160u
+#define UA_HI 206u
+#elif HALF_FRAMES >= 256u        /* (BIGORNA: 256-frame halves -- the 96 .. 160 band, as above) */
 #define UA_PRIME 128u
 #define UA_LO 96u
 #define UA_HI 160u
@@ -99,11 +116,14 @@ _Static_assert(UA_HI48 + UA_REND48 + UA_MAXF < UA_N, "the ring holds the band, a
 #else
 #define UA_MAXF 46u              /* frames in the largest packet */
 #endif
-#define UAC_MAXP (UA_MAXF * 4u)
+#define UAC_MAXP (UA_MAXF * 2u * UAC_NMAX)   /* (the largest; the descriptor's is the one in use: uac_set_nch) */
+_Static_assert(UAC_MAXP <= 1023u, "a full-speed isochronous packet");
 _Static_assert(UA_HI + HALF_FRAMES + UA_MAXF < UA_N, "the ring holds the band, a render and a packet");
-static uint32_t ua_ring[UA_N];
+/* (build 98: 6 KB with six channels, .bss and the pool being full: in NOINIT, 15 KB with little else in it. Never read
+ * before it is written: uac_render_start primes it with silence) */
+static uint32_t ua_ring[UA_N * (UAC_NMAX / 2u)] __attribute__((section(".noinit")));
 static volatile uint32_t ua_w, ua_r;
-static uint32_t ep4tx[UA_MAXF] __attribute__((aligned(4)));
+static uint32_t ep4tx[UA_MAXF * (UAC_NMAX / 2u)] __attribute__((aligned(4)));
 static struct {
     volatile uint8_t alt;        /* streaming interface setting: 1 = the host records */
     volatile uint8_t r48;        /* the host's rate (SET_CUR): 1 = 48 kHz, 0 = 44.1 (bus reset) */
@@ -116,7 +136,7 @@ static struct {
     uint8_t e0_rx;               /* SET_CUR sampling frequency: data stage pending */
     volatile uint32_t fill_min;  /* ring fill when the last render started */
     uint32_t acc;                /* 44.1 frames per ms: 0.1 frame steps */
-    uint32_t last;               /* the last frame sent, repeated on an underrun */
+    uint32_t last[UAC_NMAX / 2u];   /* the last frame sent, repeated on an underrun */
     uint32_t starts, pkts, frames;               /* frames in packets sent from the ring */
     uint32_t underruns, overruns, missed;        /* glitches: ring empty (repeat), ring full (drop), no packet ready */
     uint32_t stalls;                             /* the host stopped reading for > 20 ms (alt still 1) */
@@ -239,7 +259,8 @@ static const uint8_t CFG_DESC[] = {
     11, 0x24, 2, 1, 2, 2, 16, 1, UAC_RATE & 0xFF, (UAC_RATE >> 8) & 0xFF, UAC_RATE >> 16,
                                                         /* type I: 2 ch, 16 bit, one rate */
 #endif
-    9, 5, 0x84, 0x05, UAC_MAXP & 0xFF, UAC_MAXP >> 8, 1, 0, 0,   /* EP4 IN isochronous async, 1 ms */
+    9, 5, 0x84, 0x05, (UA_MAXF * 4u) & 0xFF, (UA_MAXF * 4u) >> 8, 1, 0, 0,   /* EP4 IN isochronous async, 1 ms (stereo's;
+                                                                          * uac_set_nch) */
     7, 0x25, 1, 0x01, 0, 0, 0,                          /* CS endpoint: sampling frequency control */
 #endif
 #if FELUCCA_CDC
@@ -292,12 +313,50 @@ static const uint8_t STR2[] = {30, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c
 static const uint8_t STR2[] = {26, 3, 'F', 0, 'M', 0, '-', 0, '1', 0, ' ', 0, 'B', 0, 'i', 0, 'g', 0, 'o', 0, 'r', 0, 'n', 0, 'a', 0};
 #endif
 
+#if FELUCCA_UAC
+/* the device and configuration descriptors as sent: copies, with the audio input's channels (2, or UAC_NMAX), its
+ * packet size and bcdDevice (+0.04 with more than two: hosts keep descriptors per version) as uac_set_nch has them.
+ * With 2 channels they are the descriptors as written */
+static uint8_t dev_rt[18], cfg_rt[sizeof CFG_DESC];
+static void uac_desc_patch(void)
+{
+    uint32_t i, mp = UA_MAXF * 2u * uac_nch;
+    memcpy(dev_rt, DEV_DESC, sizeof dev_rt);
+    memcpy(cfg_rt, CFG_DESC, sizeof cfg_rt);
+    dev_rt[12] = (uint8_t)(dev_rt[12] + (uac_nch > 2u ? 0x04u : 0u));
+    for (i = 0; i + 1u < sizeof cfg_rt && cfg_rt[i]; i += cfg_rt[i]) {
+        uint8_t *x = &cfg_rt[i];
+        if (x[0] == 12u && x[1] == 0x24u && x[2] == 2u)                  /* the input terminal */
+            x[7] = uac_nch;
+        else if (x[0] == 11u && x[1] == 0x24u && x[2] == 2u && x[3] == 1u)   /* type I format */
+            x[4] = uac_nch;
+        else if (x[0] == 9u && x[1] == 5u && x[2] == 0x84u) {           /* EP4 */
+            x[4] = (uint8_t)mp;
+            x[5] = (uint8_t)(mp >> 8);
+        }
+    }
+}
+/* the channels sent: 2 (the master, L R) or UAC_NMAX (the tracks, from the block's third), and the descriptors that
+ * say so. Only while USB is off (a start follows: the host reads them afresh) */
+static void uac_set_nch(uint32_t n)
+{
+    uac_nch = (uint8_t)(n > 2u && UAC_NMAX > 2u ? UAC_NMAX : 2u);
+    uac_src = (uint8_t)(uac_nch > 2u ? 2u : 0u);
+    uac_desc_patch();
+}
+#endif
+
 static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
 {
     switch (wvalue >> 8) {
     case 1:
         *d = DEV_DESC;
         *l = sizeof DEV_DESC;
+#if FELUCCA_UAC
+        if (!dev_rt[0])
+            uac_desc_patch();
+        *d = dev_rt;
+#endif
 #if FELUCCA_CDC
         if (!usb_cdc_on)
             *d = DEV_DESC_PLAIN;
@@ -306,6 +365,11 @@ static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)
     case 2:
         *d = CFG_DESC;
         *l = sizeof CFG_DESC;
+#if FELUCCA_UAC
+        if (!cfg_rt[0])
+            uac_desc_patch();
+        *d = cfg_rt;
+#endif
 #if FELUCCA_CDC
         if (!usb_cdc_on) {
             *d = cfg_plain_get();
@@ -385,7 +449,7 @@ static void uac_stream(uint32_t alt)                    /* SET_INTERFACE, config
     RING_PUBLISH();
     uac.alt = (uint8_t)alt;
     uac.acc = 0;
-    uac.last = 0;
+    memset(uac.last, 0, sizeof uac.last);
     if (alt) {                                          /* (the fill range of the last stream stays readable) */
         uac.starts++;
         uac.fill_lo = 0xFFFFFFFFu;
@@ -1009,7 +1073,7 @@ static __attribute__((noinline)) void uac_render_start(void)   /* audio ISR, bef
         }
 #endif
         for (i = 0; i < prime; i++)
-            ua_ring[(r + i) & (UA_N - 1u)] = 0;
+            memset(&ua_ring[((r + i) & (UA_N - 1u)) * UAC_FW], 0, 4u * UAC_FW);
         RING_PUBLISH();
         ua_w = r + prime;
         uac.fill_min = prime;
@@ -1089,11 +1153,12 @@ static __attribute__((noinline)) void uac_tap(const int32_t *out, uint32_t n)   
     {   /* bench (BIGORNA build 49): a 441 Hz sine, 100 frames a period (L and R a quarter apart), in place of
          * the music, at either rate: a lost or repeated frame stands out of the sine's smooth second
          * difference (~16 times it), the 48 kHz resampler's output too */
-        static int32_t tb[2u * 64u];
+        static int32_t tb[UAC_NBLK * 64u];
         static uint32_t tp;
         for (i = 0; i < n && i < 64u; i++, tp = tp == 99u ? 0u : tp + 1u) {
-            tb[2u * i] = sin_ph(tp * 42949673u) * 20000 / 32768;
-            tb[2u * i + 1u] = sin_ph(tp * 42949673u + 0x40000000u) * 20000 / 32768;
+            uint32_t c;
+            for (c = 0; c < UAC_NBLK; c++)
+                tb[UAC_NBLK * i + c] = sin_ph(tp * 42949673u + (c & 1u ? 0x40000000u : 0u)) * 20000 / 32768;
         }
         out = tb;
     }
@@ -1108,9 +1173,12 @@ static __attribute__((noinline)) void uac_tap(const int32_t *out, uint32_t n)   
         uac.overruns++;
         return;
     }
-    for (i = 0; i < n; i++)
-        ua_ring[(w + i) & (UA_N - 1u)] = (uint32_t)(uint16_t)uac_s16(out[2u * i]) |
-                                         (uint32_t)(uint16_t)uac_s16(out[2u * i + 1u]) << 16;
+    for (i = 0; i < n; i++) {
+        uint32_t *f = &ua_ring[((w + i) & (UA_N - 1u)) * UAC_FW], c;
+        for (c = 0; c < UAC_FW; c++)
+            f[c] = (uint32_t)(uint16_t)uac_s16(out[UAC_NBLK * i + uac_src + 2u * c]) |
+                   (uint32_t)(uint16_t)uac_s16(out[UAC_NBLK * i + uac_src + 2u * c + 1u]) << 16;
+    }
     RING_PUBLISH();
     ua_w = w + n;
 }
@@ -1135,8 +1203,7 @@ static uint32_t uac_packet(uint32_t *d)
         }
     }
     if (!uac.go || uac.ring48 != uac.r48) {             /* not primed (at this rate) yet */
-        for (i = 0; i < n; i++)
-            d[i] = 0;
+        memset(d, 0, 4u * UAC_FW * n);
         return n;
     }
     if (uac.fill_min > hi) {
@@ -1151,14 +1218,14 @@ static uint32_t uac_packet(uint32_t *d)
     RING_PUBLISH();                                     /* the slots after the index */
     k = fill < n ? fill : n;
     for (i = 0; i < k; i++)
-        d[i] = ua_ring[(r + i) & (UA_N - 1u)];
+        memcpy(&d[i * UAC_FW], &ua_ring[((r + i) & (UA_N - 1u)) * UAC_FW], 4u * UAC_FW);
     if (k < n) {
-        uint32_t last = k ? d[k - 1u] : uac.last;
+        const uint32_t *last = k ? &d[(k - 1u) * UAC_FW] : uac.last;
         uac.underruns++;
         for (; i < n; i++)
-            d[i] = last;
+            memcpy(&d[i * UAC_FW], last, 4u * UAC_FW);
     }
-    uac.last = d[n - 1u];
+    memcpy(uac.last, &d[(n - 1u) * UAC_FW], 4u * UAC_FW);
     RING_PUBLISH();
     ua_r = r + k;
     uac.pkts++;
@@ -1166,7 +1233,7 @@ static uint32_t uac_packet(uint32_t *d)
     return n;
 }
 
-/* TIMER5, 2 kHz, also nested in the render: the host takes one packet per 1 ms frame; queue the
+/* TIMER5, every tick (10 kHz), also nested in the render: the host takes one packet per 1 ms frame; queue the
  * next one as soon as the last has gone (TxPktRdy clear). Not paced on SOF-pending (see usb_poll).
  * The ring is fed only while the host reads: it often selects alt 1 long before its first IN token,
  * and a recorder may stop reading without going back to alt 0 (a packet waiting > 20 ms). */
@@ -1178,7 +1245,7 @@ static void uac_service(void)
     sie_wr(S_INDEX, 4);
     csr = sie_rd(S_TXCSR1);
     if (csr & 0x01u) {                                  /* still queued */
-        if (uac.wait < 255u && ++uac.wait == 40u && uac.flowing) {
+        if (uac.wait < 255u && ++uac.wait == 200u && uac.flowing) {   /* (20 ms: looked to at 10 kHz, main.c) */
             uac.flowing = 0;
             uac.stalls++;
         }
@@ -1192,7 +1259,7 @@ static void uac_service(void)
     uac.queued = 1;
     uac.wait = 0;
     n = uac_packet(ep4tx);
-    fm1_usb_ep4_send(ep4tx, n * 4u);
+    fm1_usb_ep4_send(ep4tx, n * 4u * UAC_FW);
     sie_wr(S_TXCSR1, 0x01);                             /* TxPktRdy (and UnderRun cleared) */
 }
 #endif
@@ -1319,6 +1386,22 @@ static void usb_retry(uint32_t now_ms)
     usb.retries++;
     usb_start();
 }
+
+#if FELUCCA_UAC
+/* the audio input's channels changed (GLOBAL SETUP): off the bus a moment, the stream stopped (a render under way
+ * finishes first: 0.1 s), and on again as the new device -- MIDI too (main loop) */
+static void usb_reconnect(uint32_t nch)
+{
+    uac.alt = 0;
+    uac.go = 0;
+    RING_PUBLISH();
+    usb.up = 0;
+    fm1_usb_off();
+    fm1_delay_ms(100);
+    uac_set_nch(nch);
+    usb_start();
+}
+#endif
 
 static void usb_detach(void)
 {

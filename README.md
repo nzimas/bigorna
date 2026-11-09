@@ -67,7 +67,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **SAVE** | [PATTERNS](#patterns) grid; SAVE again leaves it. |
 | **SAVE held** (0.8 s) | save the session. On the PATTERNS grid: nothing (hold a white key to save a pattern). |
 | **SHIFT + SAVE** | [SESSIONS](#sessions) grid; SHIFT + SAVE again leaves it. |
-| **SHIFT + SAVE held** (0.8 s) | [GLOBAL SETUP](#global-setup): START and MIDI. |
+| **SHIFT + SAVE held** (0.8 s) | [GLOBAL SETUP](#global-setup): MIDI, AUDIO and START. |
 | **MASTER** | output level. |
 | MIDI in (USB and TRS) | notes and CCs for each track ([MIDI](#midi)). |
 
@@ -497,7 +497,7 @@ the white square is the cursor: it opens on the pattern playing, and **PRESETS**
 
 | To | Do this |
 | --- | --- |
-| Play a pattern | press and release its white key. While the sequencer plays, it starts at the end of the chosen track's steps |
+| Play a pattern | press and release its white key. While the sequencer plays, it starts as the session's PAT SW says: END (at first), at the end of the chosen track's steps; NOW, from its first step with the next 16th of the tempo |
 | Save the pattern playing into a slot | hold the slot's white key 0.8 s; the slot may be empty or not. That slot plays from then on; the pattern saved from keeps what it held, its mutes included |
 | Save its changes in its own slot | hold its own white key 0.8 s |
 | Copy a pattern | SHIFT + hold its key 0.8 s |
@@ -519,8 +519,8 @@ the tempo, the scale and root, the 16 patterns with their loops, and the pattern
 are the 16 slots (lit dimly; the session playing brighter). On the screen the session playing is green (orange with
 changes not saved), saved sessions white, empty ones grey, and the white square is the cursor: it opens on the session
 playing, and **PRESETS** moves it. **SAVE** opens the page of the slot under the cursor: BACK, LOAD, SAVE, COPY,
-DELETE, TEMPO, MUTE QT ([MUTE mode](#mute-mode)), CTRL ([PERFORMANCE](#performance)) and GEN LOCK
-([Sounds](#sounds)). SAVE runs the row chosen, or
+DELETE, TEMPO, MUTE QT ([MUTE mode](#mute-mode)), PAT SW (how a pattern comes in while the sequencer plays: END or
+NOW, [Patterns](#patterns)), CTRL ([PERFORMANCE](#performance)) and GEN LOCK ([Sounds](#sounds)). SAVE runs the row chosen, or
 moves to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it as it was); SHIFT + SAVE goes back to the
 grid. On the page, loading over changes not saved, saving over another session, copying over one and deleting ask
 first: NO or YES on PRESETS.
@@ -555,6 +555,10 @@ SETUP) shows as each lands.
 **SHIFT + SAVE held** (0.8 s) opens GLOBAL SETUP: the FM-1's own settings, kept apart from the sessions. **PRESETS**
 moves through the entries; **SAVE** opens one, or moves to a value and sets it; **SHIFT + SAVE** leaves a value as it
 was or goes back a level. A track button leaves. Changes are saved as you leave.
+
+**AUDIO** has one setting, **USB**: what the FM-1 sends to a computer as USB audio ([USB audio](#usb-audio)).
+**STEREO** (at first): the master. **TRACKS**: the six tracks, each on its own mono channel. Changed, the FM-1 leaves
+the USB for a moment and comes back as the new device; the sound on the headphones goes on.
 
 **START**: how the FM-1 starts. **NEW** (at first): with a new session, as Tonitor starts: new sounds on every track, a
 scale and root at random, tempo 120. Hold SAVE to keep it. **LAST**: with the last session loaded or saved.
@@ -631,9 +635,16 @@ controls one parameter, and each parameter has one CC. Up to 64 are kept, with G
 
 ## USB audio
 
-Plugged into a computer, a phone or a tablet, the FM-1 is also a USB audio input named FM-1 Bigorna: its master output
-in stereo, 16-bit, 44.1 kHz. Record or monitor it like any class-compliant audio interface; nothing to install. The
-headphone jack plays on as usual. The USB sound does not follow the MASTER knob, so a recording keeps its level
+Plugged into a computer, a phone or a tablet, the FM-1 is also a USB audio input named FM-1 Bigorna, 16-bit, 44.1 kHz.
+**GLOBAL SETUP > AUDIO > USB** chooses what it sends:
+
+| USB | Channels |
+| --- | --- |
+| **STEREO** | 2: the master output, with the effects and the compressor |
+| **TRACKS** | 6: tracks 1–6, each mono, its subtracks in it, after its level, mute and sidechain ducking; before its pan, the DELAY, REVERB and CHORUS and the compressor |
+
+Record or monitor it like any class-compliant audio interface; nothing to install. The headphone jack plays on as
+usual, the master in both cases. The USB sound does not follow the MASTER knob, so a recording keeps its level
 whatever the headphones are set to. MIDI goes on alongside on the same cable.
 
 The other end must be a USB host: a computer, or a phone or tablet that takes USB audio devices (on Android, most do

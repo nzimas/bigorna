@@ -676,7 +676,7 @@ static int cmd_projects(const char *dir)
     btn(B_SAVE, 0);
     EXPECT(!pj.edit && ui.tempo == 137 && fx_bpm10 == 1370, "SAVE sets the tempo (and the delay follows)");
     turn(EN_PRESET, 1);                          /* MUTE QT (build 78: ROOT and SCALE gone, the SCALE page's) */
-    EXPECT(pj.row == PR_MUQ && pg_rows() == 9u, "MUTE QT, before CTRL (build 82) and GEN LOCK (build 85)");
+    EXPECT(pj.row == PR_MUQ && pg_rows() == 10u, "MUTE QT, before PAT SW (build 98), CTRL (build 82) and GEN LOCK (build 85)");
     btn(B_SAVE, 0);
     turn(EN_PRESET, 1);                          /* YES, then left as it was */
     btn(B_SAVE, 1);
@@ -3210,7 +3210,7 @@ static int cmd_projects(const char *dir)
             /* START (build 77): at the top level, set as a row is; kept after the bindings, read back */
             ui.page = PG_MAIN;
             save_held(1);
-            turn(EN_PRESET, 1);                  /* (START) */
+            turn(EN_PRESET, 2);                  /* (START) */
             btn(B_SAVE, 0);
             EXPECT(set.edit && !set_boot, "START: SAVE moves the focus to its value");
             turn(EN_PRESET, 1);
@@ -3240,6 +3240,41 @@ static int cmd_projects(const char *dir)
             btn(B_GLO, 0);
             memset(mlearn, 0, sizeof mlearn);
             set_boot = 0;
+        }
+        {   /* (build 98) AUDIO: a section of one part, opened on its row; kept, a record from before reads STEREO */
+            ui.page = PG_MAIN;
+            save_held(1);
+            turn(EN_PRESET, 1);
+            ui_draw();
+            shot(dir, "setup_audio_top");
+            btn(B_SAVE, 0);
+            EXPECT(set.lvl == 2u && set.part == SET_PAUD && set.row == 1u && !set_usba, "AUDIO opens on USB, STEREO");
+            btn(B_SAVE, 0);
+            turn(EN_PRESET, 1);
+            ui_draw();
+            shot(dir, "setup_audio_tracks");
+            btn(B_SAVE, 0);
+            EXPECT(!set.edit && set_usba == 1u && set.dirty, "USB: TRACKS set");
+            ui_draw();
+            shot(dir, "setup_audio");
+            btn(B_SAVE, 1);
+            EXPECT(set.lvl == 0u && set.sec == SET_AUDIO, "SHIFT + SAVE: back to the top, on AUDIO");
+            btn(B_SAVE, 0);
+            turn(EN_PRESET, -1);
+            btn(B_SAVE, 0);
+            EXPECT(set.lvl == 0u, "SAVE on BACK: the top");
+            setup_write();
+            set_usba = 0;
+            setup_load();
+            EXPECT(set_usba == 1u, "USB TRACKS kept in the flash");
+            prj_flash_read(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN);
+            prj_head_fill(SET_MAGIC, 0, SET_LEN77);
+            prj_flash_erase(SET_SECT);
+            prj_flash_prog(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN77);
+            setup_load();
+            EXPECT(!set_usba, "build 97's record: USB STEREO");
+            btn(B_FX, 0);
+            set_usba = 0;
         }
         {   /* BACK at the top of GLOBAL SETUP's levels (build 48) */
             ui.page = PG_MAIN;
@@ -4781,6 +4816,64 @@ static int cmd_pstate(const char *dir)
     return fails != 0;
 }
 
+/* (build 98) PAT SW: END, a pattern waits for the chosen track's time through; NOW, it comes in with the next 16th */
+#define PNOWX(c, what) do { if (!(c)) { printf("FAIL patnow: %s\n", what); fails++; } } while (0)
+static int cmd_patnow(void)
+{
+    int32_t out[2 * CTL];
+    uint32_t i, n;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    PNOWX(!ses_psw, "PAT SW: END at first");
+    seq_note[0][0] = 60;
+    PNOWX(!prj_save(0), "(session 1 saved)");
+    pat_switch(1);
+    seq_note[1][0] = 62;
+    PNOWX(!pat_save(1), "(pattern 2 saved)");
+    seq_run = 1;
+    for (i = 0; i < 100u; i++) {
+        mix_block(out);
+        pat_poll();
+    }
+    pat_switch(0);
+    PNOWX(seq_pend == 1u, "END: pattern 1 waits");
+    for (i = 0; i < 600u; i++) {                 /* (120 BPM: a 16th is 172 blocks, the 16 steps 2756) */
+        mix_block(out);
+        pat_poll();
+    }
+    PNOWX(seq_pend == 1u && pat_cur == 1u, "END: still waiting, well past the next 16th");
+    for (n = 0; n < 4000u && seq_pend; n++) {
+        mix_block(out);
+        pat_poll();
+    }
+    PNOWX(!seq_pend && pat_cur == 0u && n > 1000u, "END: taken in at the end of the time through");
+    ses_psw = 1;
+    for (i = 0; i < 100u; i++) {
+        mix_block(out);
+        pat_poll();
+    }
+    pat_switch(1);
+    PNOWX(seq_pend == 1u, "NOW: asked for, the sequencer's next");
+    for (n = 0; n < 4000u && seq_pend; n++) {
+        mix_block(out);
+        pat_poll();
+    }
+    PNOWX(!seq_pend && pat_cur == 1u && n <= 174u, "NOW: taken in by the next 16th");
+    PNOWX(seq_pos[0] == 0u && seq_note[1][0] == 62u, "NOW: from its first step");
+    PNOWX(seq_acc < SEQ_16TH, "NOW: on the 16th's grid");
+    pat_switch(1);
+    PNOWX(!seq_pend, "the pattern playing: nothing to wait for");
+    seq_run = 0;
+    PNOWX(!prj_save(0), "(session 1 saved with NOW)");
+    ses_psw = 0;
+    PNOWX(!prj_load(0) && ses_psw == 1u, "PAT SW kept with the session");
+    printf("patnow: %d failures\n", fails);
+    return fails != 0;
+}
+
 /* (build 97) a pattern holds each lane's sends (DELAY, REVERB, CHORUS) and its tempo, and gives them back when it
  * plays; a pattern without them (saved before, or empty) leaves them as they are */
 #define PSNDX(c, what) do { if (!(c)) { printf("FAIL patsnd: %s\n", what); fails++; } } while (0)
@@ -5296,7 +5389,7 @@ static int cmd_perf(const char *dir)
     btn(B_SAVE, 0);
     PFEXPECT(ui.page == PG_PRJD && pj.slot[0] == 7u, "SAVE: the page of the slot under the cursor");
     turn(EN_PRESET, 20);
-    PFEXPECT(pj.row == PR_GLK && pg_rows() == 9u, "the page's last row: GEN LOCK");
+    PFEXPECT(pj.row == PR_GLK && pg_rows() == 10u, "the page's last row: GEN LOCK");
     ui_draw();
     shot(dir, "perf_session_genlock");
     turn(EN_PRESET, -1);
@@ -6085,6 +6178,8 @@ int main(int argc, char **argv)
         return cmd_newses(argv[2]);
     if (argc >= 2 && !strcmp(argv[1], "patsnd"))
         return cmd_patsnd();
+    if (argc >= 2 && !strcmp(argv[1], "patnow"))
+        return cmd_patnow();
     if (argc >= 3 && !strcmp(argv[1], "pstate"))
         return cmd_pstate(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "brksave"))

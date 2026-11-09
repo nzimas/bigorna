@@ -186,8 +186,14 @@ static volatile uint8_t shed_req;
 static volatile uint8_t load_pct;
 static int32_t master_q12 = 2048;
 #if defined(FELUCCA_UAC) && FELUCCA_UAC
-static int32_t usb_blk[2 * CTL];                 /* (the block for USB audio: the master before the MASTER knob, at
-                                                  * unity -- a recording does not follow the headphones' level) */
+static int32_t usb_blk[UAC_NBLK * CTL];          /* (the block for USB audio: the master before the MASTER knob, at
+                                                  * unity -- a recording does not follow the headphones' level; or
+                                                  * tracks 1 .. 6, from the block's third channel: build 98) */
+static int32_t usb_trk[NTRACK][CTL];             /* (GLOBAL SETUP's USB TRACKS: each track, mono, its subtracks in it) */
+#define USB_STEMS() (uac_nch > 2u && uac.feed)   /* (asked for, and the host reading) */
+#define USB_STEM(tr) (USB_STEMS() ? usb_trk[tr] : (int32_t *)0)
+#else
+#define USB_STEM(tr) ((int32_t *)0)
 #endif
 
 /* --------------------------------------------------------------- events --- */
@@ -1468,6 +1474,9 @@ static volatile uint8_t seq_pend, seq_pend_t;
 static volatile uint8_t seq_pend_mu;             /* (build 65: the pattern waiting's mutes, a bit a track, bit 7 set: it has
                                                   * them -- applied as it is taken in) */
 static volatile uint8_t seq_mu_was;              /* (.. and the mutes it found, bit 7 set: for the main loop) */
+static volatile uint8_t ses_psw;                 /* (build 98, the session's PAT SW: 0 END, a pattern waits for the end of
+                                                  * the chosen track's time through; 1 NOW, it comes in with the next
+                                                  * 16th of the tempo, on the grid) */
 static volatile uint8_t seq_mq, seq_mq_t;        /* (build 78, MUTE QT: MUTE mode's mutes waiting, a bit a track, bit 7
                                                   * set: waiting -- applied as track seq_mq_t begins its time through) */
 /* (build 90) track t's clock changed to r8, on the reference's 1X step seq_rn (one of the new clock's too): its next
@@ -1734,7 +1743,8 @@ static void seq_block(void)
             }
     /* the pattern waiting, in -- before the tempo's 16th that comes with it, so that its loops play that step as the
      * pattern has them (build 68) */
-    if (seq_pend == 1u && !sb_lock && seq_tacc[seq_pend_t] >= SEQ_STEP8 && seq_wraps(seq_pend_t)) {
+    if (seq_pend == 1u && !sb_lock &&
+        (ses_psw ? seq_acc >= SEQ_16TH : seq_tacc[seq_pend_t] >= SEQ_STEP8 && seq_wraps(seq_pend_t))) {
         seq_copy_out(&sb_old);
         seq_copy_in(&sb_next);
         for (t = 0; t < NLANE; t++) {
@@ -2435,6 +2445,7 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
         int32_t g = y->g, pl = y->pl, pr = y->pr, sd = y->sd, sr = y->sr, sc = y->sc;
         uint32_t sch = 0, sdl = 0, srv = 0;
         int ud = (sd | sd1) != 0, uv = (sr | sr1) != 0, uc = (sc | sc1) != 0;   /* (a send at 0 the whole block: none) */
+        int32_t *stem = USB_STEM(tr);
         for (i = 0; i < CTL;) {
             REP4({
                 int32_t x;
@@ -2457,6 +2468,8 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
                 }
                 if (duck)                            /* (ducked: under its source's hits) */
                     x = (int32_t)(((int64_t)x * (dk_gp[t] + dk_dg * (int32_t)(i + 1u))) >> 16);
+                if (stem)                            /* (USB audio's TRACKS: after its level, before its pan and sends) */
+                    stem[i] += x;
                 mixl[i] += mulq15(x, pl);
                 mixr[i] += mulq15(x, pr);
                 if (ud)
@@ -2592,6 +2605,10 @@ static void mix_block(int32_t *out)
             l_[i] = r_[i] = dlin[i] = rvin[i] = chin[i] = 0;
         })
     }
+#if defined(FELUCCA_UAC) && FELUCCA_UAC
+    if (USB_STEMS())
+        memset(usb_trk, 0, sizeof usb_trk);      /* (a silent track: silence) */
+#endif
 #if TELEMETRY
     ce = COST_NOW() - c0;
     tl_seqmax = ce > tl_seqmax ? ce : tl_seqmax;  /* (events, the sequencer, the guard: before the voices) */
@@ -2674,10 +2691,15 @@ static void mix_block(int32_t *out)
         })
     }
 #if defined(FELUCCA_UAC) && FELUCCA_UAC
-    for (i = 0; i < CTL; i++) {
-        usb_blk[2u * i] = ceiling(l_[i]);
-        usb_blk[2u * i + 1u] = ceiling(r_[i]);
-    }
+    if (USB_STEMS())
+        for (i = 0; i < CTL; i++)
+            for (t = 0; t < NTRACK; t++)
+                usb_blk[UAC_NBLK * i + 2u + t] = ceiling(usb_trk[t][i]);
+    else
+        for (i = 0; i < CTL; i++) {
+            usb_blk[UAC_NBLK * i] = ceiling(l_[i]);
+            usb_blk[UAC_NBLK * i + 1u] = ceiling(r_[i]);
+        }
 #endif
     blk_last = COST_NOW() - c0;
 #if TELEMETRY

@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 98
+
+Added
+- GLOBAL SETUP has an AUDIO section, as Tonitor's: USB, STEREO (the master, as before) or TRACKS (tracks 1-6, each on
+  its own mono channel, its subtracks in it, after its level, mute and sidechain ducking, before its pan, the effects
+  and the compressor), to record the tracks apart. Changed, the FM-1 leaves the USB a moment and comes back as the
+  new device. GLOBAL SETUP restored from a backup takes effect at the next start. Settings kept by earlier builds load
+  as they were, USB at STEREO; earlier builds do not read the settings kept by this one (they start at their
+  defaults).
+- PAT SW, a session setting on the session's page, saved with the session. END (at first, and for sessions saved
+  before): a pattern chosen while the sequencer plays starts at the end of the chosen track's steps, as before. NOW:
+  it starts from its first step with the next 16th of the tempo. It applies to program changes too.
+
+Changed
+- USB audio: the next packet is queued within 0.1 ms of the last (the endpoint looked to at 10 kHz, 2 kHz before), and
+  the ring holds 3.6 to 4.7 ms ahead (2.2 to 3.6 before), as Tonitor's with six channels.
+
 ## Build 97
 
 Changed

@@ -13,15 +13,18 @@
  *          SEND       NOTES, CC                                                                ON / OFF
  *          PORTS      USB IN, TRS IN (the 3.5 mm MIDI IN jack; build 47)                       ON / OFF
  * (the Model:Cycles' names, short enough for the pages' type; midi.c does what they say)
+ *   AUDIO  USB        STEREO (the master) / TRACKS (the six, each mono): the FM-1 leaves the USB a moment and comes back
+ *                     as the new device (build 98, as Tonitor's; a section of one part: it opens on its rows)
  *   START  NEW (a new session, its sounds, scale and root drawn at random, as Tonitor starts) / LAST (the last session
  *          loaded or saved); a value at the top level, set as a row is (build 77) */
 
 #define SET_SECT 0x000FD000u                     /* (its record: the MIDI settings, then MIDI LEARN's bindings -- from
                                                   * build 48; builds 46 and 47 wrote the settings alone) */
 #define SET_LEN48 (sizeof(midi_cfg_t) + sizeof mlearn)
-#define SET_LEN (SET_LEN48 + 1u)                 /* (then START: build 77; before, a record ends at SET_LEN48) */
+#define SET_LEN77 (SET_LEN48 + 1u)               /* (then START: build 77; before, a record ends at SET_LEN48) */
+#define SET_LEN (SET_LEN77 + 1u)                 /* (then AUDIO's USB: build 98) */
 #define SET_MAGIC 0x31434742u   /* "BGC1" */
-enum { SK_ONOFF, SK_CHAN, SK_CHAN1 };            /* (a value: ON / OFF; OFF, 1 .. 16; 1 .. 16) */
+enum { SK_ONOFF, SK_CHAN, SK_CHAN1, SK_USBA };   /* (a value: ON / OFF; OFF, 1 .. 16; 1 .. 16; STEREO / TRACKS) */
 typedef struct { const char *name; uint8_t off, kind; } set_row_t;
 #define SR(n, f, k) {n, (uint8_t)__builtin_offsetof(midi_cfg_t, f), k}
 static const set_row_t SET_SYNC[] = {SR("CLK IN", clk_in, SK_ONOFF), SR("CLK OUT", clk_out, SK_ONOFF),
@@ -37,13 +40,18 @@ static const set_row_t SET_OUT[] = {SR("TRACK 1", out_ch[0], SK_CHAN), SR("TRACK
 static const set_row_t SET_RCV[] = {SR("NOTES", rcv_note, SK_ONOFF), SR("CC", rcv_cc, SK_ONOFF)};
 static const set_row_t SET_SND[] = {SR("NOTES", send_note, SK_ONOFF), SR("CC", send_cc, SK_ONOFF)};
 static const set_row_t SET_PORT[] = {SR("USB IN", usb_in, SK_ONOFF), SR("TRS IN", trs_in, SK_ONOFF)};
-#define SET_NPART 6u
-static const struct { const char *name; const set_row_t *rows; uint8_t n; } SET_PART[SET_NPART] = {
+static const set_row_t SET_AUD[] = {{"USB", 0, SK_USBA}};   /* (its value: set_usba, not in midi_cfg_t) */
+#define SET_NMIDI 6u                             /* (MIDI's parts, then AUDIO's rows) */
+#define SET_PAUD SET_NMIDI
+static const struct { const char *name; const set_row_t *rows; uint8_t n; } SET_PART[SET_NMIDI + 1u] = {
     {"SYNC", SET_SYNC, NELEM(SET_SYNC)}, {"IN CHAN", SET_IN, NELEM(SET_IN)}, {"OUT CHAN", SET_OUT, NELEM(SET_OUT)},
-    {"RECEIVE", SET_RCV, NELEM(SET_RCV)}, {"SEND", SET_SND, NELEM(SET_SND)}, {"PORTS", SET_PORT, NELEM(SET_PORT)}};
-static const char *const SET_SECTION[2] = {"MIDI", "START"};   /* (START: a value, not a section) */
-#define SET_START 1u
+    {"RECEIVE", SET_RCV, NELEM(SET_RCV)}, {"SEND", SET_SND, NELEM(SET_SND)}, {"PORTS", SET_PORT, NELEM(SET_PORT)},
+    {"AUDIO", SET_AUD, NELEM(SET_AUD)}};
+static const char *const SET_SECTION[3] = {"MIDI", "AUDIO", "START"};   /* (START: a value, not a section) */
+#define SET_AUDIO 1u
+#define SET_START 2u
 static uint8_t set_boot;                         /* START: 0 NEW (the default), 1 LAST */
+static uint8_t set_usba;                         /* AUDIO's USB: 0 STEREO (the default), 1 TRACKS */
 #define C_SET RGB(150, 200, 255)
 
 static struct {
@@ -70,6 +78,7 @@ static void setup_write(void)
     memcpy(prj_buf + sizeof(prj_head_t), &mcfg, sizeof mcfg);
     memcpy(prj_buf + sizeof(prj_head_t) + sizeof mcfg, mlearn, sizeof mlearn);
     prj_buf[sizeof(prj_head_t) + SET_LEN48] = set_boot;
+    prj_buf[sizeof(prj_head_t) + SET_LEN77] = set_usba;
     prj_head_fill(SET_MAGIC, 0, SET_LEN);
     if (!prj_flash_erase(SET_SECT) && !prj_flash_prog(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN))
         set.dirty = 0;
@@ -83,17 +92,21 @@ static void setup_load(void)                     /* (the start: the settings as 
     mcfg = D;
     memset(mlearn, 0, sizeof mlearn);
     set_boot = 0;
+    set_usba = 0;
     if (!prj_ok || prj_flash_read(SET_SECT, prj_buf, sizeof(prj_head_t) + SET_LEN))
         return;
     len = prj_head_ok(h, SET_MAGIC, 0, SET_LEN) ? SET_LEN
+          : prj_head_ok(h, SET_MAGIC, 0, SET_LEN77) ? SET_LEN77   /* (builds 77 .. 97's: no AUDIO -- STEREO) */
           : prj_head_ok(h, SET_MAGIC, 0, SET_LEN48) ? SET_LEN48   /* (builds 48 .. 76's: no START -- NEW) */
           : prj_head_ok(h, SET_MAGIC, 0, sizeof(midi_cfg_t)) ? sizeof(midi_cfg_t)   /* (build 47's: no bindings) */
           : prj_head_ok(h, SET_MAGIC, 0, MIDI_CFG46) ? MIDI_CFG46 : 0u;   /* (build 46's: no PORTS -- both on) */
     if (!len || h->body_crc != prj_crc(prj_buf + sizeof(prj_head_t), len))
         return;
     memcpy(&c, prj_buf + sizeof(prj_head_t), len < sizeof c ? len : sizeof c);
-    if (len == SET_LEN)
+    if (len >= SET_LEN77)
         set_boot = (uint8_t)(prj_buf[sizeof(prj_head_t) + SET_LEN48] == 1u);
+    if (len == SET_LEN)
+        set_usba = (uint8_t)(prj_buf[sizeof(prj_head_t) + SET_LEN77] == 1u);
     if (len >= SET_LEN48) {                      /* (the bindings: each whole, or none) */
         memcpy(mlearn, prj_buf + sizeof(prj_head_t) + sizeof c, sizeof mlearn);
         for (i = 0; i < NLEARN; i++) {
@@ -103,7 +116,7 @@ static void setup_load(void)                     /* (the start: the settings as 
                 l->kind = LK_NONE;
         }
     }
-    for (i = 0; i < SET_NPART; i++) {            /* (each value in its range, or the default) */
+    for (i = 0; i < SET_NMIDI; i++) {            /* (each value in its range, or the default) */
         uint32_t r;
         for (r = 0; r < SET_PART[i].n; r++) {
             uint8_t *v = (uint8_t *)&c + SET_PART[i].rows[r].off;
@@ -116,12 +129,14 @@ static void setup_load(void)                     /* (the start: the settings as 
 }
 
 /* ------------------------------------------------------------ pages --- */
-static uint8_t *set_ptr(const set_row_t *r) { return (uint8_t *)&mcfg + r->off; }
+static uint8_t *set_ptr(const set_row_t *r) { return r->kind == SK_USBA ? &set_usba : (uint8_t *)&mcfg + r->off; }
 static int32_t set_lo(const set_row_t *r) { return r->kind == SK_CHAN1 ? 1 : 0; }
-static int32_t set_hi(const set_row_t *r) { return r->kind == SK_ONOFF ? 1 : 16; }
+static int32_t set_hi(const set_row_t *r) { return r->kind == SK_ONOFF || r->kind == SK_USBA ? 1 : 16; }
 static void set_text(const set_row_t *r, int32_t v, char *b)
 {
-    if (r->kind == SK_ONOFF)
+    if (r->kind == SK_USBA)
+        str_cpy(b, v ? "TRACKS" : "STEREO", 8);
+    else if (r->kind == SK_ONOFF)
         str_cpy(b, v ? "ON" : "OFF", 4);
     else if (!v)
         str_cpy(b, "OFF", 4);
@@ -148,6 +163,8 @@ static void setup_press(int sh)
     if (sh) {
         if (set.edit)
             set.edit = 0;                        /* (the value as it was) */
+        else if (set.lvl == 2u && set.part == SET_PAUD)
+            set.lvl = 0;                         /* (AUDIO: a section of one part) */
         else if (set.lvl)
             set.lvl--;
         else
@@ -165,6 +182,11 @@ static void setup_press(int sh)
                 set.dirty = 1;
             }
         }
+    } else if (set.lvl == 0u && set.sec == SET_AUDIO) {   /* (a section of one part: its rows at once) */
+        set.lvl = 2;
+        set.part = SET_PAUD;
+        set.row = 1;
+        set.edit = 0;
     } else if (set.lvl == 0u) {
         set.lvl = 1;
         set.pc = 1;
@@ -176,7 +198,7 @@ static void setup_press(int sh)
         set.row = 1;
         set.edit = 0;
     } else if (!set.edit && !set.row)            /* (BACK) */
-        set.lvl = 1;
+        set.lvl = set.part == SET_PAUD ? 0u : 1u;
     else if (!set.edit) {
         set.edit = 1;
         set.val = *set_ptr(&SET_PART[set.part].rows[set.row - 1u]);
@@ -196,7 +218,7 @@ static void setup_preset(int32_t s)
     else if (set.lvl == 0u)
         set.sec = (uint8_t)clampi((int32_t)set.sec + s, 0, (int32_t)NELEM(SET_SECTION) - 1);
     else if (set.lvl == 1u)
-        set.pc = (uint8_t)clampi((int32_t)set.pc + s, 0, (int32_t)SET_NPART);
+        set.pc = (uint8_t)clampi((int32_t)set.pc + s, 0, (int32_t)SET_NMIDI);
     else if (!set.edit)
         set.row = (uint8_t)clampi((int32_t)set.row + s, 0, (int32_t)SET_PART[set.part].n);
     else {
@@ -207,6 +229,18 @@ static void setup_preset(int32_t s)
 /* each pass: the page left (a track's button, SHIFT + SAVE), what changed written */
 static void setup_poll(void)
 {
+#if defined(FELUCCA_UAC) && FELUCCA_UAC
+    {   /* (AUDIO's USB set on the page: the new device, at once. Only here -- a backup restored over USB is not cut
+         * off; it takes effect at the next start) */
+        uint32_t want = set_usba ? UAC_NMAX : 2u;
+        if (ui.page == PG_SET && want != uac_nch) {
+            if (usb.up)
+                usb_reconnect(want);
+            else
+                uac_set_nch(want);               /* (no USB up: for when it comes) */
+        }
+    }
+#endif
     if (ui.page == PG_SET)
         set.was = 1;
     else if (set.was) {
@@ -254,8 +288,12 @@ static void setup_draw(void)
         sel = set.sec;
     } else if (set.lvl == 1u) {
         set_title(SET_SECTION[set.sec]);
-        n = SET_NPART + 1u;                      /* (BACK, then the parts) */
+        n = SET_NMIDI + 1u;                      /* (BACK, then the parts) */
         sel = set.pc;
+    } else if (set.part == SET_PAUD) {
+        set_title("AUDIO");
+        n = SET_PART[set.part].n + 1u;
+        sel = set.row;
     } else {
         str_cpy(t, "MIDI ", sizeof t);
         str_cpy(t + 5, SET_PART[set.part].name, sizeof t - 5);
