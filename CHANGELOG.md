@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Added
+- Tap tempo: on the TEMPO page (hold PLAY), tap HOME in time. Each tap counts as it is pressed; the tempo is the
+  average of the last four gaps, in whole BPM (10 to 300), and goes to the pattern as PRESETS's does. A pause of more
+  than 2 s starts a new count. HOME draws no new sound on the TEMPO page. Under an external clock taps do nothing
+  (EXT CLOCK).
+
 ## Build 100
 
 Fixed

@@ -6506,9 +6506,82 @@ static int cmd_clkfx(void)
     return fails != 0;
 }
 
+/* tap tempo: HOME on the TEMPO page (PLAY held), counted as it is pressed -- the last four gaps' average, a gap over
+ * 2 s a new count, nothing under an external clock, and no new sound there */
+#define TAPX(c, what) do { if (!(c)) { printf("FAIL tap: %s\n", what); fails++; } } while (0)
+static void home_tap(uint32_t gap)              /* gap ms after the last, HOME pressed (counted), then let go */
+{
+    fm1_ms += gap;
+    fm1_in.buttons |= 1u << PANEL_BTN[B_HOME];
+    host_press = 1u << PANEL_BTN[B_HOME];
+    ui_input();
+    fm1_ms += 60;
+    fm1_in.buttons &= ~(1u << PANEL_BTN[B_HOME]);
+    ui_input();
+    fm1_ms -= 60;
+}
+static int cmd_tap(void)
+{
+    sound_t before;
+    uint32_t i;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    tempo_set(90);
+    fm1_in.buttons |= 1u << PANEL_BTN[B_PLAY];   /* PLAY held 0.8 s: the TEMPO page */
+    host_press = 1u << PANEL_BTN[B_PLAY];
+    ui_input();
+    fm1_ms += 900;
+    ui_input();
+    fm1_in.buttons = 0;
+    ui_input();
+    TAPX(ui.page == PG_TEMPO, "PLAY held: the TEMPO page");
+    before = *cur();
+    home_tap(3000);
+    TAPX(tempo_now() == 90 && !strcmp(ui.msg, "TAP"), "the first tap: the tempo as it was, TAP");
+    ui_draw();
+    for (i = 0; i < 4u; i++)
+        home_tap(500);
+    TAPX(tempo_now() == 120, "taps 500 ms apart: 120 BPM");
+    TAPX(!memcmp(&before, cur(), sizeof before) && ui.page == PG_TEMPO, "HOME on the TEMPO page: no new sound");
+    home_tap(2500);                              /* (a gap over 2 s: a new count, the tempo kept) */
+    TAPX(tempo_now() == 120, "a gap over 2 s: the tempo kept");
+    home_tap(1000);
+    home_tap(1000);
+    TAPX(tempo_now() == 60, "after the 2 s gap, taps 1 s apart: 60 BPM (the old gaps forgotten)");
+    for (i = 0; i < 6u; i++)                     /* (the last four gaps only) */
+        home_tap(i < 2u ? 400 : 250);
+    TAPX(tempo_now() == 240, "the last four gaps only: 250 ms, 240 BPM");
+    home_tap(2001);
+    home_tap(2000);
+    TAPX(tempo_now() == 30, "a gap of 2 s exactly counts: 30 BPM");
+    home_tap(3000);
+    home_tap(333);
+    TAPX(tempo_now() == 180, "whole BPM, rounded: 333 ms, 180");
+    home_tap(3000);                              /* (following a clock: nothing, EXT CLOCK) */
+    mcfg.clk_in = 1;
+    xk_iv = 24000u * 20u;
+    xk_t = fm1_ticks();
+    home_tap(500);
+    TAPX(tempo_now() == 180 && !strcmp(ui.msg, "EXT CLOCK"), "an external clock: the tap ignored, EXT CLOCK");
+    ui_draw();
+    mcfg.clk_in = 0;
+    xk_iv = 0;
+    ui.page = PG_MAIN;                           /* (off the TEMPO page HOME is a new sound, on release, as before) */
+    before = *cur();
+    home_tap(500);
+    TAPX(memcmp(&before, cur(), sizeof before) != 0 && tempo_now() == 180, "HOME off the TEMPO page: a new sound");
+    printf("tap: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
+    if (argc >= 2 && !strcmp(argv[1], "tap"))
+        return cmd_tap();
     if (argc >= 2 && !strcmp(argv[1], "clkfx"))
         return cmd_clkfx();
     if (argc >= 3 && !strcmp(argv[1], "subtrk"))

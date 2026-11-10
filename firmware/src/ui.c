@@ -6,7 +6,8 @@
  *                             each, so turning back finds it) -- on the track's view only: on the EDIT pages it moves
  *                             through them, on the effects' pages the half shown
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
- *                             (GEN LOCK on, the session's page: neither does anything; build 85)
+ *                             (GEN LOCK on, the session's page: neither does anything; build 85). On the TEMPO
+ *                             page: tap tempo instead, counted as it is pressed (tap_tempo)
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after; in the step
  *                             view, the track's steps transposed a step of the scale (build 51); SHIFT: every track's
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
@@ -212,6 +213,9 @@ static struct {
     uint32_t msg_until, home_until;
     uint32_t home_t0, ssv_t0, save_t0;   /* HOME, SHIFT + SAVE, SAVE pressed at (held 0.8 s; let go sooner: a press) */
     uint8_t home_down, home_long, ssv_down, ssv_long, save_down, save_long;
+    uint32_t tap_t;              /* tap tempo (HOME on the TEMPO page): the last tap, .. */
+    uint16_t tap_iv[4];          /* .. the last four gaps between taps, ms, newest first, .. */
+    uint8_t tap_n;               /* .. the taps counted, at most 5 (0: none; the next tap starts a count) */
     uint32_t seed;
     uint8_t scale, root;
     int16_t tempo;               /* the project's, BPM */
@@ -1925,6 +1929,37 @@ static void mute_set(uint32_t m)
     for (j = 0; j < NTRACK; j++)
         trk_mute[j] = (uint8_t)(m >> j & 1u);
 }
+/* tap tempo: HOME on the TEMPO page, counted as it is pressed. The last four gaps' average, as a whole BPM (10 .. 300);
+ * a gap over 2 s starts a new count; following a clock, nothing (EXT CLOCK) */
+#define TAP_GAP 2000u
+static void tap_tempo(void)
+{
+    uint32_t d = fm1_ms - ui.tap_t, sum = 0, i, n;
+    if (midi_slave()) {
+        say("EXT CLOCK", 700);
+        return;
+    }
+    ui.tap_t = fm1_ms;
+    if (!ui.tap_n || d > TAP_GAP) {              /* (the first tap: only the time) */
+        ui.tap_n = 1;
+        say("TAP", 700);
+        ui.force = 1;
+        return;
+    }
+    for (i = 3; i > 0; i--)
+        ui.tap_iv[i] = ui.tap_iv[i - 1];
+    ui.tap_iv[0] = (uint16_t)d;
+    if (ui.tap_n < 5u)
+        ui.tap_n++;
+    n = ui.tap_n - 1u;                           /* (the gaps: one fewer than the taps) */
+    for (i = 0; i < n; i++)
+        sum += ui.tap_iv[i];
+    if (!sum)
+        return;
+    tempo_set((int32_t)((60000u * n + sum / 2u) / sum));
+    prj_dirty = 1;
+    ui.force = 1;
+}
 static void ui_input(void)
 {
     uint32_t rel, press = fm1_input_edges(&rel), keys, ch, k, t, j;
@@ -2095,6 +2130,10 @@ static void ui_input(void)
         ui.home_down = 1;
         ui.home_long = 0;
         ui.home_t0 = fm1_ms;
+        if (ui.page == PG_TEMPO) {               /* (the TEMPO page: a tap, as it is pressed; no new sound) */
+            tap_tempo();
+            ui.home_long = 1;
+        }
     }
     if (ui.home_down) {
         if (!btn_bit(fm1_in.buttons, B_HOME)) {
@@ -3526,7 +3565,8 @@ static void draw_tempo_page(void)
     char n[8];
     int ext = midi_slave();                      /* (following a clock: its tempo, EXT; build 46) */
     int32_t v = ext ? (fx_bpm10 + 5) / 10 : tempo_now();
-    if (!ui.force && ui.shown_page == PG_TEMPO && ui.shown_rows[0] == v + ext * 1000)
+    int msg = (int32_t)(ui.msg_until - fm1_ms) > 0;   /* (a message, under the tempo: TAP, EXT CLOCK) */
+    if (!ui.force && ui.shown_page == PG_TEMPO && ui.shown_rows[0] == v + ext * 1000 + msg * 2000)
         return;
     fmt_int(n, v);
     CV_AREA(0, 0, 240, 60, C_BLACK)
@@ -3534,8 +3574,8 @@ static void draw_tempo_page(void)
     CV_AREA(0, 60, 240, 150, C_BLACK)
         cv_text_c(0, &FONT_XL, n, RGB(255, 210, 120));
     CV_AREA(0, 210, 240, 30, C_BLACK)
-        cv_text_c(2, &FONT_S, "BPM", C_GREY);
-    ui.shown_rows[0] = v + ext * 1000;
+        cv_text_c(2, &FONT_S, msg ? ui.msg : "BPM", C_GREY);
+    ui.shown_rows[0] = v + ext * 1000 + msg * 2000;
 }
 
 #define C_SCALE RGB(255, 196, 90)

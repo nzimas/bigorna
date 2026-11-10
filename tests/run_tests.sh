@@ -38,6 +38,7 @@ build/host patsave
 build/host subtrk build/screens
 build/host perf build/screens
 build/host clkfx
+build/host tap
 if command -v node >/dev/null; then                  # the backup page's protocol against the firmware's (build 55)
     node tests/web/test_backup.mjs build/host
 fi
