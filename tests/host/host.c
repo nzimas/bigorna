@@ -6573,6 +6573,31 @@ static int cmd_tap(void)
     before = *cur();
     home_tap(500);
     TAPX(memcmp(&before, cur(), sizeof before) != 0 && tempo_now() == 180, "HOME off the TEMPO page: a new sound");
+    for (i = 0; i < 2u; i++) {                   /* (PLAY held, HOME before the 0.8 s: the TEMPO page at once, a tap,
+                                                  * no new sound; PLAY let go neither starts nor stops the sequencer) */
+        uint8_t run = (uint8_t)i;
+        seq_run = run;
+        ui.page = PG_MAIN;
+        fm1_ms += 3000;
+        before = *cur();
+        fm1_in.buttons |= 1u << PANEL_BTN[B_PLAY];
+        host_press = 1u << PANEL_BTN[B_PLAY];
+        ui_input();
+        home_tap(200);
+        TAPX(ui.page == PG_TEMPO && ui.tap_n == 1u && !strcmp(ui.msg, "TAP"),
+             "PLAY held, HOME before 0.8 s: the TEMPO page, the first tap");
+        TAPX(!memcmp(&before, cur(), sizeof before), "PLAY held, HOME before 0.8 s: no new sound");
+        home_tap(500);
+        home_tap(500);
+        home_tap(500);                           /* (PLAY held past the 0.8 s: the page stays) */
+        TAPX(ui.page == PG_TEMPO && tempo_now() == 120, "PLAY held, taps 500 ms apart: 120 BPM, the page kept");
+        fm1_in.buttons &= ~(1u << PANEL_BTN[B_PLAY]);
+        ui_input();
+        TAPX(seq_run == run && !xk_go && ui.page == PG_TEMPO,
+             "PLAY let go after the taps: the sequencer as it was, the TEMPO page kept");
+        TAPX(!memcmp(&before, cur(), sizeof before), "PLAY held + HOME: the sound unchanged");
+    }
+    seq_run = 0;
     printf("tap: %d failures\n", fails);
     return fails != 0;
 }

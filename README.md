@@ -38,7 +38,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **Track button held + white key 1–4** | on DRUM: its [subtrack](#subtracks) **ST-A**–**ST-D**. **SHIFT +**: mute or unmute it; held 0.8 s, give up a subtrack past ST-A. |
 | **PRESETS** knob | chosen track's machine: **4-OP**, **DRUM**, **WAVY**, **HIVE**. Each track keeps 1 sound per machine. |
 | **SHIFT + PRESETS** | new sound of the family before or after. |
-| **HOME** | new sound for the chosen track ([Sounds](#sounds)). Nothing with GEN LOCK on. On the TEMPO page: [tap tempo](#tempo). |
+| **HOME** | new sound for the chosen track ([Sounds](#sounds)). Nothing with GEN LOCK on. On the TEMPO page, or with PLAY held: [tap tempo](#tempo). |
 | **SHIFT + HOME** | new sound of the same family. |
 | **OCT− / OCT+** | chosen track's octave, −3 to +3. In the step view: track's [transposition](#transposition). |
 | **SHIFT + OCT− / OCT+** | every track's transposition. |
@@ -486,8 +486,10 @@ tempo playing; the session keeps the last tempo set, for a session loaded at suc
 
 **Tap tempo.** On the TEMPO page, tap **HOME** in time: each tap counts as it is pressed, and from the second tap on
 the tempo is the average of the last four gaps between taps, in whole BPM (10 to 300), set as PRESETS sets it. The
-first tap shows TAP. A pause of more than 2 s starts a new count. HOME draws no new sound on this page. While the FM-1
-follows an external clock, taps do nothing and the page shows EXT CLOCK.
+first tap shows TAP. A pause of more than 2 s starts a new count. HOME draws no new sound on this page. With **PLAY**
+held, **HOME** taps too, even before the page opens: the first tap opens it, and letting go of PLAY then neither
+starts nor stops the sequencer. While the FM-1 follows an external clock, taps do nothing and the page shows EXT
+CLOCK.
 
 ## Patterns
 

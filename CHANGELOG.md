@@ -7,6 +7,8 @@ Added
   average of the last four gaps, in whole BPM (10 to 300), and goes to the pattern as PRESETS's does. A pause of more
   than 2 s starts a new count. HOME draws no new sound on the TEMPO page. Under an external clock taps do nothing
   (EXT CLOCK).
+- Tap tempo with PLAY held: HOME taps even before the TEMPO page opens (PLAY held under 0.8 s); the first tap
+  opens the page and draws no new sound, and letting go of PLAY then neither starts nor stops the sequencer.
 
 ## Build 100
 

@@ -7,7 +7,7 @@
  *                             through them, on the effects' pages the half shown
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
  *                             (GEN LOCK on, the session's page: neither does anything; build 85). On the TEMPO
- *                             page: tap tempo instead, counted as it is pressed (tap_tempo)
+ *                             page, or PLAY held: tap tempo instead, counted as it is pressed (tap_tempo)
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after; in the step
  *                             view, the track's steps transposed a step of the scale (build 51); SHIFT: every track's
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
@@ -2130,7 +2130,14 @@ static void ui_input(void)
         ui.home_down = 1;
         ui.home_long = 0;
         ui.home_t0 = fm1_ms;
-        if (ui.page == PG_TEMPO) {               /* (the TEMPO page: a tap, as it is pressed; no new sound) */
+        if (ui.page == PG_TEMPO || ui.play_down) {   /* (the TEMPO page: a tap, as it is pressed; no new sound. PLAY
+                                                      * held, before its 0.8 s: the page at once, and PLAY let go
+                                                      * then neither plays, stops nor closes it) */
+            if (ui.play_down) {
+                ui.play_long = 1;
+                ui.page = PG_TEMPO;
+                ui.force = 1;
+            }
             tap_tempo();
             ui.home_long = 1;
         }
