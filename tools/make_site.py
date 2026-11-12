@@ -246,7 +246,7 @@ CONTROLS = [
     ([3], "PRESETS", "Chosen track's machine. <b>SHIFT +</b>: new sound of the family before or after. On a page: "
                      "its rows, slots or entries; on the EDIT and SEQ pages, turned right, rows E to H. In the "
                      '<a href="#step-view">step view</a>: rotate the steps; <b>SHIFT +</b>, in '
-                     '<a href="#euclidean-steps">EUCLID mode</a>, a step more or fewer."),
+                     '<a href="#euclidean-steps">EUCLID mode</a>, a step more or fewer.'),
     ([4], "ALGORITHM", "Chosen track's pan. On the SCALE page: scale. A step held: its pan, locked."),
     ([5], "OCT−", "Chosen track's octave down. In the step view: its "
                   '<a href="#transposition">transposition</a>. <b>SHIFT +</b>: every track\'s transposition. '

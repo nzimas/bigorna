@@ -76,6 +76,7 @@
 <a href="#lfos" class="sub">LFOs</a>
 <a href="#sequencer">Sequencer</a>
 <a href="#step-view" class="sub">Step view</a>
+<a href="#euclidean-steps" class="sub">Euclidean steps</a>
 <a href="#step-pages" class="sub">Step pages</a>
 <a href="#phrases" class="sub">Phrases</a>
 <a href="#recording">Recording</a>
@@ -202,7 +203,7 @@
 <tr><th>No.</th><th>Control</th><th>Under Bigorna</th></tr>
 <tr id="ctl-1" data-n="1"><td class="n"><a href="#fig-panel">1</a></td><td><b>MASTER</b></td><td rowspan="1">Output level.</td></tr>
 <tr id="ctl-2" data-n="2"><td class="n"><a href="#fig-panel">2</a></td><td><b>SELECT</b></td><td rowspan="1">Chosen track's level. On the SCALE page: root. A step held: its level, locked.</td></tr>
-<tr id="ctl-3" data-n="3"><td class="n"><a href="#fig-panel">3</a></td><td><b>PRESETS</b></td><td rowspan="1">Chosen track's machine. <b>SHIFT +</b>: new sound of the family before or after. On a page: its rows, slots or entries; on the EDIT and SEQ pages, turned right, rows E to H.</td></tr>
+<tr id="ctl-3" data-n="3"><td class="n"><a href="#fig-panel">3</a></td><td><b>PRESETS</b></td><td rowspan="1">Chosen track's machine. <b>SHIFT +</b>: new sound of the family before or after. On a page: its rows, slots or entries; on the EDIT and SEQ pages, turned right, rows E to H. In the <a href="#step-view">step view</a>: rotate the steps; <b>SHIFT +</b>, in <a href="#euclidean-steps">EUCLID mode</a>, a step more or fewer.</td></tr>
 <tr id="ctl-4" data-n="4"><td class="n"><a href="#fig-panel">4</a></td><td><b>ALGORITHM</b></td><td rowspan="1">Chosen track's pan. On the SCALE page: scale. A step held: its pan, locked.</td></tr>
 <tr id="ctl-5" data-n="5"><td class="n"><a href="#fig-panel">5</a></td><td><b>OCT−</b></td><td rowspan="1">Chosen track's octave down. In the step view: its <a href="#transposition">transposition</a>. <b>SHIFT +</b>: every track's transposition. On the EDIT and SEQ pages: the page before.</td></tr>
 <tr id="ctl-6" data-n="6"><td class="n"><a href="#fig-panel">6</a></td><td><b>OCT+</b></td><td rowspan="1">Same, up.</td></tr>
@@ -227,7 +228,7 @@
 <tr id="ctl-25" data-n="25"><td class="n"><a href="#fig-keys">25</a></td><td><b>black key 2</b></td><td rowspan="1"><a href="#mute-mode">MUTE mode</a>. In the step view: TRACK page.</td></tr>
 <tr id="ctl-26" data-n="26"><td class="n"><a href="#fig-keys">26</a></td><td><b>black key 3</b></td><td rowspan="1"><b>Held</b>: <a href="#break">BREAK</a>; <b>SHIFT +</b>, on every track. In the step view: TRIG.</td></tr>
 <tr id="ctl-27" data-n="27"><td class="n"><a href="#fig-keys">27</a></td><td><b>black key 4</b></td><td rowspan="1"><a href="#midi-learn">MIDI LEARN</a>. In the step view: MOD.</td></tr>
-<tr id="ctl-28" data-n="28"><td class="n"><a href="#fig-keys">28</a></td><td><b>black key 5</b></td><td rowspan="1"><a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page. <b>SHIFT +</b>: panic, every note stops.</td></tr>
+<tr id="ctl-28" data-n="28"><td class="n"><a href="#fig-keys">28</a></td><td><b>black key 5</b></td><td rowspan="1"><a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page. In the step view: <a href="#euclidean-steps">EUCLID mode</a>. <b>SHIFT +</b>: panic, every note stops.</td></tr>
 <tr id="ctl-29" data-n="29"><td class="n"><a href="#fig-keys">29</a></td><td><b>black key 6</b></td><td rowspan="3">In the step view: track's direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes. <b>SHIFT +</b> black key 6: <a href="#screen-reader">screen reader</a>.</td></tr>
 <tr id="ctl-30" data-n="30"><td class="n"><a href="#fig-keys">30</a></td><td><b>black key 7</b></td></tr>
 <tr id="ctl-31" data-n="31"><td class="n"><a href="#fig-keys">31</a></td><td><b>black key 8</b></td></tr>
@@ -253,8 +254,8 @@
 <tr><th>Control</th><th>What it does</th></tr>
 <tr><td><b>6 top buttons</b></td><td>choose track <b>1–6</b> (lit: chosen; glowing dimly: sounding). From any page, back to the track. In <a href="#mute-mode">MUTE mode</a>: mute and solo.</td></tr>
 <tr><td><b>Track button held + white key 1–4</b></td><td>on DRUM: its <a href="#subtracks">subtrack</a> <b>ST-A</b>–<b>ST-D</b>. <b>SHIFT +</b>: mute or unmute it; held 0.8 s, give up a subtrack past ST-A.</td></tr>
-<tr><td><b>PRESETS</b> knob</td><td>chosen track's machine: <b>4-OP</b>, <b>DRUM</b>, <b>WAVY</b>, <b>HIVE</b>. Each track keeps 1 sound per machine.</td></tr>
-<tr><td><b>SHIFT + PRESETS</b></td><td>new sound of the family before or after.</td></tr>
+<tr><td><b>PRESETS</b> knob</td><td>chosen track's machine: <b>4-OP</b>, <b>DRUM</b>, <b>WAVY</b>, <b>HIVE</b>. Each track keeps 1 sound per machine. In the <a href="#step-view">step view</a>: rotate the steps.</td></tr>
+<tr><td><b>SHIFT + PRESETS</b></td><td>new sound of the family before or after. In the step view, in <a href="#euclidean-steps">EUCLID mode</a>: a step more or fewer.</td></tr>
 <tr><td><b>HOME</b></td><td>new sound for the chosen track (<a href="#sounds">Sounds</a>). Nothing with GEN LOCK on.</td></tr>
 <tr><td><b>SHIFT + HOME</b></td><td>new sound of the same family.</td></tr>
 <tr><td><b>OCT− / OCT+</b></td><td>chosen track's octave, −3 to +3. In the step view: track's <a href="#transposition">transposition</a>.</td></tr>
@@ -471,6 +472,8 @@
 <tr><td>Copy a step</td><td>SHIFT + hold it 0.8 s (COPY blinks)</td></tr>
 <tr><td>Paste it</td><td>SHIFT + hold another step 0.8 s, on this track or another</td></tr>
 <tr><td>Empty the whole track</td><td>SHIFT + STEP (with the step view on or off): its steps and locks; the rest of the track is kept</td></tr>
+<tr><td>Rotate the steps</td><td>turn PRESETS (no step held): every step moves one place right or left a click, with all it holds, round the track's length</td></tr>
+<tr><td>Add or remove a Euclidean step</td><td>in EUCLID mode, SHIFT + PRESETS: right one more step, left one fewer</td></tr>
 </table>
 <p>The black keys, lit dimly, do this in the step view:</p>
 <table>
@@ -479,8 +482,13 @@
 <tr><td>black key 2</td><td>TRACK page: LENGTH, CLOCK, PROB and SWING</td></tr>
 <tr><td>black key 3</td><td>TRIG on or off: a step held shows its own page</td></tr>
 <tr><td>black key 4</td><td>MOD on or off: a step held shows its MOD page</td></tr>
+<tr><td>black key 5</td><td>EUCLID mode on or off for the chosen track (lit while on, dim off)</td></tr>
 <tr><td>black keys 6, 7, 8</td><td>track's direction: REVERSE, PING-PONG, RANDOM; pressed again, forwards</td></tr>
 </table>
+<h3 id="euclidean-steps">Euclidean steps</h3>
+<p>In the step view, black key 5 turns EUCLID mode on or off for the chosen track (each subtrack has its own). While it is on, the key is lit, and a blue ring of 8 dots shows to the right of the track number, on the subtrack's line (the line above while REC, LOOP, ARM or PERF is shown there). Turning it on changes no steps.</p>
+<p>In EUCLID mode, SHIFT + PRESETS adds a step (right) or removes one (left), and lays the steps out as evenly as they go over the track's length: 3 steps in 8 play on steps 1, 4 and 7; 4 in 16 on 1, 5, 9 and 13. The screen shows the count, EUCLID 5/16. Each step keeps what it holds (note, velocity, length, condition, ratchet, MOD, chord, locks), in order; a new one takes the track's last note played, as a step put in by hand. Steps the pattern held before, from a phrase or a recording, are laid out the same way on the next turn.</p>
+<p>While EUCLID mode is on, the white keys add no steps and empty none; a step can still be held to edit it or lock values, and a step copied can be pasted onto a step that holds a note. PRESETS still rotates the steps, and the Euclidean pattern then starts from where the rotation put its first step. EUCLID mode is not saved with the session.</p>
 <h3 id="step-pages">Step pages</h3>
 <p><b>TRIG</b>: KNOB 1 the step's note (in the scale), 2 its velocity, 3 its length, 4 its trig condition; with PRESETS turned right, KNOB 1 its RATCHET (the step played 2 to 8 times). Turning KNOB 1 plays the new note (its chord, if the step has one) for a moment, at the step's velocity, so you hear the note you are setting. The conditions are the Digitone II's: PRE and !PRE (as the last condition was met or not), NEI and !NEI (as the track before met its condition), 1ST and !1ST (the first time through), probabilities, and A:B (the A-th time of every B).</p>
 <p><b>MOD</b>: KNOB 1 MUTATE (the note moved by up to N steps of the scale, or RND), 2 MUT EVERY (how often), 3 MIDI FX (ECHO, ECHO UP, ECHO DN, STUTTER, FLAM, LATE, GRACE, FIFTH, TRIAD, OCT UP, OCT DN, DROP), 4 FX EVERY. Times are in the track's steps: ECHO plays three repeats 2 steps apart, at 70, 48 and 30% velocity (ECHO UP and DN move each a step of the scale); STUTTER four short repeats half a step apart; FLAM a second hit 30 ms later; LATE the note half a step late; GRACE a step of the scale below on time, the note a third of a step later.</p>
