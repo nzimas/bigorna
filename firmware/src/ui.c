@@ -56,7 +56,8 @@
  *                                         an octave either way), 2 MUT EVERY (every so many times the step plays), 3
  *                                         MIDI FX, 4 FX EVERY
  *                               the 5th   EUCLID mode on or off, the lane's (lit while on; build 101): SHIFT +
- *                                         PRESETS lays its steps out; the white keys put none in and empty none. A
+ *                                         PRESETS lays its steps out; the white keys put none in and empty none, and
+ *                                         the 1st makes no new phrase (SHIFT, new locks, still; build 102). A
  *                                         blue ring right of the track's number while on (not kept with the session)
  *                               the 6th .. 8th   the track's direction: REVERSE, PING-PONG, RANDOM (again: forward)
  *                             A step held, TRIG off: the knobs lock what they set on the track's view on it (FREQ,
@@ -2816,14 +2817,18 @@ static void ui_input(void)
                                                       * held 0.8 s, the PHRASE page up or down */
         if (!((keys >> KEY_GEN) & 1u)) {
             ui.gen_down = 0;
-            if (!ui.gen_long && step_view()) {
+            if (!ui.gen_long && step_view() && !ui.gen_sh && ui.euc[ui.sl])
+                say("EUCLID ON", 900);               /* (build 102: EUCLID mode lays the steps out; no new phrase
+                                                      * while it is on -- new locks, SHIFT, still) */
+            else if (!ui.gen_long && step_view()) {
                 uint32_t l;
                 if (ui.gen_sh)
                     phrase_relock(ui.sl);
                 else
                     phrase_new(ui.sl);
-                for (l = 0; l < NLANE; l++)          /* (CTRL ALL: each other track's own, on its own steps) */
-                    if (all_too(l)) {
+                for (l = 0; l < NLANE; l++)          /* (CTRL ALL: each other track's own, on its own steps; not
+                                                      * a new phrase on one in EUCLID mode) */
+                    if (all_too(l) && (ui.gen_sh || !ui.euc[l])) {
                         if (ui.gen_sh)
                             phrase_relock(l);
                         else

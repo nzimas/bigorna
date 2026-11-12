@@ -4089,6 +4089,25 @@ static int cmd_euc(const char *dir)
         key(k, 0);
         UEXPECT(euc_mask(0) == i, ".. nor empties one let go soon");
     }
+    {   /* (build 102) no new phrase while EUCLID mode is on */
+        uint8_t nb[NSTEP];
+        uint32_t ph = 0, tries;
+        memcpy(nb, (const void *)seq_note[0], sizeof nb);
+        key(KEY_GEN, 1);
+        key(KEY_GEN, 0);
+        UEXPECT(!memcmp(nb, (const void *)seq_note[0], sizeof nb), "EUCLID on: black key 1 makes no new phrase");
+        ui.euc[0] = 0;
+        for (tries = 0; tries < 4 && !ph; tries++) {
+            key(KEY_GEN, 1);
+            key(KEY_GEN, 0);
+            ph = memcmp(nb, (const void *)seq_note[0], sizeof nb) != 0;
+        }
+        UEXPECT(ph, "EUCLID off: black key 1 makes a new phrase again");
+        steps_clear(0);
+        for (i = 0; i < NSTEP; i++)
+            seq_note[0][i] = nb[i];
+        ui.euc[0] = 1;
+    }
     shot(dir, "euclid");
     fm1_in.notes |= 1u << KEY_SHIFT;
     turn(EN_PRESET, 20);

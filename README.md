@@ -441,7 +441,8 @@ EUCLID 5/16. Each step keeps what it holds (note, velocity, length, condition, r
 new one takes the track's last note played, as a step put in by hand. Steps the pattern held before, from a phrase or a
 recording, are laid out the same way on the next turn.
 
-While EUCLID mode is on, the white keys add no steps and empty none; a step can still be held to edit it or lock values,
+While EUCLID mode is on, the white keys add no steps and empty none, and black key 1 makes no new phrase (the screen
+says EUCLID ON; SHIFT + black key 1 still draws new locks on the steps). A step can still be held to edit it or lock values,
 and a step copied can be pasted onto a step that holds a note. PRESETS still rotates the steps, and the Euclidean
 pattern then starts from where the rotation put its first step. EUCLID mode is not saved with the session.
 

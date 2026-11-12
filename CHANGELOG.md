@@ -1,5 +1,12 @@
 # Changelog
 
+## Build 102
+
+Changed
+- While EUCLID mode is on for the track, black key 1 in the step view makes no new phrase (the screen says EUCLID ON).
+  SHIFT + black key 1 still draws new locks on the steps it holds, which moves none. With CTRL ALL in PERFORMANCE, a
+  track in EUCLID mode gets no new phrase either. Turned off, black key 1 makes phrases again.
+
 ## Build 101
 
 Added
