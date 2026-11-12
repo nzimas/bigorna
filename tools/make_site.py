@@ -244,7 +244,9 @@ CONTROLS = [
     ([1], "MASTER", "Output level."),
     ([2], "SELECT", "Chosen track's level. On the SCALE page: root. A step held: its level, locked."),
     ([3], "PRESETS", "Chosen track's machine. <b>SHIFT +</b>: new sound of the family before or after. On a page: "
-                     "its rows, slots or entries; on the EDIT and SEQ pages, turned right, rows E to H."),
+                     "its rows, slots or entries; on the EDIT and SEQ pages, turned right, rows E to H. In the "
+                     '<a href="#step-view">step view</a>: rotate the steps; <b>SHIFT +</b>, in '
+                     '<a href="#euclidean-steps">EUCLID mode</a>, a step more or fewer."),
     ([4], "ALGORITHM", "Chosen track's pan. On the SCALE page: scale. A step held: its pan, locked."),
     ([5], "OCT−", "Chosen track's octave down. In the step view: its "
                   '<a href="#transposition">transposition</a>. <b>SHIFT +</b>: every track\'s transposition. '
@@ -277,7 +279,8 @@ CONTROLS = [
     ([26], "black key 3", '<b>Held</b>: <a href="#break">BREAK</a>; <b>SHIFT +</b>, on every track. In the step view: '
                           "TRIG."),
     ([27], "black key 4", '<a href="#midi-learn">MIDI LEARN</a>. In the step view: MOD.'),
-    ([28], "black key 5", '<a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page. <b>SHIFT +</b>: panic, every note stops.'),
+    ([28], "black key 5", '<a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page. In the step view: '
+                          '<a href="#euclidean-steps">EUCLID mode</a>. <b>SHIFT +</b>: panic, every note stops.'),
     ([29, 30, 31], ["black key 6", "black key 7", "black key 8"],
      'In the step view: track\'s direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes. '
      '<b>SHIFT +</b> black key 6: <a href="#screen-reader">screen reader</a>.'),

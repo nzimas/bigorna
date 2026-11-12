@@ -36,8 +36,8 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | --- | --- |
 | **6 top buttons** | choose track **1–6** (lit: chosen; glowing dimly: sounding). From any page, back to the track. In [MUTE mode](#mute-mode): mute and solo. |
 | **Track button held + white key 1–4** | on DRUM: its [subtrack](#subtracks) **ST-A**–**ST-D**. **SHIFT +**: mute or unmute it; held 0.8 s, give up a subtrack past ST-A. |
-| **PRESETS** knob | chosen track's machine: **4-OP**, **DRUM**, **WAVY**, **HIVE**. Each track keeps 1 sound per machine. |
-| **SHIFT + PRESETS** | new sound of the family before or after. |
+| **PRESETS** knob | chosen track's machine: **4-OP**, **DRUM**, **WAVY**, **HIVE**. Each track keeps 1 sound per machine. In the [step view](#step-view): rotate the steps. |
+| **SHIFT + PRESETS** | new sound of the family before or after. In the step view, in [EUCLID mode](#euclidean-steps): a step more or fewer. |
 | **HOME** | new sound for the chosen track ([Sounds](#sounds)). Nothing with GEN LOCK on. |
 | **SHIFT + HOME** | new sound of the same family. |
 | **OCT− / OCT+** | chosen track's octave, −3 to +3. In the step view: track's [transposition](#transposition). |
@@ -415,6 +415,8 @@ dim, empty; the step playing the other way round; past the track's length, dark.
 | Copy a step | SHIFT + hold it 0.8 s (COPY blinks) |
 | Paste it | SHIFT + hold another step 0.8 s, on this track or another |
 | Empty the whole track | SHIFT + STEP (with the step view on or off): its steps and locks; the rest of the track is kept |
+| Rotate the steps | turn PRESETS (no step held): every step moves one place right or left a click, with all it holds, round the track's length |
+| Add or remove a Euclidean step | in EUCLID mode, SHIFT + PRESETS: right one more step, left one fewer |
 
 The black keys, lit dimly, do this in the step view:
 
@@ -424,7 +426,24 @@ The black keys, lit dimly, do this in the step view:
 | black key 2 | TRACK page: LENGTH, CLOCK, PROB and SWING |
 | black key 3 | TRIG on or off: a step held shows its own page |
 | black key 4 | MOD on or off: a step held shows its MOD page |
+| black key 5 | EUCLID mode on or off for the chosen track (lit while on, dim off) |
 | black keys 6, 7, 8 | track's direction: REVERSE, PING-PONG, RANDOM; pressed again, forwards |
+
+### Euclidean steps
+
+In the step view, black key 5 turns EUCLID mode on or off for the chosen track (each subtrack has its own). While it is
+on, the key is lit, and a blue ring of 8 dots shows to the right of the track number, on the subtrack's line (the line
+above while REC, LOOP, ARM or PERF is shown there). Turning it on changes no steps.
+
+In EUCLID mode, SHIFT + PRESETS adds a step (right) or removes one (left), and lays the steps out as evenly as they go
+over the track's length: 3 steps in 8 play on steps 1, 4 and 7; 4 in 16 on 1, 5, 9 and 13. The screen shows the count,
+EUCLID 5/16. Each step keeps what it holds (note, velocity, length, condition, ratchet, MOD, chord, locks), in order; a
+new one takes the track's last note played, as a step put in by hand. Steps the pattern held before, from a phrase or a
+recording, are laid out the same way on the next turn.
+
+While EUCLID mode is on, the white keys add no steps and empty none; a step can still be held to edit it or lock values,
+and a step copied can be pasted onto a step that holds a note. PRESETS still rotates the steps, and the Euclidean
+pattern then starts from where the rotation put its first step. EUCLID mode is not saved with the session.
 
 ### Step pages
 

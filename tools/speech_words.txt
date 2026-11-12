@@ -633,3 +633,5 @@ wave	W EY1 V
 wavy	W EY1 V IY0
 wrap	R AE1 P
 wreck	R EH1 K
+euclid	Y UW1 K L IH0 D
+rotate	R OW1 T EY2 T

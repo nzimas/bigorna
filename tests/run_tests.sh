@@ -24,6 +24,7 @@ build/host screens build/screens
 build/host projects build/screens
 build/host lfo build/screens
 build/host trn build/screens
+build/host euc build/screens
 build/host arp build/screens
 build/host newses build/screens
 build/host pstate build/screens

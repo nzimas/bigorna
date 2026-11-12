@@ -4004,6 +4004,110 @@ static int cmd_lfo(const char *dir)
     return fails != 0;
 }
 
+/* (build 101) the step view's PRESETS: the steps rotated; SHIFT, in EUCLID mode (the 5th black key), a step more or
+ * fewer, laid out evenly from where the rotation put the first */
+#define UEXPECT(c, what) do { if (!(c)) { printf("FAIL euc: %s\n", what); fails++; } } while (0)
+static uint32_t euc_mask(uint32_t t)
+{
+    uint32_t i, m = 0;
+    for (i = 0; i < NSTEP; i++)
+        m |= (seq_note[t][i] != 0) << i;
+    return m;
+}
+static int cmd_euc(const char *dir)
+{
+    int fails = 0;
+    uint32_t i, n;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    ui.sel = 0;
+    sel_sync();
+    steps_clear(0);
+    seq_len[0] = 0;
+    seq_note[0][0] = 60; seq_vel[0][0] = 99; (void)pl_set(0, 0, PL_PAN, 20);
+    seq_note[0][3] = 64;
+    seq_note[0][15] = 67;
+    ui.sv = 1;
+    turn(EN_PRESET, 1);
+    UEXPECT(euc_mask(0) == (1u << 1 | 1u << 4 | 1u << 0) && seq_note[0][1] == 60 && seq_vel[0][1] == 99 &&
+            pl_find(0, 1, PL_PAN) >= 0 && seq_lv[0][1][pl_find(0, 1, PL_PAN)] == 20 && pl_find(0, 0, PL_PAN) < 0 &&
+            seq_note[0][0] == 67, "PRESETS right: every step one to the right, with what it holds; the 16th to the 1st");
+    turn(EN_PRESET, -3);
+    UEXPECT(euc_mask(0) == (1u << 14 | 1u << 1 | 1u << 13) && seq_note[0][14] == 60 && seq_note[0][1] == 64,
+            "PRESETS left three: three to the left, round");
+    turn(EN_PRESET, 2);                          /* (back where they were) */
+    seq_len[0] = 8;
+    seq_note[0][15] = 0;
+    turn(EN_PRESET, -1);
+    UEXPECT(seq_note[0][7] == 60 && seq_note[0][2] == 64 && euc_mask(0) == (1u << 7 | 1u << 2),
+            "a length of 8: round its 8 steps");
+    seq_len[0] = 0;
+    steps_clear(0);
+    ui.rot[0] = 0;
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    turn(EN_PRESET, 1);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    UEXPECT(!euc_mask(0) && !ui.euc[0], "SHIFT + PRESETS, EUCLID off: nothing");
+    key(KEY_ARP, 1);
+    key(KEY_ARP, 0);
+    UEXPECT(ui.euc[0] == 1 && !arp_on[0], "the 5th black key in the step view: EUCLID on (not the arpeggiator)");
+    ui_leds();
+    UEXPECT(host_led[14u + KEY_ARP], "its key lit while on");
+    ui.last_note[0] = 62;
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    turn(EN_PRESET, 4);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    UEXPECT(euc_mask(0) == 0x1111u && seq_note[0][4] == 62, "SHIFT + PRESETS right 4: E(4,16), the last note played");
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    turn(EN_PRESET, -1);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    UEXPECT(euc_mask(0) == (1u << 0 | 1u << 6 | 1u << 11), "left 1: E(3,16) -- steps 1, 7, 12");
+    seq_note[0][0] = 48;                         /* (the first: its own note, kept as they move) */
+    turn(EN_PRESET, 2);
+    UEXPECT(euc_mask(0) == (1u << 2 | 1u << 8 | 1u << 13) && seq_note[0][2] == 48, "rotated two");
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    turn(EN_PRESET, 2);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    for (n = 0, i = 0; i < 16; i++)
+        n += seq_note[0][i] != 0;
+    UEXPECT(n == 5 && seq_note[0][2] == 48 && euc_mask(0) == (1u << 2 | 1u << 6 | 1u << 9 | 1u << 12 | 1u << 15),
+            "right 2: E(5,16) from where the rotation put the first -- steps 3, 7, 10, 13, 16 (its note kept)");
+    i = euc_mask(0);
+    {
+        uint32_t k;
+        for (k = 0; k < NKEY && !(white_ix(k) >= 0 && !seq_note[0][white_ix(k)]); k++)
+            ;
+        key(k, 1);
+        key(k, 0);
+        UEXPECT(euc_mask(0) == i, "EUCLID on: a white key on an empty step puts nothing there");
+        for (k = 0; k < NKEY && !(white_ix(k) >= 0 && white_ix(k) < 16 && seq_note[0][white_ix(k)]); k++)
+            ;
+        key(k, 1);
+        key(k, 0);
+        UEXPECT(euc_mask(0) == i, ".. nor empties one let go soon");
+    }
+    shot(dir, "euclid");
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    turn(EN_PRESET, 20);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    UEXPECT(euc_mask(0) == 0xFFFFu, "right, far: all 16");
+    fm1_in.notes |= 1u << KEY_SHIFT;
+    turn(EN_PRESET, -20);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    UEXPECT(!euc_mask(0), "left, far: none");
+    key(KEY_ARP, 1);
+    key(KEY_ARP, 0);
+    UEXPECT(!ui.euc[0], "the 5th black key again: EUCLID off");
+    ui.sv = 0;
+    key(KEY_ARP, 1);
+    key(KEY_ARP, 0);
+    UEXPECT(arp_on[0] && !ui.euc[0], "out of the step view: the arpeggiator's key as before");
+    printf("euc: %d failures\n", fails);
+    return fails != 0;
+}
 /* transposition (build 51): OCT- / OCT+ the keys' octave in the track's view, the track's steps in the step view,
  * SHIFT every track's; in steps of the scale; kept with the pattern */
 #define LPN(t, l, i) lp_note(HL(t, l), HL(t, l)->ev[i].note)   /* (a loop's note as it plays: build 68) */
@@ -6541,6 +6645,8 @@ int main(int argc, char **argv)
         return cmd_arp(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "trn"))
         return cmd_trn(argv[2]);
+    if (argc >= 3 && !strcmp(argv[1], "euc"))
+        return cmd_euc(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "lfo"))
         return cmd_lfo(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "projects"))

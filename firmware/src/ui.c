@@ -4,7 +4,9 @@
  *   FX SEL ENV LFO EDIT GLO   the top row: tracks 1 to 6 (lit: the chosen one; the others glow while they sound)
  *   PRESETS (knob)            the track's machine: 4-OP, DRUM, WAVY, HIVE (each track keeps a sound of
  *                             each, so turning back finds it) -- on the track's view only: on the EDIT pages it moves
- *                             through them, on the effects' pages the half shown
+ *                             through them, on the effects' pages the half shown. In the step view (no step held) the
+ *                             track's steps rotated, a step a dent, round its length; SHIFT, in EUCLID mode, a step
+ *                             more or fewer, laid out evenly (build 101)
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
  *                             (GEN LOCK on, the session's page: neither does anything; build 85)
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after; in the step
@@ -53,6 +55,9 @@
  *                                         MUTATE (its note moved -N .. +N steps of the scale, or RND: at random up to
  *                                         an octave either way), 2 MUT EVERY (every so many times the step plays), 3
  *                                         MIDI FX, 4 FX EVERY
+ *                               the 5th   EUCLID mode on or off, the lane's (lit while on; build 101): SHIFT +
+ *                                         PRESETS lays its steps out; the white keys put none in and empty none. A
+ *                                         blue ring right of the track's number while on (not kept with the session)
  *                               the 6th .. 8th   the track's direction: REVERSE, PING-PONG, RANDOM (again: forward)
  *                             A step held, TRIG off: the knobs lock what they set on the track's view on it (FREQ,
  *                             RESO, the delay and reverb sends; SHIFT: chorus, overdrive), as a dial; SELECT locks its
@@ -178,6 +183,8 @@ static struct {
     int8_t trn[NLANE];           /* each lane's transposition in the pattern playing, steps of the scale (build 51) */
     uint8_t gen_den[NLANE], gen_cx[NLANE];   /* the phrase generator's DENSITY and COMPLEXITY, 0 .. 100, a track's */
     uint8_t trig;                /* TRIG on (the 3rd black key): a step held shows its own page */
+    uint8_t euc[NLANE];          /* (build 101) EUCLID mode on (the 5th black key, in the step view), a lane's .. */
+    uint8_t rot[NLANE];          /* .. and how far its steps have been rotated (where its Euclidean pattern begins) */
     uint8_t mod;                 /* MOD on (the 4th): a step held shows its MOD page */
     uint8_t play_down, play_long;   /* PLAY held: since play_t0; held 0.8 s (the TEMPO page) */
     uint32_t play_t0;
@@ -1717,6 +1724,10 @@ static void step_say(uint32_t i, uint32_t n)
 static void step_down(uint32_t k)
 {
     uint32_t i = (uint32_t)white_ix(k), n = seq_note[ui.sl][i];
+    if (!n && ui.euc[ui.sl]) {                   /* (EUCLID mode: steps only as SHIFT + PRESETS lays them out) */
+        say("EUCLID ON", 900);
+        return;
+    }
     ui.step_key = (uint8_t)k;
     ui.step_edit = 0;
     ui.step_new = !n;
@@ -1828,7 +1839,7 @@ static void step_knob(uint32_t j, int32_t s)
 static void step_up(void)
 {
     uint32_t i = (uint32_t)white_ix(ui.step_key);
-    if (!ui.step_new && !ui.step_edit && (uint32_t)(fm1_ms - ui.step_t0) < 400u) {
+    if (!ui.step_new && !ui.step_edit && (uint32_t)(fm1_ms - ui.step_t0) < 400u && !ui.euc[ui.sl]) {
         seq_note[ui.sl][i] = 0;
         pat_dirty = 1;
         step_say(i, 0);
@@ -1847,6 +1858,10 @@ static void step_copy_hold(uint32_t i)
         ui.sclip.on = 0;
         say("COPY OFF", 900);
         ui.force = 1;
+        return;
+    }
+    if (ui.sclip.on && ui.euc[t] && !seq_note[t][i]) {   /* (EUCLID mode: onto a step that holds a note only) */
+        say("EUCLID ON", 900);
         return;
     }
     if (ui.sclip.on) {                           /* pasted */
@@ -1891,6 +1906,108 @@ static void step_copy_hold(uint32_t i)
         ui.sclip.lv[j] = seq_lv[t][i][j];
     }
     ui.sclip.on = 1;
+    ui.force = 1;
+}
+
+/* (build 101) the step view's PRESETS: the track's steps rotated, a step a dent, round its length; with SHIFT, in
+ * EUCLID mode (the 5th black key), a step more or fewer, the ones held laid out as evenly as they go (Bjorklund's,
+ * as Bresenham's line: step i holds a note when (i x k) mod n < k), from where the rotation has put the first. A step
+ * is moved with all it holds: its note, velocity, length, condition, ratchet, MOD, chord and locks (the steps held
+ * meanwhile on the stack, 544 B: the RAM region has little room and POOL none) */
+typedef struct {
+    uint8_t note, vel, glen, cond, rtg, mcy, mfx, fcy, chf, lid[NPL];
+    int8_t mut;
+    int16_t lv[NPL];
+} stepd_t;
+static uint32_t st_len(uint32_t t) { return seq_len[t] ? seq_len[t] : NSTEP; }
+static void st_get(uint32_t t, uint32_t i, stepd_t *d)
+{
+    uint32_t j;
+    d->note = seq_note[t][i];
+    d->vel = seq_vel[t][i];
+    d->glen = seq_glen[t][i];
+    d->cond = seq_cond[t][i];
+    d->rtg = seq_rtg[t][i];
+    d->mut = seq_mut[t][i];
+    d->mcy = seq_mcy[t][i];
+    d->mfx = seq_mfx[t][i];
+    d->fcy = seq_fcy[t][i];
+    d->chf = seq_chf[t][i];
+    for (j = 0; j < NPL; j++) {
+        d->lid[j] = seq_lid[t][i][j];
+        d->lv[j] = seq_lv[t][i][j];
+    }
+}
+static void st_put(uint32_t t, uint32_t i, const stepd_t *d)
+{
+    uint32_t j;
+    seq_note[t][i] = 0;                          /* (silent while it changes; the locks' values before their ids) */
+    seq_vel[t][i] = d->vel;
+    seq_glen[t][i] = d->glen;
+    seq_cond[t][i] = d->cond;
+    seq_rtg[t][i] = d->rtg;
+    seq_mut[t][i] = d->mut;
+    seq_mcy[t][i] = d->mcy;
+    seq_mfx[t][i] = d->mfx;
+    seq_fcy[t][i] = d->fcy;
+    seq_chf[t][i] = d->chf;
+    pl_clear(t, i);
+    for (j = 0; j < NPL; j++)
+        seq_lv[t][i][j] = d->lv[j];
+    for (j = 0; j < NPL; j++)
+        seq_lid[t][i][j] = d->lid[j];
+    seq_note[t][i] = d->note;
+}
+static void steps_rotate(uint32_t t, int32_t s)  /* right (s > 0): step i to i + s */
+{
+    uint32_t n = st_len(t), d = (uint32_t)(s % (int32_t)n + (int32_t)n) % n, i;
+    stepd_t st_buf[NSTEP];
+    if (!d)
+        return;
+    for (i = 0; i < n; i++)
+        st_get(t, i, &st_buf[i]);
+    for (i = 0; i < n; i++)
+        st_put(t, (i + d) % n, &st_buf[i]);
+    ui.rot[t] = (uint8_t)((ui.rot[t] % n + d) % n);
+    pat_dirty = 1;
+}
+static void euc_fill(uint32_t t, int32_t s)
+{
+    uint32_t n = st_len(t), r = ui.rot[t] % n, k = 0, nk, i, j = 0, q;
+    stepd_t st_buf[NSTEP];
+    char m[16] = "EUCLID ";
+    for (i = 0; i < n; i++) {                    /* (the steps held, in turn from the pattern's first) */
+        q = (r + i) % n;
+        if (seq_note[t][q])
+            st_get(t, q, &st_buf[k++]);
+    }
+    nk = (uint32_t)clampi((int32_t)k + s, 0, (int32_t)n);
+    for (i = k; i < nk; i++) {                   /* (a new one: as a step put in, the track's last note) */
+        stepd_t *d = &st_buf[i];
+        d->note = (uint8_t)(ui.last_note[t] ? ui.last_note[t] : key_note(0, ui.oct[t]));
+        d->vel = VEL_DEF;
+        d->glen = GLEN_DEF;
+        d->cond = CD_NONE;
+        d->rtg = d->mcy = d->mfx = d->fcy = 0;
+        d->mut = 0;
+        d->chf = ui.last_note[t] ? ui.last_chf[t] : 0u;
+        for (q = 0; q < NPL; q++) {
+            d->lid[q] = PL_NONE;
+            d->lv[q] = 0;
+        }
+    }
+    for (i = 0; i < n; i++) {
+        q = (r + i) % n;
+        if ((i * nk) % n < nk)
+            st_put(t, q, &st_buf[j++]);
+        else
+            seq_note[t][q] = 0;
+    }
+    pat_dirty = 1;
+    fmt_int(m + 7, (int32_t)nk);
+    str_cpy(m + str_len(m), "/", 2);
+    fmt_int(m + str_len(m), (int32_t)n);
+    say(m, 1200);
     ui.force = 1;
 }
 
@@ -2370,7 +2487,26 @@ static void ui_input(void)
             say(m, 1200);
         }
     }
-    if ((s = e_pre) != 0 && step_page() && ui.mod) {   /* (MOD: one page, no halves) */
+    if ((s = e_pre) != 0 && step_view() && !step_held() &&
+        (ui.page == PG_MAIN || ui.page == PG_TRK || ui.page == PG_GEN)) {   /* (build 101) the step view: PRESETS
+                                                      * rotates the track's steps; SHIFT, in EUCLID mode, a step more or
+                                                      * fewer */
+        if (sh && ui.euc[ui.sl])
+            euc_fill(ui.sl, s);
+        else if (sh)
+            say("EUCLID OFF", 900);
+        else {
+            char m[16] = "ROTATE ";
+            uint32_t l;
+            steps_rotate(ui.sl, s);
+            for (l = 0; l < NLANE; l++)          /* (CTRL ALL: the other tracks the same way) */
+                if (all_too(l))
+                    steps_rotate(l, s);
+            fmt_int(m + 7, (int32_t)(ui.rot[ui.sl] % st_len(ui.sl)));
+            say(m, 900);
+            ui.force = 1;
+        }
+    } else if ((s = e_pre) != 0 && step_page() && ui.mod) {   /* (MOD: one page, no halves) */
         ;
     } else if ((s = e_pre) != 0 && ui.page == PG_TEMPO) {   /* TEMPO: PRESETS the pattern's tempo */
         tempo_set(tempo_now() + s);              /* (build 97: the pattern's tempo) */
@@ -2765,6 +2901,13 @@ static void ui_input(void)
             perf_toggle();
             continue;
         }
+        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_ARP && !pg_any()) {   /* (build 101) EUCLID mode on or
+                                                                         * off, the chosen lane's */
+            ui.euc[ui.sl] = (uint8_t)!ui.euc[ui.sl];
+            say(ui.euc[ui.sl] ? "EUCLID ON" : "EUCLID OFF", 900);
+            ui.force = 1;
+            continue;
+        }
         if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_ARP && !pg_any()) {   /* the arpeggiator's key: on
                                                                          * its release or held */
             ui.ak_down = 1;
@@ -3006,6 +3149,11 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
+        if (step_view() && k == KEY_ARP && !pg_any()) {   /* (EUCLID mode's key: lit while on, dim off) */
+            fm1_led_key(14u + k, ui.euc[ui.sl]);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
         if (step_view() && k == KEY_TRK) {           /* (the TRACK key: dim, lit while its page is up) */
             fm1_led_key(14u + k, ui.page == PG_TRK);
             led_dim_key(14u + k, 1);
@@ -3096,6 +3244,24 @@ static void draw_number(void)
                 char st[6] = "ST-A";
                 st[3] = (char)('A' + ui.sub[ui.sel] % NSUB);
                 cv_text(4, 10 + 2 * FONT_S.h, &FONT_S, st, TRACK_COL[ui.sel]);
+            }
+            if (ui.euc[ui.sl]) {                     /* (build 101: EUCLID mode on, right of the number, on the
+                                                      * subtrack's line -- the line above while REC, LOOP, ARM or PERF
+                                                      * is there, and neither while the transposition is too): a ring
+                                                      * of eight steps, three of them held, E(3,8), in blue */
+                static const int8_t RX[8] = {0, 7, 10, 7, 0, -7, -10, -7}, RY[8] = {-10, -7, 0, 7, 10, 7, 0, -7};
+                int32_t cx = (240 + text_w(&FONT_XL, d)) / 2 + 16, cy = 10 + 2 * (int32_t)FONT_S.h + 13, i;
+                int right3 = ui.rec || ui.lrec || perf_on;
+                if (right3)
+                    cy -= 4 + (int32_t)FONT_S.h;
+                if (!right3 || !ui.trn[ui.sl]) {
+                    cv_note("EUCLID");               /* (the SCREEN READER) */
+                    for (i = 0; i < 8; i++) {
+                        int32_t r = i % 3 == 0 && i < 7 ? 3 : 2;   /* (E(3,8): steps 1, 4, 7) */
+                        cv_rect(cx + RX[i] - r, cy + RY[i] - r, 2 * r + 1, 2 * r + 1,
+                                r == 3 ? RGB(40, 110, 255) : RGB(90, 90, 90));
+                    }
+                }
             }
             if (ui.rec || ui.lrec) {                 /* (recording, right, under the transposition: REC or LOOP in
                                                       * red; armed: ARM) */
@@ -3853,7 +4019,8 @@ static void ui_draw(void)
                      (seq_pend == 1u ? 1024 + (int32_t)((fm1_ms / 300u) & 1u) * 2048 : 0) +
                      (ui.oct[ui.sl] + 3) * 4096 +
                      (ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD ? (ui.chord_form[ui.sel] + 1) * 32768 : 0) +
-                     trk_mute[ui.sel] * (1 << 20) + (ui.trn[ui.sl] + 64) * (1 << 21) + arp_on[ui.sel] * (1 << 28);   /* (the
+                     trk_mute[ui.sel] * (1 << 20) + (ui.trn[ui.sl] + 64) * (1 << 21) + arp_on[ui.sel] * (1 << 28) +
+                     ui.euc[ui.sl] * (1 << 29);   /* (the
                                                       * octave and the chord shown: drawn again as they change) */
         if (ui.force || ui.shown_sel != (int32_t)(ui.sel + 16u * ui.sl) || ui.shown_prj != pk || ui.shown_batt != batt_key()) {
             ui.shown_prj = pk;

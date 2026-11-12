@@ -91,6 +91,9 @@ static int check(void)
     char w[32];
     for (i = 0; i < VO_NDICT; i++) {              /* every word on its own */
         str_cpy(w, (const char *)VO_DICT + VO_DOFF[i], sizeof w);
+        vo_init();                                /* (from the voice at rest: what the word before left -- its pitch,
+                                                   * formants, noise -- makes a peak here or there, which the
+                                                   * output's ceiling takes; build 101) */
         nbuf = 0;
         n = speak(w, &peak);
         if (peak < 1500 || n < 44100 / 10) {

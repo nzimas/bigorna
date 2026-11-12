@@ -1,5 +1,23 @@
 # Changelog
 
+## Build 101
+
+Added
+- Step rotation: in the step view, PRESETS moves every step of the chosen track one place right or left a click, with
+  all it holds (note, velocity, length, condition, ratchet, MOD, chord, locks), round the track's length. With CTRL
+  ALL in PERFORMANCE, the other tracks rotate too. In the step view PRESETS no longer changes the machine.
+- EUCLID mode: in the step view, black key 5 turns it on or off for the chosen track or subtrack (lit while on, dim
+  off; not saved with the session). SHIFT + PRESETS then adds a step (right) or removes one (left), laid out as evenly
+  as they go over the track's length (E(3,8): steps 1, 4, 7), starting where rotation put the first step. The
+  steps keep their contents in order; a new one takes the track's last note played. While it is on the white keys
+  neither add nor empty steps, and a copied step pastes only onto a step that holds a note. A blue ring of 8 dots
+  shows to the right of the track number. SHIFT + PRESETS with EUCLID off says EUCLID OFF and changes nothing.
+- Screen reader words: EUCLID, ROTATE.
+
+Changed
+- The speech test speaks each dictionary word from the voice at rest. With 2 more words, the state left by earlier
+  words made one word peak over full scale in the test; on the FM-1 the output's ceiling limits such a peak.
+
 ## Build 100
 
 Fixed
