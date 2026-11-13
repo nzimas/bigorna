@@ -76,7 +76,10 @@ async function connect() {
       say("No FM-1 found", "Check the cable (it must carry data), switch the FM-1 on, close other MIDI programs, and try again.", "bad");
       return;
     }
-    onDevice = /^FM-1_80\d\d$/.test(device.id.text || "") ? await listOn(device.link) : null;
+    {   // Bigorna's identity: FM-1_8 and its build, three digits (FM-1_8055, FM-1_8102); a backup needs build 55 or later
+      const m = /^FM-1_8(\d{3})$/.exec(device.id.text || "");
+      onDevice = m && Number(m[1]) >= 55 ? await listOn(device.link) : null;
+    }
     if (!onDevice) {
       say("This FM-1 cannot be backed up from here",
         `It does not run Bigorna build 55 or later (it runs ${device.id.text || "another firmware"}). Install Bigorna first (Install page), then come back.`, "bad");

@@ -7,6 +7,11 @@ Changed
   SHIFT + black key 1 still draws new locks on the steps it holds, which moves none. With CTRL ALL in PERFORMANCE, a
   track in EUCLID mode gets no new phrase either. Turned off, black key 1 makes phrases again.
 
+Fixed
+- The website's Backup page refused an FM-1 running build 100 or later ("does not run Bigorna build 55 or later"). It
+  read the build from the identity as two digits (FM-1_80NN); from build 100 the identity is FM-1_8100. It now reads
+  the three digits. The firmware and the Install page were not affected.
+
 ## Build 101
 
 Added

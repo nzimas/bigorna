@@ -219,7 +219,7 @@ def fragments():
     (DOCS / "backup.html").write_text(page(
         "Back up Bigorna sessions", "Backup", (src / "backup.html").read_text(),
         "Save the sessions on an M-VAVE FM-1 running Bigorna to a file, and restore them, from your browser.",
-        '\n<script type="module" src="js/backup.js"></script>'))
+        f'\n<script type="module" src="js/backup.js?v={hashlib.sha256((DOCS / "js" / "backup.js").read_bytes()).hexdigest()[:10]}"></script>'))
     (DOCS / "projects.html").write_text(page(
         "Other projects by Nuno Zimas", "Other projects", (src / "projects.html").read_text(),
         "Firmware and instruments by Nuno Zimas for the M-VAVE FM-1, the Elektron Model:Cycles and Digitone II, the "
