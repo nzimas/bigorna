@@ -762,3 +762,5 @@ firmware.
 Installing it replaces the FM-1's firmware and may void any warranty that applies to your device. An interrupted
 update can leave the FM-1 unable to start until it is recovered. The software is provided as is, without warranty
 of any kind; you install and use it entirely at your own risk.
+
+You can also try Bigorna in the browser, no flashing needed, in the free community [FM-1 Emulator](https://fm1-emulator.atst.tools/).
