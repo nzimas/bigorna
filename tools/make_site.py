@@ -269,8 +269,8 @@ CONTROLS = [
     ([20], "ARP", '<a href="#scales">SCALE</a> page. <b>SHIFT +</b>: scale and root at random.'),
     ([21], "SEQ", '<a href="#effects-seq">Effects\' pages</a>, then the chosen track\'s LFOs. '
                   "<b>SHIFT +</b>: its LFOs drawn anew."),
-    ([22], "PLAY", 'Start or stop the <a href="#sequencer">sequencer</a>. <b>Held</b> (0.8 s): TEMPO page. '
-                   "<b>SHIFT +</b>: metronome."),
+    ([22], "PLAY", 'Start or stop the <a href="#sequencer">sequencer</a>. <b>Held</b> (0.8 s): <a href="#tempo">TEMPO</a> page '
+                   "(black key 8 taps the tempo). <b>SHIFT +</b>: metronome."),
     ([23], "REC", '<a href="#recording">Record</a> into the steps. <b>SHIFT +</b>: <a href="#looper">looper</a>; '
                   "<b>held</b>, track's loops."),
     ([24], "black key 1", '<a href="#chord-mode">CHORD mode</a>; <b>SHIFT +</b>, next form. In the step view: '
@@ -283,7 +283,8 @@ CONTROLS = [
                           '<a href="#euclidean-steps">EUCLID mode</a>. <b>SHIFT +</b>: panic, every note stops.'),
     ([29, 30, 31], ["black key 6", "black key 7", "black key 8"],
      'In the step view: track\'s direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes. '
-     '<b>SHIFT +</b> black key 6: <a href="#screen-reader">screen reader</a>.'),
+     '<b>SHIFT +</b> black key 6: <a href="#screen-reader">screen reader</a>. On the <a href="#tempo">TEMPO</a> '
+     "page, black key 8: <b>TAP</b>, tap the tempo; it blinks at the tempo."),
     ([32], "black key 9", '<b>STEP</b>: <a href="#step-view">step view</a>. <b>SHIFT +</b>: empty the '
                           "chosen track's steps."),
     ([33], "black key 10", '<b>EDIT</b>: <a href="#sound-pages-edit">sound pages</a> (not the EDIT button, T5).'),

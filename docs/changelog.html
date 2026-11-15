@@ -44,6 +44,16 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-104">Build 104</h2>
+<p>Changed</p>
+<ul>
+<li>On the TEMPO page the TAP key (black key 8, the 4th from the right) blinks at the tempo, lit for the first quarter of each beat. While the sequencer plays it follows the sequencer's beats; stopped, it counts from the last tap. It follows an external clock's tempo too, and stays lit while held.</li>
+</ul>
+<h2 id="build-103">Build 103</h2>
+<p>Added</p>
+<ul>
+<li>Tap tempo: on the TEMPO page (PLAY held 0.8 s), black key 8 (the 4th from the right) sets the tempo as it is tapped. From the second tap, the tempo is the average of the last four gaps between taps (10 to 300 BPM); a gap over 2 s starts a new count. Taps under 0.1 s apart are ignored. The key is dim on the TEMPO page and lit while held. There it plays no note and, in the step view, does not set the RANDOM direction. Following an external clock, a tap shows EXT TEMPO and changes nothing.</li>
+</ul>
 <h2 id="build-102">Build 102</h2>
 <p>Changed</p>
 <ul>
