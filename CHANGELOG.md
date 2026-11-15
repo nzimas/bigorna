@@ -1,5 +1,12 @@
 # Changelog
 
+## Build 104
+
+Changed
+- On the TEMPO page the TAP key (black key 8, the 4th from the right) blinks at the tempo, lit for the first quarter
+  of each beat. While the sequencer plays it follows the sequencer's beats; stopped, it counts from the last tap. It
+  follows an external clock's tempo too, and stays lit while held.
+
 ## Build 103
 
 Added

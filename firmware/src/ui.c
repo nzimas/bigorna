@@ -72,7 +72,8 @@
  *                             recorded is dropped). Held 0.8 s: the TEMPO page, up or down -- the session's tempo,
  *                             large; PRESETS sets it (a track's button, or another page, takes it down too). TAP:
  *                             the 4th black key from the right, tapped there, sets it too -- from the second tap, the
- *                             average of the last four gaps; a gap over 2 s starts again (build 103)
+ *                             average of the last four gaps; a gap over 2 s starts again (build 103). The key blinks at
+ *                             the tempo, the first quarter of each beat (build 104)
  *   SHIFT + PLAY              the metronome off or on (it clicks while REC or the looper is armed or recording)
  *   REC                       recording into the chosen track's steps. Stopped: armed (REC flashes, the metronome
  *                             counts), the first note played starts the sequencer and is step 1. Playing: recording
@@ -3120,8 +3121,13 @@ static void ui_leds(void)
             led_dim_key(14u + k, p && p->on && p->mute);
             continue;
         }
-        if (ui.page == PG_TEMPO && k == KEY_TAP) {   /* (TAP: dim, lit a moment as it is tapped; build 103) */
-            fm1_led_key(14u + k, (ui.keys >> k) & 1u);
+        if (ui.page == PG_TEMPO && k == KEY_TAP) {   /* (TAP: dim, lit while held; build 103. Build 104: lit the
+                                                      * first quarter of each beat at the tempo -- playing, the
+                                                      * sequencer's beats; stopped, from the last tap) */
+            uint32_t per = 600000u / (uint32_t)clampi(fx_bpm10, 100, 3000), g = seq_gcount;
+            int beat = seq_run && g != 0xFFFFFFFFu ? g % 4u == 0u
+                                                   : (fm1_ms - ui.tap_t0) % per < per / 4u;
+            fm1_led_key(14u + k, ((ui.keys >> k) & 1u) || beat);
             led_dim_key(14u + k, 1);
             continue;
         }

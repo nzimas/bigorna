@@ -1469,6 +1469,33 @@ static int cmd_projects(const char *dir)
             key(KEY_TAP, 0);
             EXPECT(ui.tempo == 60 && seq_dir[ui.sl] == d0, "TAP: in the step view too, the direction kept");
             ui.sv = 0;
+            {   /* (build 104) the key blinks at the tempo: 60 BPM, lit the first 250 ms of each second from the
+                 * last tap; playing, on the sequencer's beats */
+                uint32_t t0 = fm1_ms, on = 0, off = 0, g = seq_gcount;
+                for (i = 0; i < 2000; i += 50) {
+                    fm1_ms = t0 + i;
+                    ui_leds();
+                    if (host_led[14u + KEY_TAP] != ((i % 1000u) < 250u))
+                        off++;
+                    on += host_led[14u + KEY_TAP];
+                }
+                EXPECT(!off && on == 10, "TAP: blinks at the tempo, stopped (in phase with the last tap)");
+                seq_run = 1;
+                seq_gcount = 4;
+                ui_leds();
+                EXPECT(host_led[14u + KEY_TAP], "TAP: playing, lit on the beat");
+                seq_gcount = 6;
+                ui_leds();
+                EXPECT(!host_led[14u + KEY_TAP], "TAP: .. and dark between");
+                fm1_in.notes |= 1u << KEY_TAP;
+                ui.keys |= 1u << KEY_TAP;
+                ui_leds();
+                EXPECT(host_led[14u + KEY_TAP], "TAP: lit while held");
+                fm1_in.notes &= ~(1u << KEY_TAP);
+                ui.keys &= ~(1u << KEY_TAP);
+                seq_run = 0;
+                seq_gcount = g;
+            }
             tempo_set((int32_t)(k + 5u));
         }
         ui_draw();

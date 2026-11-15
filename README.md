@@ -49,7 +49,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | black key 4 | [MIDI LEARN](#midi-learn) on or off. |
 | black key 5 | chosen track's [arpeggiator](#arpeggiator) on or off. **Held** (0.8 s): its page. |
 | black key 7 | [PERFORMANCE](#performance) on or off (also on the PATTERNS grid; in the step view, **SHIFT +** it). |
-| black key 8 (4th from right) | On the [TEMPO](#tempo) page: **TAP**, tap the tempo. |
+| black key 8 (4th from right) | On the [TEMPO](#tempo) page: **TAP**, tap the tempo; it blinks at the tempo. |
 | black key 9 (3rd from right) | **STEP**: [step view](#step-view). **SHIFT +**: empty the chosen track's steps. |
 | black key 10 | **EDIT**: [sound pages](#sound-pages-edit). |
 | black key 11 (last) | **SHIFT**. |
@@ -507,7 +507,8 @@ tempo playing; the session keeps the last tempo set, for a session loaded at suc
 
 **Tap tempo.** On the TEMPO page, tap black key 8 (the 4th from the right) in time. The second tap sets the tempo; each
 tap after it sets it again from the average of the last four gaps between taps. A gap longer than 2 s starts a new
-count, and that tap sets nothing. The key lights while held. On the TEMPO page the key plays no note and, in the step
+count, and that tap sets nothing. The key blinks at the tempo, lit for the first quarter of each beat: while the
+sequencer plays, on its beats; stopped, counted from the last tap. It is also lit while held. On the TEMPO page the key plays no note and, in the step
 view, does not set RANDOM. While the FM-1 follows an external clock, a tap shows EXT TEMPO and changes nothing.
 
 ## Patterns
