@@ -70,7 +70,9 @@
  *                             there (this track or another); the same again, or the step view off: let go
  *   PLAY                      the sequencer, as it is let go: plays, or stops (and recording ends, a loop being
  *                             recorded is dropped). Held 0.8 s: the TEMPO page, up or down -- the session's tempo,
- *                             large; PRESETS sets it (a track's button, or another page, takes it down too)
+ *                             large; PRESETS sets it (a track's button, or another page, takes it down too). TAP:
+ *                             the 4th black key from the right, tapped there, sets it too -- from the second tap, the
+ *                             average of the last four gaps; a gap over 2 s starts again (build 103)
  *   SHIFT + PLAY              the metronome off or on (it clicks while REC or the looper is armed or recording)
  *   REC                       recording into the chosen track's steps. Stopped: armed (REC flashes, the metronome
  *                             counts), the first note played starts the sequencer and is step 1. Playing: recording
@@ -126,6 +128,7 @@ static const uint8_t KEY_DIR[3] = {13, 15, 17};  /* (the 6th .. 8th: REVERSE, PI
 static const char *const DIR_NAME[NDIR] = {"FORWARD", "REVERSE", "PING-PONG", "RANDOM"};
 #define SHOWN_DIAL 30u               /* (ui.shown_page: the dial up; the step's own page) */
 #define SHOWN_STEP 31u
+#define KEY_TAP 17u                  /* (the 4th black key from the right: TAP on the TEMPO page; build 103) */
 #define KEY_READER 13u               /* (the 6th: with SHIFT, the SCREEN READER on or off; KEY_DIR's REVERSE without) */
 #define KEY_NONE 0xFFu
 
@@ -188,6 +191,8 @@ static struct {
     uint8_t rot[NLANE];          /* .. and how far its steps have been rotated (where its Euclidean pattern begins) */
     uint8_t mod;                 /* MOD on (the 4th): a step held shows its MOD page */
     uint8_t play_down, play_long;   /* PLAY held: since play_t0; held 0.8 s (the TEMPO page) */
+    uint8_t tap_n;               /* (build 103) TAP on the TEMPO page: the gaps kept (0 .. 4), the newest first .. */
+    uint32_t tap_t0, tap_iv[4];  /* .. the last tap's time, the intervals between taps (ms) */
     uint32_t play_t0;
     uint8_t sk, sk_long;         /* SHIFT and a step key held (KEY_NONE none): since sk_t0; held 0.8 s */
     uint32_t sk_t0;
@@ -2588,6 +2593,35 @@ static void ui_input(void)
         ui.rd_flip = 1;
         ch &= ~(1u << KEY_READER);
     }
+    if (ui.page == PG_TEMPO && (ch >> KEY_TAP & 1u)) {   /* (build 103) TAP: on the TEMPO page, the 4th black key from
+                                                      * the right sets the tempo as it is tapped (nothing else there:
+                                                      * no note, no direction) */
+        if (keys >> KEY_TAP & 1u) {
+            uint32_t d = fm1_ms - ui.tap_t0, i, sum = 0;
+            if (midi_slave())
+                say("EXT TEMPO", 900);           /* (following a clock: its tempo) */
+            else if (ui.tap_t0 && d < 100u)
+                ;                                /* (a bounce, under 0.1 s: not a tap) */
+            else {
+                if (!ui.tap_t0 || d > 2000u)
+                    ui.tap_n = 0;                /* (the first tap, or after a gap over 2 s: from here) */
+                else {
+                    for (i = 3; i > 0; i--)
+                        ui.tap_iv[i] = ui.tap_iv[i - 1];
+                    ui.tap_iv[0] = d;
+                    if (ui.tap_n < 4)
+                        ui.tap_n++;
+                    for (i = 0; i < ui.tap_n; i++)
+                        sum += ui.tap_iv[i];
+                    tempo_set((int32_t)((60000u * ui.tap_n + sum / 2u) / sum));   /* (10 .. 300) */
+                    prj_dirty = 1;
+                    ui.force = 1;
+                }
+                ui.tap_t0 = fm1_ms ? fm1_ms : 1u;
+            }
+        }
+        ch &= ~(1u << KEY_TAP);
+    }
     {   /* (build 79) a DRUM track's button held and a white key 1 .. 4: its subtrack ST-A .. ST-D chosen (taken if new).
          * (build 81) SHIFT with it: a subtrack taken, let go soon, muted or playing again; held 0.8 s, one past ST-A
          * given up. The key plays nothing */
@@ -3084,6 +3118,11 @@ static void ui_leds(void)
             const loop_t *p = w < (int32_t)NLOOP ? lp_get(ui.sel, (uint32_t)w) : 0;
             fm1_led_key(14u + k, p && p->on && !p->mute);
             led_dim_key(14u + k, p && p->on && p->mute);
+            continue;
+        }
+        if (ui.page == PG_TEMPO && k == KEY_TAP) {   /* (TAP: dim, lit a moment as it is tapped; build 103) */
+            fm1_led_key(14u + k, (ui.keys >> k) & 1u);
+            led_dim_key(14u + k, 1);
             continue;
         }
         if (ui.page == PG_PRJ && white_ix(k) >= 0) {   /* (the SESSIONS grid: the sixteen dim, the one playing lit) */

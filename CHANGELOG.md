@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 103
+
+Added
+- Tap tempo: on the TEMPO page (PLAY held 0.8 s), black key 8 (the 4th from the right) sets the tempo as it is tapped.
+  From the second tap, the tempo is the average of the last four gaps between taps (10 to 300 BPM); a gap over 2 s
+  starts a new count. Taps under 0.1 s apart are ignored. The key is dim on the TEMPO page and lit while held. There
+  it plays no note and, in the step view, does not set the RANDOM direction. Following an external clock, a tap shows
+  EXT TEMPO and changes nothing.
+
 ## Build 102
 
 Changed

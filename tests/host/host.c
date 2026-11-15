@@ -1428,6 +1428,49 @@ static int cmd_projects(const char *dir)
         EXPECT(ui.page == PG_TEMPO && !seq_run, "PLAY held: the TEMPO page (not played)");
         turn(EN_PRESET, 5);
         EXPECT(ui.tempo == (int16_t)(k + 5u) && fx_bpm10 == (int32_t)(k + 5u) * 10, "PRESETS: the tempo");
+        {   /* (build 103) TAP: the 4th black key from the right on the TEMPO page */
+            uint32_t i, d0 = seq_dir[ui.sl];
+            fm1_ms += 3000;
+            for (i = 0; i < 5; i++) {
+                key(KEY_TAP, 1);
+                EXPECT(ui.key_track[KEY_TAP] == KEY_NONE, "TAP: plays no note");
+                key(KEY_TAP, 0);
+                if (!i)
+                    EXPECT(ui.tempo == (int16_t)(k + 5u), "TAP: the first tap sets nothing");
+                fm1_ms += 500;
+            }
+            EXPECT(ui.tempo == 120 && fx_bpm10 == 1200 && prj_dirty, "TAP: taps 0.5 s apart, 120 BPM");
+            for (i = 0; i < 5; i++) {
+                key(KEY_TAP, 1);
+                key(KEY_TAP, 0);
+                fm1_ms += 400;
+            }
+            EXPECT(ui.tempo == 150, "TAP: the last four gaps (0.4 s), 150 BPM");
+            key(KEY_TAP, 1);                     /* (a bounce: not a tap) */
+            fm1_ms += 30;
+            key(KEY_TAP, 0);
+            key(KEY_TAP, 1);
+            key(KEY_TAP, 0);
+            EXPECT(ui.tempo == 150, "TAP: a bounce under 0.1 s changes nothing");
+            fm1_ms += 2500;
+            key(KEY_TAP, 1);
+            key(KEY_TAP, 0);
+            EXPECT(ui.tempo == 150, "TAP: after a gap over 2 s, from that tap");
+            fm1_ms += 250;
+            key(KEY_TAP, 1);
+            key(KEY_TAP, 0);
+            EXPECT(ui.tempo == 240, "TAP: .. the next sets it (0.25 s, 240 BPM)");
+            ui.sv = 1;                           /* (in the step view too: TAP, not RANDOM) */
+            fm1_ms += 3000;
+            key(KEY_TAP, 1);
+            key(KEY_TAP, 0);
+            fm1_ms += 1000;
+            key(KEY_TAP, 1);
+            key(KEY_TAP, 0);
+            EXPECT(ui.tempo == 60 && seq_dir[ui.sl] == d0, "TAP: in the step view too, the direction kept");
+            ui.sv = 0;
+            tempo_set((int32_t)(k + 5u));
+        }
         ui_draw();
         shot(dir, "tempo_page");
         btn(B_FX, 0);
