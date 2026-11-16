@@ -49,7 +49,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | black key 4 | [MIDI LEARN](#midi-learn) on or off. |
 | black key 5 | chosen track's [arpeggiator](#arpeggiator) on or off. **Held** (0.8 s): its page. |
 | black key 7 | [PERFORMANCE](#performance) on or off (also on the PATTERNS grid; in the step view, **SHIFT +** it). |
-| black key 8 (4th from right) | On the [TEMPO](#tempo) page: **TAP**, tap the tempo; it blinks at the tempo. |
+| black key 8 (4th from right) | **SHIFT +**, **held**: [SHUFFLER](#shuffler). On the [TEMPO](#tempo) page: **TAP**, tap the tempo; it blinks at the tempo. |
 | black key 9 (3rd from right) | **STEP**: [step view](#step-view). **SHIFT +**: empty the chosen track's steps. |
 | black key 10 | **EDIT**: [sound pages](#sound-pages-edit). |
 | black key 11 (last) | **SHIFT**. |
@@ -306,6 +306,18 @@ are left alone; loops play on as recorded.
 **Saving a break.** BREAK also works on the PATTERNS grid. There, with black key 3 held and the sequencer playing, hold
 a white key 0.8 s: the break, as it plays, is saved into that pattern slot (BREAK SAVED, PATTERN n). The pattern
 playing goes on.
+
+### SHUFFLER
+
+While the sequencer plays, on the track's view (step view off), **hold SHIFT and black key 8** (the 4th from the
+right). The step events of the tracks and subtracks are traded among them at random: each lane that holds steps plays
+another lane's trigs, with their velocity, length, trig condition, ratchet, MOD (MUTATE, MIDI FX) and parameter locks.
+Each lane keeps its own sound and its own pitches: on a step it gives no note to, it plays its last note before that
+step. The lanes are drawn again every 2, 4 or 8 sixteenths. SHIFT can be let go once SHUFFLER is on; it lasts until
+black key 8 is let go. Nothing is written into the steps: each lane's position goes on underneath, and let go, every
+lane plays its own steps again. Loops play on as recorded. A lane with no steps stays silent.
+
+A lock moved to a lane on another machine sets that machine's parameter in the same place (page and knob).
 
 ### PERFORMANCE
 

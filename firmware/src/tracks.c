@@ -737,6 +737,7 @@ static const uint8_t RTG_N[NRTG] = {1, 2, 3, 4, 6, 8};
 static const char *const RTG_NAME[NRTG] = {"OFF", "2", "3", "4", "6", "8"};
 static volatile uint8_t seq_rtg[NLANE][NSTEP];
 static uint8_t rt_left[NLANE], rt_note[NLANE], rt_vel[NLANE], rt_step[NLANE], rt_chf[NLANE], rt_n[NLANE];
+static uint8_t rt_src[NLANE];           /* (the lane whose step it is: its locks; SHUFFLER's, build 105) */
 static uint32_t rt_next[NLANE], rt_int[NLANE];
 /* a step's MOD (the step view's 4th black key): MUTATE -- its note moved by so many steps of the scale (-12 .. 12;
  * MUT_RND: a step of the scale drawn at random, up to an octave either way) -- every (seq_mcy + 1) times it plays;
@@ -805,9 +806,10 @@ static void chord_of(int32_t root, uint32_t form, int32_t *n)   /* the chord's t
 }
 /* the MIDI FX's notes to come: a track's, each so many blocks from now (note 0: a free place) */
 #define FXQ 8u
-typedef struct { uint16_t left; uint8_t note, vel, len8, step; } fxq_t;   /* (left: up to ~47 s -- an echo of a 1/8
+typedef struct { uint16_t left; uint8_t note, vel, len8, step, src, chf; } fxq_t;   /* (left: up to ~47 s -- an echo of a 1/8
                                                   * clock below ~15 BPM comes no later) */
 static fxq_t fxq[NLANE][FXQ];
+static uint8_t fxq_src, fxq_chf;                 /* (seq_trig's: the lane whose step it is -- its locks -- and the chord) */
 static void fxq_add(uint32_t t, uint32_t blocks, int32_t note, int32_t vel, uint32_t len8, uint32_t step)
 {
     uint32_t k;
@@ -819,6 +821,8 @@ static void fxq_add(uint32_t t, uint32_t blocks, int32_t note, int32_t vel, uint
     fxq[t][k].vel = (uint8_t)clampi(vel, 1, 127);
     fxq[t][k].len8 = (uint8_t)clampi((int32_t)len8, 1, 255);
     fxq[t][k].step = (uint8_t)step;
+    fxq[t][k].src = fxq_src;
+    fxq[t][k].chf = fxq_chf;
     fxq[t][k].note = (uint8_t)note;
 }
 
@@ -1116,6 +1120,65 @@ static uint32_t brk_step(uint32_t t, uint32_t p, uint32_t len)
         brk_vp[t] = (uint8_t)(p % 4u == 0u ? 100u : 55u + brk_rnd(40));
     return src;
 }
+/* SHUFFLER (build 105): while SHIFT and the 4th black key from the right are held (the track's view), the lanes'
+ * step events traded among them at random -- each lane that holds steps plays another's trigs, velocities, lengths,
+ * conditions, ratchets, MOD and locks, on its own sound and at its own pitches (its step's note, else the last one
+ * before it), a piece of 2, 4 or 8 of the tempo's 16ths at a time, then another draw. The steps are not written:
+ * each lane's position goes on, let go it plays its own again. The loops are left alone */
+static volatile uint8_t shf_on;                  /* (the main loop's: held) .. */
+static volatile uint32_t shf_seed;               /* (.. a new one each press) */
+static uint32_t shf_seen, shf_r, shf_left;
+static uint8_t shf_src[NLANE] = {0, 1, 2, 3, 4, 5, 6, 7, 8};   /* (the ISR's: the lane each plays the steps of) */
+static volatile uint32_t shf_draws;              /* (the pieces drawn since the press: the tests') */
+static uint32_t shf_rnd(uint32_t n)
+{
+    shf_r = shf_r * 1664525u + 1013904223u;
+    return n ? (shf_r >> 16) % n : 0u;
+}
+static void shf_tick(void)                       /* (each of the tempo's 16ths, playing) */
+{
+    static const uint8_t PIECE[4] = {2, 4, 4, 8};
+    uint8_t pool[NLANE], perm[NLANE];
+    uint32_t l, i, n = 0, same = 1;
+    if (!shf_on) {
+        for (l = 0; l < NLANE; l++)
+            shf_src[l] = (uint8_t)l;
+        return;
+    }
+    if (shf_seed != shf_seen) {                  /* pressed: a draw now */
+        shf_seen = shf_seed;
+        shf_r = shf_seed | 1u;
+        shf_left = 0;
+        shf_draws = 0;
+    }
+    if (shf_left && --shf_left)
+        return;
+    for (l = 0; l < NLANE; l++) {                /* (the lanes that play and hold steps) */
+        shf_src[l] = (uint8_t)l;
+        if (ln_on[l])
+            for (i = 0; i < NSTEP; i++)
+                if (seq_note[l][i]) {
+                    pool[n++] = (uint8_t)l;
+                    break;
+                }
+    }
+    shf_left = PIECE[shf_rnd(4)];
+    shf_draws++;
+    if (n < 2u)
+        return;
+    for (i = 0; i < n; i++)
+        perm[i] = pool[i];
+    for (i = n - 1u; i > 0u; i--) {              /* (Fisher-Yates) */
+        uint32_t j = shf_rnd(i + 1u);
+        uint8_t x = perm[i];
+        perm[i] = perm[j];
+        perm[j] = x;
+    }
+    for (i = 0; i < n; i++)
+        same &= perm[i] == pool[i];
+    for (i = 0; i < n; i++)                      /* (never all their own: then each the next one's) */
+        shf_src[pool[i]] = same ? pool[(i + 1u) % n] : perm[i];
+}
 static int seq_roll(uint32_t t)                  /* (PROB: the step plays this time) */
 {
     if (!seq_pms[t])
@@ -1123,24 +1186,37 @@ static int seq_roll(uint32_t t)                  /* (PROB: the step plays this t
     seq_rnd = seq_rnd * 1664525u + 1013904223u;
     return (seq_rnd >> 16) % 100u >= seq_pms[t];
 }
-static void seq_trig(uint32_t t, uint32_t p)
+/* track t's step p plays -- its events from lane s's step ps (s == t, ps == p: its own; SHUFFLER: another lane's,
+ * its trig, velocity, length, condition, ratchet, MOD and locks, on t's sound at t's own pitch) */
+static void seq_trig_from(uint32_t t, uint32_t p, uint32_t s, uint32_t ps)
 {
-    uint32_t n = seq_note[t][p], g = seq_glen[t][p], i;
-    if (seq_skip[t][p]) {
+    uint32_t n = seq_note[s][ps], g = seq_glen[s][ps], i, f1 = seq_chf[t][p];
+    const volatile uint8_t *lid = seq_lid[s][ps];
+    const volatile int16_t *lv = seq_lv[s][ps];
+    if (s == t && seq_skip[t][p]) {
         seq_skip[t][p] = 0;
         return;
     }
-    if (!n || !seq_cond_ok(t, seq_cond[t][p]) || !seq_roll(t))
+    if (!n || !seq_cond_ok(t, seq_cond[s][ps]) || !seq_roll(t))
         return;
+    if (s != t) {                                /* (the pitch the lane's own: its step's, else the last before it) */
+        uint32_t len = seq_len[t] ? seq_len[t] : NSTEP, k, pc = p;
+        for (k = 0; k < len && !seq_note[t][pc]; k++)
+            pc = pc ? pc - 1u : len - 1u;
+        if (!seq_note[t][pc])
+            return;
+        n = seq_note[t][pc];
+        f1 = seq_chf[t][pc];
+    }
     {
-        uint32_t r8 = DIV_R8[seq_dcur[t] % NDIV], rn = brk_rt[t] ? brk_rt[t] : RTG_N[seq_rtg[t][p] % NRTG];
+        uint32_t r8 = DIV_R8[seq_dcur[t] % NDIV], rn = brk_rt[t] ? brk_rt[t] : RTG_N[seq_rtg[s][ps] % NRTG];
         uint32_t c = ++seq_plays[t][p], fx = MFX_OFF;
         uint32_t len8 = g >= GLEN_INF ? 0u : (uint32_t)maxi(1, GLEN_8TH[g] * 8 / (int32_t)r8);   /* (in the tempo's
                                                                                               * 16ths) */
         uint32_t sb = SEQ_STEP8 / (CTL * (uint32_t)clampi(fx_bpm10, 100, 3000) * r8);   /* (the step, in blocks) */
-        uint32_t vel = (seq_vel[t][p] ? seq_vel[t][p] : VEL_DEF) * brk_vp[t] / 100u, k, l8 = len8 ? len8 : 64u / r8;
-        int32_t m = seq_mut[t][p];
-        if (m && c % (seq_mcy[t][p] + 1u) == 0u) {   /* MUTATE */
+        uint32_t vel = (seq_vel[s][ps] ? seq_vel[s][ps] : VEL_DEF) * brk_vp[t] / 100u, k, l8 = len8 ? len8 : 64u / r8;
+        int32_t m = seq_mut[s][ps];
+        if (m && c % (seq_mcy[s][ps] + 1u) == 0u) {   /* MUTATE */
             int32_t d = m;
             if (m == MUT_RND) {
                 int32_t nn = sc_count();
@@ -1149,24 +1225,26 @@ static void seq_trig(uint32_t t, uint32_t p)
             }
             n = (uint32_t)sc_move((int32_t)n, d);
         }
-        if (seq_mfx[t][p] && c % (seq_fcy[t][p] + 1u) == 0u)
-            fx = seq_mfx[t][p] % NMFX;
+        if (seq_mfx[s][ps] && c % (seq_fcy[s][ps] + 1u) == 0u)
+            fx = seq_mfx[s][ps] % NMFX;
         if (brk_oct[t] && (int32_t)n + brk_oct[t] >= 24 && (int32_t)n + brk_oct[t] <= 108)   /* (BREAK's leap) */
             n = (uint32_t)((int32_t)n + brk_oct[t]);
         if (brk_fl[t] && fx == MFX_OFF)          /* (BREAK's flam) */
             fx = MFX_FLAM;
         for (k = 0; k < NPL; k++) {              /* (the track's locks: until its next step plays) */
-            uint32_t id = seq_lid[t][p][k];
-            trk[t].tv[k] = seq_lv[t][p][k];
+            uint32_t id = lid[k];
+            trk[t].tv[k] = lv[k];
             trk[t].tid[k] = (uint8_t)(id != PL_NONE && pl_track(id) ? id : PL_NONE);
         }
         seq_played[t] = (uint8_t)n;
+        fxq_src = (uint8_t)s;
+        fxq_chf = (uint8_t)f1;
         if (fx == MFX_DROP)
             return;
         if (fx == MFX_LATE || fx == MFX_GRACE) { /* the note a little late (a grace note a step below before it) */
             if (fx == MFX_GRACE)
-                seq_sound(t, (uint32_t)sc_move((int32_t)n, -1), vel * 3u / 5u, 4u, seq_lid[t][p], seq_lv[t][p]);
-            fxq_add(t, fx == MFX_LATE ? sb / 2u : sb / 3u, (int32_t)n, (int32_t)vel, l8, p);
+                seq_sound(t, (uint32_t)sc_move((int32_t)n, -1), vel * 3u / 5u, 4u, lid, lv);
+            fxq_add(t, fx == MFX_LATE ? sb / 2u : sb / 3u, (int32_t)n, (int32_t)vel, l8, ps);
             return;
         }
         if (rn > 1u) {                           /* a ratchet: the hits after the first, as the step goes on */
@@ -1178,12 +1256,13 @@ static void seq_trig(uint32_t t, uint32_t p)
             rt_next[t] = seq_tacc[t] + rt_int[t];
             rt_note[t] = (uint8_t)n;
             rt_vel[t] = (uint8_t)maxi(1, (int32_t)vel);
-            rt_step[t] = (uint8_t)p;
+            rt_step[t] = (uint8_t)ps;
+            rt_src[t] = (uint8_t)s;
             rt_n[t] = (uint8_t)rn;
-            rt_chf[t] = seq_chf[t][p];
+            rt_chf[t] = (uint8_t)f1;
         }
         seq_istep = (uint8_t)p;                  /* (its INF notes: this step's) */
-        seq_soundc(t, n, vel, len8, seq_lid[t][p], seq_lv[t][p], seq_chf[t][p]);
+        seq_soundc(t, n, vel, len8, lid, lv, f1);
         switch (fx) {                            /* the MIDI FX's notes with it, and to come */
         case MFX_ECHO:
         case MFX_ECHOUP:
@@ -1193,29 +1272,29 @@ static void seq_trig(uint32_t t, uint32_t p)
             for (k = 1; k <= 3u; k++) {          /* (build 90: three, two steps apart -- an 8th at 1X; were two, half
                                                   * a step apart, lost in the note itself) */
                 e = sc_move(e, d);
-                fxq_add(t, sb * 2u * k, e, (int32_t)(vel * EV[k - 1u] / 100u), l8 < 8u ? l8 : 8u, p);
+                fxq_add(t, sb * 2u * k, e, (int32_t)(vel * EV[k - 1u] / 100u), l8 < 8u ? l8 : 8u, ps);
             }
             break;
         }
         case MFX_STUT:                           /* (build 90: four repeats half a step apart, 32nds at 1X; were
                                                   * three in the step's first half, ~15 ms apart) */
             for (k = 1; k <= 4u; k++)
-                fxq_add(t, sb * k / 2u, (int32_t)n, (int32_t)(vel * (10u - k) / 10u), 2u, p);
+                fxq_add(t, sb * k / 2u, (int32_t)n, (int32_t)(vel * (10u - k) / 10u), 2u, ps);
             break;
         case MFX_FLAM:
-            fxq_add(t, FS * 30u / 1000u / CTL, (int32_t)n, (int32_t)(vel * 3u / 4u), l8, p);   /* (30 ms; was ~12) */
+            fxq_add(t, FS * 30u / 1000u / CTL, (int32_t)n, (int32_t)(vel * 3u / 4u), l8, ps);   /* (30 ms; was ~12) */
             break;
         case MFX_FIFTH:
-            seq_sound(t, (uint32_t)sc_snap((int32_t)n + 7), vel * 4u / 5u, len8, seq_lid[t][p], seq_lv[t][p]);
+            seq_sound(t, (uint32_t)sc_snap((int32_t)n + 7), vel * 4u / 5u, len8, lid, lv);
             break;
         case MFX_TRIAD:
-            seq_sound(t, (uint32_t)sc_move((int32_t)n, 2), vel * 4u / 5u, len8, seq_lid[t][p], seq_lv[t][p]);
-            seq_sound(t, (uint32_t)sc_snap((int32_t)n + 7), vel * 4u / 5u, len8, seq_lid[t][p], seq_lv[t][p]);
+            seq_sound(t, (uint32_t)sc_move((int32_t)n, 2), vel * 4u / 5u, len8, lid, lv);
+            seq_sound(t, (uint32_t)sc_snap((int32_t)n + 7), vel * 4u / 5u, len8, lid, lv);
             break;
         case MFX_OCTUP:
         case MFX_OCTDN:
             if ((fx == MFX_OCTUP && n <= 108u) || (fx == MFX_OCTDN && n >= 24u))
-                seq_sound(t, fx == MFX_OCTUP ? n + 12u : n - 12u, vel * 4u / 5u, len8, seq_lid[t][p], seq_lv[t][p]);
+                seq_sound(t, fx == MFX_OCTUP ? n + 12u : n - 12u, vel * 4u / 5u, len8, lid, lv);
             break;
         default:
             break;
@@ -1224,6 +1303,7 @@ static void seq_trig(uint32_t t, uint32_t p)
     }
     (void)i;
 }
+static void seq_trig(uint32_t t, uint32_t p) { seq_trig_from(t, p, t, p); }
 static void fxq_block(void)                      /* (each block, playing: the MIDI FX's notes come due) */
 {
     uint32_t t, k;
@@ -1231,7 +1311,7 @@ static void fxq_block(void)                      /* (each block, playing: the MI
         for (k = 0; k < FXQ; k++) {
             fxq_t *q = &fxq[t][k];
             if (q->note && !--q->left) {
-                seq_soundc(t, q->note, q->vel, q->len8, seq_lid[t][q->step], seq_lv[t][q->step], seq_chf[t][q->step]);
+                seq_soundc(t, q->note, q->vel, q->len8, seq_lid[q->src][q->step], seq_lv[q->src][q->step], q->chf);
                 q->note = 0;
             }
         }
@@ -1825,6 +1905,7 @@ static void seq_block(void)
         seq_gcount++;
         met_tick(seq_gstep);
         brk_tick();
+        shf_tick();
         loop_step();
     }
     {   /* BREAK let go: its ratchets and echoes still to come dropped at once, so the pattern is back as the key
@@ -1860,15 +1941,20 @@ static void seq_block(void)
             brk_vp[t] = 100;
             if ((brk_mask >> LANE_T(t) & 1u) && !(brk_keep >> t & 1u) && brk_shown != 0xFFu)
                 q = brk_step(t, p, len);         /* (BREAK: another step, its own position kept) */
-            if (q != 0xFFu && ln_on[t])
-                seq_trig(t, q);
+            if (q != 0xFFu && ln_on[t]) {
+                uint32_t sl = shf_src[t];        /* (SHUFFLER: another lane's step there, its own position kept) */
+                if (shf_on && sl != t && sl < NLANE)
+                    seq_trig_from(t, q, sl, q % (seq_len[sl] ? seq_len[sl] : NSTEP));
+                else
+                    seq_trig(t, q);
+            }
             brk_rt[t] = brk_fl[t] = 0;
             brk_oct[t] = 0;
         } else if (rt_left[t] && seq_tacc[t] >= rt_next[t]) {   /* the ratchet's next hit */
             uint32_t r8 = DIV_R8[seq_dcur[t] % NDIV], rn = rt_n[t];
             rt_vel[t] = (uint8_t)maxi(1, rt_vel[t] - rt_vel[t] / 8);
             seq_soundc(t, rt_note[t], rt_vel[t], (uint32_t)maxi(1, (int32_t)(64u / r8 / (2u * (rn > 1u ? rn : 2u)))),
-                       seq_lid[t][rt_step[t]], seq_lv[t][rt_step[t]], rt_chf[t]);
+                       seq_lid[rt_src[t]][rt_step[t]], seq_lv[rt_src[t]][rt_step[t]], rt_chf[t]);
             rt_next[t] += rt_int[t];
             rt_left[t]--;
         }

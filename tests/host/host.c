@@ -1839,6 +1839,96 @@ static int cmd_projects(const char *dir)
         for (i = 0; i < NSTEP; i++)
             seq_note[0][i] = 0;
     }
+    {   /* SHUFFLER (build 105): SHIFT and the 4th black key from the right held on the track's view -- two lanes with
+         * steps trade their events: lane 0 plays lane 1's trigs and locks at its own pitch, and the other way round;
+         * let go, each its own again */
+        int32_t out[2 * CTL];
+        static uint8_t keep[NLANE][NSTEP];
+        uint32_t i, l, last, snd, own = 1, took = 1, pitch = 1, lock = 0, back = 1, n0 = 0;
+        memcpy(keep, (const void *)seq_note, sizeof keep);
+        memset((void *)seq_note, 0, sizeof seq_note);
+        for (l = 0; l < 2u; l++) {
+            seq_len[l] = 0;
+            seq_dir[l] = DIR_FWD;
+            seq_div[l] = SEQ_DIV1;
+            seq_pms[l] = seq_swg[l] = 0;
+            for (i = 0; i < NSTEP; i++) {
+                seq_vel[l][i] = 100;
+                seq_glen[l][i] = GLEN_DEF;
+                seq_cond[l][i] = CD_NONE;
+                seq_rtg[l][i] = 0;
+                seq_mut[l][i] = 0;
+                seq_mfx[l][i] = MFX_OFF;
+                seq_chf[l][i] = 0;
+                memset((void *)seq_lid[l][i], PL_NONE, NPL);
+            }
+        }
+        for (i = 0; i < NSTEP; i += 2u)          /* (lane 0: the even steps, 48; lane 1: every 4th from 3, 72, a lock) */
+            seq_note[0][i] = 48;
+        for (i = 3; i < NSTEP; i += 4u) {
+            seq_note[1][i] = 72;
+            seq_lv[1][i][0] = 99;
+            seq_lid[1][i][0] = PL_DEL;
+        }
+        ui.sel = 0;
+        ui.page = PG_MAIN;
+        ui.sv = 0;
+        seq_run = 1;
+        while (seq_pos[0] != 1u)
+            mix_block(out);
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        key(KEY_SHF, 1);
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui_input();
+        EXPECT(ui.shf && shf_on && ui.key_track[KEY_SHF] == KEY_NONE, "SHIFT + the 4th black key from the right: "
+               "SHUFFLER, no note");
+        for (i = 0, last = seq_pos[0]; i < 32u; i++) {   /* (two bars, SHIFT let go: on while the key is held) */
+            snd = seq_sounded[0];
+            while (seq_pos[0] == last)
+                mix_block(out);
+            last = seq_pos[0];
+            if (seq_sounded[0] > snd) {
+                n0++;
+                took &= last % 4u == 3u;
+                pitch &= seq_played[0] == 48u;
+                lock |= trk[0].tid[0] == PL_DEL && trk[0].tv[0] == 99;
+            } else
+                took &= last % 4u != 3u;
+        }
+        EXPECT(n0 == 8u && took, "SHUFFLER: lane 0 plays lane 1's trigs");
+        EXPECT(pitch, "SHUFFLER: .. at lane 0's own pitch (the last note before, on an empty step)");
+        EXPECT(lock, "SHUFFLER: .. with lane 1's locks");
+        EXPECT(shf_draws >= 4u, "SHUFFLER: a piece at a time (8 16ths at most), drawn again");
+        ui_leds();
+        EXPECT(host_led[14u + KEY_SHF], "SHUFFLER: the key lit while held");
+        ui_draw();
+        shot(dir, "shuffler");
+        EXPECT(ui.msg[0], "SHUFFLER: its name shown");
+        key(KEY_SHF, 0);
+        EXPECT(!ui.shf && !shf_on, "let go: SHUFFLER off");
+        for (i = 0; i < 16u; i++) {
+            snd = seq_sounded[0];
+            while (seq_pos[0] == last)
+                mix_block(out);
+            last = seq_pos[0];
+            back &= (seq_sounded[0] > snd) == (last % 2u == 0u);
+            own &= seq_played[1] == 72u;
+        }
+        EXPECT(back && own, "let go: each lane its own steps again");
+        ui.page = PG_EDIT;                        /* (only on the track's view) */
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        key(KEY_SHF, 1);
+        EXPECT(!ui.shf, "SHUFFLER: not on another page");
+        key(KEY_SHF, 0);
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui.page = PG_MAIN;
+        seq_run = 0;
+        for (i = 0; i < 4u; i++)
+            mix_block(out);
+        memcpy((void *)seq_note, keep, sizeof keep);
+        for (i = 0; i < NSTEP; i++)
+            memset((void *)seq_lid[1][i], PL_NONE, NPL);
+    }
     {   /* BREAK leaves the loops alone (build 45, as before 41): a loop on track 2 the shape of track 1's steps;
          * under BREAK on every track the pattern is broken up, the loop plays its own steps -- during and after */
         int32_t out[2 * CTL];

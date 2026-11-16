@@ -1,5 +1,15 @@
 # Changelog
 
+## Build 105
+
+Added
+- SHUFFLER: on the track's view (step view off), SHIFT + black key 8 (the 4th from the right), held, trades the step
+  events of the tracks and subtracks among them at random while the sequencer plays. Each lane that holds steps plays
+  another lane's trigs with their velocity, length, condition, ratchet, MOD and parameter locks, on its own sound and
+  at its own pitches (on a step it gives no note to, its last note before it). The lanes are drawn again every 2, 4 or
+  8 sixteenths. Nothing is written into the steps; let go, each lane plays its own again. Loops are left alone. The
+  key is lit while held and plays no note; SHUFFLER shows on the screen.
+
 ## Build 104
 
 Changed

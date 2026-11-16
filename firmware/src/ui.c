@@ -31,6 +31,10 @@
  *                             after Quasar): the state kept, given back as it goes off; meanwhile KNOB 1 .. 4 move
  *                             every track with notes (projects.c)
  *   SHIFT + the 5th black key   every note stopped: the panic, from any page (tracks.c, all_notes_off; build 100)
+ *   SHIFT + the 4th black key from the right   (the track's view, the step view off) SHUFFLER while held (tracks.c;
+ *                             build 105): the lanes' step events -- trigs, velocities, lengths, conditions, ratchets,
+ *                             MOD, locks -- traded among the lanes that hold steps at random, a piece of 2 .. 8 16ths
+ *                             at a time, each on its own sound at its own pitches. Let go, each plays its own again
  *   SHIFT + the 6th black key   the SCREEN READER on or off, from any page (speech.c; build 99)
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
@@ -130,6 +134,7 @@ static const char *const DIR_NAME[NDIR] = {"FORWARD", "REVERSE", "PING-PONG", "R
 #define SHOWN_DIAL 30u               /* (ui.shown_page: the dial up; the step's own page) */
 #define SHOWN_STEP 31u
 #define KEY_TAP 17u                  /* (the 4th black key from the right: TAP on the TEMPO page; build 103) */
+#define KEY_SHF 17u                  /* (.. and with SHIFT on the track's view, SHUFFLER while held; build 105) */
 #define KEY_READER 13u               /* (the 6th: with SHIFT, the SCREEN READER on or off; KEY_DIR's REVERSE without) */
 #define KEY_NONE 0xFFu
 
@@ -164,6 +169,7 @@ static struct {
     uint8_t rd_flip;             /* SHIFT + the 6th black key: the SCREEN READER to turn on or off (reader_tick) */
     uint8_t mute_mode;           /* MUTE mode (the 2nd black key): the tracks' buttons mute, held 1 s solo (build 35) */
     uint8_t brk, brk_shown;      /* BREAK (the 3rd black key held): the tracks under it; the way last said (build 37) */
+    uint8_t shf;                 /* SHUFFLER (SHIFT + the 4th black key from the right, held; build 105) */
     uint8_t learn, lsel, listen; /* MIDI LEARN (the 4th black key, build 48): on; the row chosen on the page (0 .. 7);
                                   * waiting for a CC for it */
     uint8_t learn_dirty;         /* (bindings changed: written as MIDI LEARN goes off) */
@@ -2623,6 +2629,25 @@ static void ui_input(void)
         }
         ch &= ~(1u << KEY_TAP);
     }
+    /* (build 105) SHUFFLER: SHIFT and the 4th black key from the right held on the track's view (the step view off),
+     * the lanes' step events traded among them at random (tracks.c); the key let go, each plays its own again. It
+     * plays no note; let go of SHIFT first, it goes on until the key is let go */
+    if (!ui.shf && ((ch & keys) >> KEY_SHF & 1u) && sh && ui.page == PG_MAIN && !step_view() && !ui.lrec_down) {
+        shf_seed = next_seed() | 1u;
+        shf_on = 1;
+        ui.shf = 1;
+        say(seq_run ? "SHUFFLER" : "NOT PLAYING", seq_run ? 60000 : 900);
+        ch &= ~(1u << KEY_SHF);
+        ui.force = 1;
+    } else if (ui.shf) {
+        if (!((keys >> KEY_SHF) & 1u) || ui.page != PG_MAIN || step_view()) {
+            ui.shf = 0;
+            shf_on = 0;
+            ui.msg_until = fm1_ms;               /* (its name: gone with it) */
+            ui.force = 1;
+        }
+        ch &= ~(1u << KEY_SHF);
+    }
     {   /* (build 79) a DRUM track's button held and a white key 1 .. 4: its subtrack ST-A .. ST-D chosen (taken if new).
          * (build 81) SHIFT with it: a subtrack taken, let go soon, muted or playing again; held 0.8 s, one past ST-A
          * given up. The key plays nothing */
@@ -3143,6 +3168,10 @@ static void ui_leds(void)
                                      ? (fm1_ms / 250u) & 1u   /* (the one copied, the one waiting to play: blink) */
                                      : white_ix(k) == (int32_t)pat_cur && seq_pend != 1u);
             led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (ui.shf && k == KEY_SHF) {            /* (SHUFFLER: lit while held; build 105) */
+            fm1_led_key(14u + k, 1);
             continue;
         }
         if (!step_view() && k == KEY_MOD) {     /* (the MIDI LEARN key: lit while on, dim) */

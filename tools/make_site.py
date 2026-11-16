@@ -284,7 +284,8 @@ CONTROLS = [
     ([29, 30, 31], ["black key 6", "black key 7", "black key 8"],
      'In the step view: track\'s direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes. '
      '<b>SHIFT +</b> black key 6: <a href="#screen-reader">screen reader</a>. On the <a href="#tempo">TEMPO</a> '
-     "page, black key 8: <b>TAP</b>, tap the tempo; it blinks at the tempo."),
+     "page, black key 8: <b>TAP</b>, tap the tempo; it blinks at the tempo. <b>SHIFT +</b> black key 8, "
+     '<b>held</b>: <a href="#shuffler">SHUFFLER</a>.'),
     ([32], "black key 9", '<b>STEP</b>: <a href="#step-view">step view</a>. <b>SHIFT +</b>: empty the '
                           "chosen track's steps."),
     ([33], "black key 10", '<b>EDIT</b>: <a href="#sound-pages-edit">sound pages</a> (not the EDIT button, T5).'),
