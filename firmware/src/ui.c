@@ -3170,8 +3170,10 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (ui.shf && k == KEY_SHF) {            /* (SHUFFLER: lit while held; build 105) */
-            fm1_led_key(14u + k, 1);
+        if (k == KEY_SHF && (ui.shf || (ui.page == PG_MAIN && !step_view()))) {   /* (SHUFFLER: dim on the track's
+                                                      * view, lit while held -- build 105; dim, build 106) */
+            fm1_led_key(14u + k, ui.shf || ((ui.keys >> k) & 1u));
+            led_dim_key(14u + k, 1);
             continue;
         }
         if (!step_view() && k == KEY_MOD) {     /* (the MIDI LEARN key: lit while on, dim) */

@@ -1876,6 +1876,9 @@ static int cmd_projects(const char *dir)
         seq_run = 1;
         while (seq_pos[0] != 1u)
             mix_block(out);
+        ui_leds();
+        EXPECT(!host_led[14u + KEY_SHF] && host_dim_on(14u + KEY_SHF), "SHUFFLER: the key dim on the track's view "
+               "(build 106)");
         fm1_in.notes |= 1u << KEY_SHIFT;
         key(KEY_SHF, 1);
         fm1_in.notes &= ~(1u << KEY_SHIFT);
@@ -6229,11 +6232,12 @@ static int cmd_patsave(void)
     ui.scale = 0;                                /* (CHROMATIC: the key whose note is D) */
     ui_leds();
     for (k = 0, all = 0, j = 0; k < NKEY; k++)
-        if (key_plays(k) && host_dim_on(14u + k)) {
+        if (key_plays(k) && host_dim_on(14u + k) && k != KEY_SHF) {   /* (SHUFFLER's key: dim on the track's view,
+                                                                         * build 106) */
             all++;
             j |= (key_note(k, 0) + 120u - ui.root) % 12u != 0u;
         }
-    WEXPECT(all > 0u && !j, "chromatic: the keys dim the root's alone");
+    WEXPECT(all > 0u && !j, "chromatic: the keys dim the root's alone (and SHUFFLER's)");
     printf("patsave: %d failures\n", fails);
     return fails != 0;
 }

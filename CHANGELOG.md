@@ -1,5 +1,11 @@
 # Changelog
 
+## Build 106
+
+Changed
+- On the track's view (step view off), black key 8 (the 4th from the right) is dim, as SHIFT + it is SHUFFLER there.
+  It is lit while SHUFFLER is on.
+
 ## Build 105
 
 Added

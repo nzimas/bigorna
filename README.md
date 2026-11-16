@@ -313,7 +313,8 @@ While the sequencer plays, on the track's view (step view off), **hold SHIFT and
 right). The step events of the tracks and subtracks are traded among them at random: each lane that holds steps plays
 another lane's trigs, with their velocity, length, trig condition, ratchet, MOD (MUTATE, MIDI FX) and parameter locks.
 Each lane keeps its own sound and its own pitches: on a step it gives no note to, it plays its last note before that
-step. The lanes are drawn again every 2, 4 or 8 sixteenths. SHIFT can be let go once SHUFFLER is on; it lasts until
+step. On the track's view black key 8 is dim; it lights while SHUFFLER is on. The lanes are drawn again every 2, 4 or 8
+sixteenths. SHIFT can be let go once SHUFFLER is on; it lasts until
 black key 8 is let go. Nothing is written into the steps: each lane's position goes on underneath, and let go, every
 lane plays its own steps again. Loops play on as recorded. A lane with no steps stays silent.
 
