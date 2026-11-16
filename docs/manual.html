@@ -70,6 +70,7 @@
 <a href="#arpeggiator" class="sub">Arpeggiator</a>
 <a href="#mute-mode" class="sub">MUTE mode</a>
 <a href="#break" class="sub">BREAK</a>
+<a href="#shuffler" class="sub">SHUFFLER</a>
 <a href="#performance" class="sub">PERFORMANCE</a>
 <a href="#effects-seq">Effects (SEQ)</a>
 <a href="#sidechain" class="sub">Sidechain</a>
@@ -229,7 +230,7 @@
 <tr id="ctl-26" data-n="26"><td class="n"><a href="#fig-keys">26</a></td><td><b>black key 3</b></td><td rowspan="1"><b>Held</b>: <a href="#break">BREAK</a>; <b>SHIFT +</b>, on every track. In the step view: TRIG.</td></tr>
 <tr id="ctl-27" data-n="27"><td class="n"><a href="#fig-keys">27</a></td><td><b>black key 4</b></td><td rowspan="1"><a href="#midi-learn">MIDI LEARN</a>. In the step view: MOD.</td></tr>
 <tr id="ctl-28" data-n="28"><td class="n"><a href="#fig-keys">28</a></td><td><b>black key 5</b></td><td rowspan="1"><a href="#arpeggiator">arpeggiator</a>; <b>held</b> (0.8 s), its page. In the step view: <a href="#euclidean-steps">EUCLID mode</a>. <b>SHIFT +</b>: panic, every note stops.</td></tr>
-<tr id="ctl-29" data-n="29"><td class="n"><a href="#fig-keys">29</a></td><td><b>black key 6</b></td><td rowspan="3">In the step view: track's direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes. <b>SHIFT +</b> black key 6: <a href="#screen-reader">screen reader</a>. On the <a href="#tempo">TEMPO</a> page, black key 8: <b>TAP</b>, tap the tempo; it blinks at the tempo.</td></tr>
+<tr id="ctl-29" data-n="29"><td class="n"><a href="#fig-keys">29</a></td><td><b>black key 6</b></td><td rowspan="3">In the step view: track's direction, REVERSE, PING-PONG, RANDOM. In CHROMATIC: notes. <b>SHIFT +</b> black key 6: <a href="#screen-reader">screen reader</a>. On the <a href="#tempo">TEMPO</a> page, black key 8: <b>TAP</b>, tap the tempo; it blinks at the tempo. <b>SHIFT +</b> black key 8, <b>held</b>: <a href="#shuffler">SHUFFLER</a>.</td></tr>
 <tr id="ctl-30" data-n="30"><td class="n"><a href="#fig-keys">30</a></td><td><b>black key 7</b></td></tr>
 <tr id="ctl-31" data-n="31"><td class="n"><a href="#fig-keys">31</a></td><td><b>black key 8</b></td></tr>
 <tr id="ctl-32" data-n="32"><td class="n"><a href="#fig-keys">32</a></td><td><b>black key 9</b></td><td rowspan="1"><b>STEP</b>: <a href="#step-view">step view</a>. <b>SHIFT +</b>: empty the chosen track's steps.</td></tr>
@@ -267,7 +268,7 @@
 <tr><td>black key 4</td><td><a href="#midi-learn">MIDI LEARN</a> on or off.</td></tr>
 <tr><td>black key 5</td><td>chosen track's <a href="#arpeggiator">arpeggiator</a> on or off. <b>Held</b> (0.8 s): its page.</td></tr>
 <tr><td>black key 7</td><td><a href="#performance">PERFORMANCE</a> on or off (also on the PATTERNS grid; in the step view, <b>SHIFT +</b> it).</td></tr>
-<tr><td>black key 8 (4th from right)</td><td>On the <a href="#tempo">TEMPO</a> page: <b>TAP</b>, tap the tempo; it blinks at the tempo.</td></tr>
+<tr><td>black key 8 (4th from right)</td><td><b>SHIFT +</b>, <b>held</b>: <a href="#shuffler">SHUFFLER</a>. On the <a href="#tempo">TEMPO</a> page: <b>TAP</b>, tap the tempo; it blinks at the tempo.</td></tr>
 <tr><td>black key 9 (3rd from right)</td><td><b>STEP</b>: <a href="#step-view">step view</a>. <b>SHIFT +</b>: empty the chosen track's steps.</td></tr>
 <tr><td>black key 10</td><td><b>EDIT</b>: <a href="#sound-pages-edit">sound pages</a>.</td></tr>
 <tr><td>black key 11 (last)</td><td><b>SHIFT</b>.</td></tr>
@@ -420,6 +421,9 @@
 </table>
 <p>On top of the way, a break may add ratchets (faster the longer the key is held), flams on drums, octave leaps on melodic tracks, a gap at the end of each bar, and accents. A kick keeps the bar's first step and takes no leaps; drones are left alone; loops play on as recorded.</p>
 <p><b>Saving a break.</b> BREAK also works on the PATTERNS grid. There, with black key 3 held and the sequencer playing, hold a white key 0.8 s: the break, as it plays, is saved into that pattern slot (BREAK SAVED, PATTERN n). The pattern playing goes on.</p>
+<h3 id="shuffler">SHUFFLER</h3>
+<p>While the sequencer plays, on the track's view (step view off), <b>hold SHIFT and black key 8</b> (the 4th from the right). The step events of the tracks and subtracks are traded among them at random: each lane that holds steps plays another lane's trigs, with their velocity, length, trig condition, ratchet, MOD (MUTATE, MIDI FX) and parameter locks. Each lane keeps its own sound and its own pitches: on a step it gives no note to, it plays its last note before that step. The lanes are drawn again every 2, 4 or 8 sixteenths. SHIFT can be let go once SHUFFLER is on; it lasts until black key 8 is let go. Nothing is written into the steps: each lane's position goes on underneath, and let go, every lane plays its own steps again. Loops play on as recorded. A lane with no steps stays silent.</p>
+<p>A lock moved to a lane on another machine sets that machine's parameter in the same place (page and knob).</p>
 <h3 id="performance">PERFORMANCE</h3>
 <p>Black key 7 (in the step view, SHIFT + black key 7; also on the PATTERNS grid) turns PERFORMANCE on or off, after Elektron's temporary edits and CONTROL ALL. The key is lit while it is on, and PERF shows in red at the right of the track's view (REC, LOOP or ARM take its place while recording).</p>
 <p>Turned on, it keeps the state playing: every track's and subtrack's sound, the steps and their locks, lengths, clocks and directions, levels, pans, mutes, octaves, chords, arpeggiators, sidechains, the effects, tempo, scale and MUTE QT. Change anything: sounds, EDIT pages, phrases, steps, breaks. Turned off, all of it is put back as it was (RESTORED), and nothing is left marked unsaved. Sounds still ringing are not cut; they and the effects' tails ring out. Loops are not part of it: a loop recorded or emptied meanwhile stays so. With a pattern on its way, it does not turn on: WAIT shows.</p>
