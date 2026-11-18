@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 107
+
+Added
+- Set list: on the SESSIONS grid, SHIFT + black key 1 (the 1st from the left) marks the session under the cursor as
+  part of the set, or unmarks it (SET 3 ON / SET 3 OFF). A marked session's square is yellow and keeps its number;
+  under the cursor, the yellow sits inside the white square. Empty slots cannot be marked. The marks are kept in the
+  flash with the note of the last session; while the sequencer plays they are written when it stops, as writing the
+  flash pauses the sound. They are not in the USB backup.
+
 ## Build 106
 
 Changed

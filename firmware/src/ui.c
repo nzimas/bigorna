@@ -326,6 +326,8 @@ static void prj_grid_open(void);                 /* (projects.c: the SESSIONS gr
 static void prj_key_load(uint32_t w);
 static void prj_key_save(uint32_t w);
 static int prj_key_lit(uint32_t w);
+static void prj_key_mark(void);                  /* (.. SHIFT + the 1st black key: the SET; build 107) */
+static void prj_set_poll(void);
 static int perf_enter(void);                     /* (projects.c: PERFORMANCE's keeping and giving back) */
 static int perf_exit(void);
 static uint8_t perf_on;                          /* PERFORMANCE (the 7th black key) on: what changes, given back as it
@@ -2067,6 +2069,7 @@ static void ui_input(void)
     lmu_apply();
     (void)rel;
     pat_poll();                                      /* (a pattern switched as the sequencer took it in) */
+    prj_set_poll();                                  /* (the SET changed: written, stopped; build 107) */
     arp_take();                                      /* (the arpeggiator's notes recorded: build 52) */
     midi_poll();                                     /* (the clock followed, the CCs out: build 46) */
     setup_poll();
@@ -2836,7 +2839,10 @@ static void ui_input(void)
     }
     if (ui.page == PG_PRJ) {                         /* the SESSIONS grid (build 82): a white key let go soon, its
                                                       * session loaded; held 0.8 s, the session playing saved there
-                                                      * (projects.c) */
+                                                      * (projects.c); SHIFT + the 1st black key, the session under
+                                                      * the cursor in the SET or out (build 107) */
+        if (sh && ((ch & keys) >> KEY_GEN & 1u))
+            prj_key_mark();
         for (k = 0; k < NKEY; k++) {
             if (((ch & ~keys) >> k & 1u) && ui.key_track[k] != KEY_NONE) {   /* (a note held from before: let go) */
                 key_off(k);

@@ -274,7 +274,8 @@ CONTROLS = [
     ([23], "REC", '<a href="#recording">Record</a> into the steps. <b>SHIFT +</b>: <a href="#looper">looper</a>; '
                   "<b>held</b>, track's loops."),
     ([24], "black key 1", '<a href="#chord-mode">CHORD mode</a>; <b>SHIFT +</b>, next form. In the step view: '
-                          'new <a href="#phrases">phrase</a>. With SHIFT held on the PATTERNS grid: empty a pattern.'),
+                          'new <a href="#phrases">phrase</a>. With SHIFT held on the PATTERNS grid: empty a pattern. '
+                          '<b>SHIFT +</b> on the SESSIONS grid: the <a href="#sessions">set list</a>.'),
     ([25], "black key 2", '<a href="#mute-mode">MUTE mode</a>. In the step view: TRACK page.'),
     ([26], "black key 3", '<b>Held</b>: <a href="#break">BREAK</a>; <b>SHIFT +</b>, on every track. In the step view: '
                           "TRIG."),

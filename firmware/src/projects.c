@@ -18,7 +18,8 @@
  *                     page SAVE runs LOAD, SAVE, COPY or DELETE, or moves the focus to a value (TEMPO, MUTE QT,
  *                     CTRL -- PERFORMANCE's KNOBS or ALL: ui.c --, GEN LOCK -- HOME idle, build 85): PRESETS changes it,
  *                     SAVE sets it, SHIFT + SAVE leaves it as it was; SHIFT + SAVE goes back a page (from the list:
- *                     out). SHIFT + SAVE held 0.8 s: GLOBAL SETUP (setup.c)
+ *                     out). SHIFT + SAVE held 0.8 s: GLOBAL SETUP (setup.c). SHIFT + the 1st black key: the
+ *                     session under the cursor in the SET or out (yellow; build 107, prj_key_mark)
  *   SAVE              the PATTERNS grid, 1 .. 16 in four rows of four (SAVE again: out): PRESETS moves the cursor
  *                     (SAVE held there: nothing, build 87). The white keys are the 16 patterns there, lit dimly (the one playing brighter): a white
  *                     key let go soon loads its pattern (the grid stays); held 0.8 s, the pattern playing saved there,
@@ -719,16 +720,44 @@ static int lop_copy(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t to, uint32
     }
     return 0;
 }
-/* the last session, noted (only when it changes) */
+/* the last session and the SET (build 107: the sessions marked on the SESSIONS grid, a bit each -- the record's
+ * bytes 1 and 2, 0 before), written together; slot 0xFF none. Its own buffer, not prj_buf (PERFORMANCE's snapshot,
+ * a backup coming in) */
+static uint16_t prj_set, prj_set_kept;  /* the SET marked, and as the flash holds it */
+static int lst_write(int32_t k, uint16_t set)
+{
+    uint32_t w[(sizeof(prj_head_t) + 4u + 3u) / 4u];
+    uint8_t *b = (uint8_t *)w;
+    prj_head_t *h = (prj_head_t *)(void *)b;
+    memset(w, 0, sizeof w);
+    b[sizeof(prj_head_t)] = k < 0 ? 0xFFu : (uint8_t)k;
+    b[sizeof(prj_head_t) + 1u] = (uint8_t)set;
+    b[sizeof(prj_head_t) + 2u] = (uint8_t)(set >> 8);
+    h->magic = LST_MAGIC;
+    h->format = PRJ_FORMAT;
+    h->what = 0;
+    h->len = 4u;
+    h->body_crc = prj_crc(b + sizeof(prj_head_t), 4u);
+    h->head_crc = prj_crc(b, __builtin_offsetof(prj_head_t, head_crc));
+    if (prj_flash_erase(LST_SECT) || prj_flash_prog(LST_SECT, b, sizeof(prj_head_t) + 4u))
+        return -1;
+    lst_slot = (int8_t)k;
+    prj_set_kept = set;
+    return 0;
+}
+/* the last session, noted (only when it changes; the SET with it) */
 static void lst_note(uint32_t k)
 {
-    if (!prj_ok || lst_slot == (int8_t)k)
+    if (!prj_ok || (lst_slot == (int8_t)k && prj_set_kept == prj_set))
         return;
-    memset(prj_buf, 0, sizeof(prj_head_t) + 4u);
-    prj_buf[sizeof(prj_head_t)] = (uint8_t)k;
-    prj_head_fill(LST_MAGIC, 0, 4u);
-    if (!prj_flash_erase(LST_SECT) && !prj_flash_prog(LST_SECT, prj_buf, sizeof(prj_head_t) + 4u))
-        lst_slot = (int8_t)k;
+    lst_write((int32_t)k, prj_set);
+}
+/* each pass of the main loop: the SET changed, written -- stopped only (an erase pauses the sound), not in
+ * PERFORMANCE */
+static void prj_set_poll(void)
+{
+    if (prj_ok && prj_set != prj_set_kept && !seq_run && !perf_on)
+        lst_write(lst_slot, prj_set);
 }
 
 static void prj_scan(int flash_ok)
@@ -772,11 +801,14 @@ static void prj_scan(int flash_ok)
             lop_gmax = m.gen;
     }
     lst_slot = -1;
+    prj_set = prj_set_kept = 0;
     if (prj_ok && !prj_flash_read(LST_SECT, prj_buf, sizeof(prj_head_t) + 4u) &&
         prj_head_ok((const prj_head_t *)(void *)prj_buf, LST_MAGIC, 0, 4u) &&
-        ((const prj_head_t *)(void *)prj_buf)->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), 4u) &&
-        prj_buf[sizeof(prj_head_t)] < PRJ_SLOTS)
-        lst_slot = (int8_t)prj_buf[sizeof(prj_head_t)];
+        ((const prj_head_t *)(void *)prj_buf)->body_crc == prj_crc(prj_buf + sizeof(prj_head_t), 4u)) {
+        if (prj_buf[sizeof(prj_head_t)] < PRJ_SLOTS)
+            lst_slot = (int8_t)prj_buf[sizeof(prj_head_t)];
+        prj_set = prj_set_kept = (uint16_t)(prj_buf[sizeof(prj_head_t) + 1u] | prj_buf[sizeof(prj_head_t) + 2u] << 8);
+    }
 }
 
 /* ---------------------------------------------------------------- patterns --- */
@@ -1960,6 +1992,7 @@ static struct {
 #define C_PRJ RGB(120, 255, 200)
 #define C_PAT RGB(255, 210, 120)
 #define C_DIRTY RGB(255, 170, 60)
+#define C_INSET RGB(255, 220, 0)           /* (the SESSIONS grid: a session in the SET; build 107) */
 
 static int pg_pat(void) { return ui.page == PG_PAT; }
 static uint32_t px_mutes(void)                   /* (the tracks muted, a bit each) */
@@ -2189,6 +2222,24 @@ static void prj_key_save(uint32_t w)
     pj.again = 0;
     do_save(k);
     ui.force = 1;
+}
+/* (build 107) SHIFT + the 1st black key: the session under the cursor in the SET, or out of it (an empty slot: not
+ * in). Shown at once; written when the sequencer stops (prj_set_poll) */
+static void prj_key_mark(void)
+{
+    uint32_t k = pj.slot[0];
+    char m[16] = "SET ";
+    if (k >= PRJ_SLOTS)
+        return;
+    ui.force = 1;
+    if (!(prj_set >> k & 1u) && !prj_has[k]) {
+        say("EMPTY", 900);
+        return;
+    }
+    prj_set ^= (uint16_t)(1u << k);
+    fmt_int(m + 4, (int32_t)k + 1);
+    str_cpy(m + str_len(m), prj_set >> k & 1u ? " ON" : " OFF", 5);
+    say(m, 900);
 }
 /* PRESETS on a page: through the slots, the rows, the slot to copy to, NO / YES, or the value */
 static void prj_preset(int32_t s)
@@ -2510,11 +2561,18 @@ static void draw_grid(uint32_t sel)
             int32_t x = (int32_t)c * 60;
             char n[4];
             uint16_t col = pg_col(k);
+            int set = !pg_pat() && (prj_set >> k & 1u);
             fmt_int(n, (int32_t)k + 1);
             if (k == sel)                        /* (the one chosen: white; build 72, no frame on the one playing --
                                                   * its number green, or orange with changes) */
                 cv_rect(x + 2, 2, 56, 42, C_WHITE);
-            cv_text(x + 30 - text_w(&FONT_S, n) / 2, 23 - (int32_t)FONT_S.h / 2, &FONT_S, n, k == sel ? C_BLACK : col);
+            if (set) {                           /* (build 107: in the SET, yellow -- chosen too, inside the white;
+                                                  * its number dark: green or orange playing, black else) */
+                cv_rect(x + (k == sel ? 6 : 2), k == sel ? 6 : 2, k == sel ? 48 : 56, k == sel ? 34 : 42, C_INSET);
+                col = pg_cur(k) ? (pg_dirty() ? RGB(150, 70, 0) : RGB(0, 110, 40)) : C_BLACK;
+            }
+            cv_text(x + 30 - text_w(&FONT_S, n) / 2, 23 - (int32_t)FONT_S.h / 2, &FONT_S, n,
+                    k == sel && !set ? C_BLACK : col);
         }
         cv_blit(0, 55 + 46 * r);
     }
@@ -2683,7 +2741,7 @@ static void prj_draw(void)
 {
     uint32_t kind = pg_kind();
     int32_t key = ui.page * 1000000 + pj.slot[kind] * 10000 + pj.row * 1000 + pj.ask * 100 + pj.yes * 50 + pj.to +
-                  ui.tempo * 7 + ses_muq * 131 + ses_ctrl * 977 + ses_glk * 1931 + ses_psw * 4099 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 +
+                  ui.tempo * 7 + ses_muq * 131 + ses_ctrl * 977 + ses_glk * 1931 + ses_psw * 4099 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 + prj_set * 104729 +
                   pj.val * 31 + pat_cur * 17 + pat_tempo * 11 + pat_dirty * 5 + pat_store[pj.slot[1]].used * 23 +
                   (pat_clip_from + 1) * 41 + (pat_clip_from >= 0 ? (int32_t)((fm1_ms / 400u) & 1u) * 7777 : 0) +
                   (ui.page == PG_PAT && ui.mute_mode ? (int32_t)(64u + px_mutes()) * 100003 : 0) +

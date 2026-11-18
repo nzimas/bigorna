@@ -575,6 +575,15 @@ first: NO or YES on PRESETS.
 | Start a new session | SAVE on an empty slot's page: new sounds, a scale and root at random, tempo 120, no patterns or loops. It asks first if the session playing has changes not saved. With nothing saved yet, it saves what is playing there instead |
 | Copy a session into another slot | its page, COPY, then the slot |
 | Delete a session | its page, DELETE |
+| Mark a session for a set list | move the cursor onto it with PRESETS, then SHIFT + black key 1 (the 1st from the left). Again: unmarked |
+
+**Set list.** A session can be marked as part of a set, for a gig: on the SESSIONS grid, SHIFT + black key 1 marks
+the session under the cursor (SET 3 ON), or unmarks it (SET 3 OFF). A marked session's square is yellow, its number
+kept (black; green or orange when it is the session playing); under the cursor, the yellow sits inside the white
+square. Empty slots cannot be marked; a marked session deleted stays marked until it is unmarked. The marks are kept
+in the flash, with the note of the last session: while the sequencer plays they show at once and are written when it
+stops (writing the flash pauses the sound), or with the next session loaded or saved. The set list is not in the USB
+backup.
 
 Loading a session brings all of it back; while the sequencer plays, its loops start at the next bar. Loops take room
 in a store shared by all the sessions: if it is full, NO ROOM FOR LOOPS shows and nothing is saved; deleting a session

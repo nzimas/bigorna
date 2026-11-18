@@ -6015,6 +6015,56 @@ static int cmd_perf(const char *dir)
     PFEXPECT(ui.tempo == 120 && !prj_dirty && prj_cur == 2, "the same key again within 2 s: loaded");
     tap(pf_kw[7]);
     PFEXPECT(str_eq(ui.msg, "EMPTY") && prj_cur == 2, "an empty slot: nothing loaded");
+    {   /* (build 107) the SET: SHIFT + the 1st black key, the session under the cursor in it or out; written stopped */
+        const uint8_t *lb = host_flash + LST_SECT + sizeof(prj_head_t);
+        uint32_t e0;
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        tap(KEY_GEN);
+        PFEXPECT(!prj_set && str_eq(ui.msg, "EMPTY"), "SET: an empty slot not marked");
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui_input();
+        turn(EN_PRESET, -5);
+        PFEXPECT(pj.slot[0] == 2u, "SET: the cursor on session 3");
+        seq_run = 1;
+        e0 = host_erases;
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        tap(KEY_GEN);
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui_input();
+        PFEXPECT(prj_set == 4u && str_eq(ui.msg, "SET 3 ON") && host_erases == e0 && prj_cur == 2,
+                 "SET: session 3 marked, nothing loaded, not written while playing");
+        ui.flash_on = 0;
+        ui.msg_until = fm1_ms;
+        ui.force = 1;
+        ui_draw();
+        shot(dir, "perf_sessions_set_cursor");
+        turn(EN_PRESET, 1);
+        ui.flash_on = 0;
+        ui.msg_until = fm1_ms;
+        ui.force = 1;
+        ui_draw();
+        shot(dir, "perf_sessions_set");
+        seq_run = 0;
+        ui_input();
+        PFEXPECT(host_erases == e0 + 1u && lb[0] == 2u && lb[1] == 4u && lb[2] == 0u && prj_set_kept == 4u,
+                 "SET: written when stopped, the last session kept with it");
+        ui_input();
+        PFEXPECT(host_erases == e0 + 1u, "SET: written once");
+        {   /* (read back as the start reads it) */
+            int8_t ls = lst_slot;
+            prj_set = 0;
+            lst_slot = -1;
+            prj_scan(1);
+            PFEXPECT(prj_set == 4u && lst_slot == ls, "SET: read back from the flash");
+        }
+        turn(EN_PRESET, -1);
+        fm1_in.notes |= 1u << KEY_SHIFT;
+        tap(KEY_GEN);
+        fm1_in.notes &= ~(1u << KEY_SHIFT);
+        ui_input();
+        PFEXPECT(!prj_set && str_eq(ui.msg, "SET 3 OFF") && lb[1] == 0u, "SET: session 3 out again, written");
+        turn(EN_PRESET, 5);
+    }
     btn(B_SAVE, 0);
     PFEXPECT(ui.page == PG_PRJD && pj.slot[0] == 7u, "SAVE: the page of the slot under the cursor");
     turn(EN_PRESET, 20);
