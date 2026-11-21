@@ -1,5 +1,16 @@
 # Changelog
 
+## Build 108
+
+Changed
+- FM-1 units with the UC25HQ80 flash chip (JEDEC ID B36014), sold from autumn 2026 with the maker's name under the
+  screen, are supported: Bigorna saves sessions, patterns and the set list to their flash, and the update loader and
+  the rescue mode install on them. Before, the chip was taken for an unknown one: nothing was saved and the loader
+  refused to install. `fm1_flash_id.h` accepts it beside the P25Q80 (856014) at boot, in the rescue mode and in the
+  loader; both are 1 MiB and take the same commands, so the flash driver is unchanged (as Tonitor build 72 and
+  Norilsk build 49). Not yet tested on such a unit; on units with the P25Q80 nothing changes.
+- Tests: `flash_id` (both IDs accepted, others refused).
+
 ## Build 107
 
 Added

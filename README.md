@@ -16,6 +16,9 @@ looper, and send effects. *Bigorna* is Portuguese for anvil.
 
 Website, browser installer and manual: <https://nzimas.github.io/bigorna/>
 
+Bigorna runs on FM-1 units with either flash chip: the Puya P25Q80 of earlier units and the UC25HQ80 of units sold
+from autumn 2026, with the maker's name under the screen (from build 108; not yet tested on a unit with the UC25HQ80).
+
 > [!WARNING]
 > Bigorna is unofficial. It is not made, endorsed or supported by M-VAVE or Elektron, and installing it may void
 > any warranty that applies to your FM-1. See the [disclaimer](#disclaimer).

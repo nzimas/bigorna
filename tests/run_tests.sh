@@ -16,6 +16,8 @@ tests/check_target_ir.sh
 clang -O2 -std=gnu99 -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-function -Werror \
     -Ifirmware/src -Ibuild/gen tests/host/host.c -o build/host
 build/host check
+clang -O2 -std=gnu99 -Wall -Wextra -Werror -Ifirmware/hal tests/host/flash_id.c -o build/flash_id
+build/flash_id
 clang -O2 -std=gnu99 -Wall -Wextra -Wno-unused-function -Werror -Ifirmware/src -Ibuild/gen tests/host/speech_demo.c \
     -o build/speech_demo
 build/speech_demo -c
