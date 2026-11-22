@@ -677,7 +677,7 @@ static int cmd_projects(const char *dir)
     btn(B_SAVE, 0);
     EXPECT(!pj.edit && ui.tempo == 137 && fx_bpm10 == 1370, "SAVE sets the tempo (and the delay follows)");
     turn(EN_PRESET, 1);                          /* MUTE QT (build 78: ROOT and SCALE gone, the SCALE page's) */
-    EXPECT(pj.row == PR_MUQ && pg_rows() == 10u, "MUTE QT, before PAT SW (build 98), CTRL (build 82) and GEN LOCK (build 85)");
+    EXPECT(pj.row == PR_MUQ && pg_rows() == 11u, "MUTE QT, before PAT SW (build 98), CTRL (build 82), GEN LOCK (build 85) and AUDITION (build 109)");
     btn(B_SAVE, 0);
     turn(EN_PRESET, 1);                          /* YES, then left as it was */
     btn(B_SAVE, 1);
@@ -6068,7 +6068,12 @@ static int cmd_perf(const char *dir)
     btn(B_SAVE, 0);
     PFEXPECT(ui.page == PG_PRJD && pj.slot[0] == 7u, "SAVE: the page of the slot under the cursor");
     turn(EN_PRESET, 20);
-    PFEXPECT(pj.row == PR_GLK && pg_rows() == 10u, "the page's last row: GEN LOCK");
+    PFEXPECT(pj.row == PR_AUD && pg_rows() == 11u, "the page's last row: AUDITION");
+    PFEXPECT(ses_aud == 1u, "AUDITION: ON at first");
+    ui_draw();
+    shot(dir, "perf_session_audition");
+    turn(EN_PRESET, -1);
+    PFEXPECT(pj.row == PR_GLK, "GEN LOCK, above it");
     ui_draw();
     shot(dir, "perf_session_genlock");
     turn(EN_PRESET, -1);
@@ -6086,6 +6091,17 @@ static int cmd_perf(const char *dir)
     turn(EN_PRESET, 1);
     btn(B_SAVE, 0);
     PFEXPECT(ses_glk == 1u && prj_dirty, "GEN LOCK: ON");
+    turn(EN_PRESET, 1);                          /* (build 109) AUDITION: OFF, then ON again */
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, -1);
+    btn(B_SAVE, 0);
+    PFEXPECT(pj.row == PR_AUD && !ses_aud, "AUDITION: OFF");
+    ui_draw();
+    shot(dir, "perf_session_audition_off");
+    btn(B_SAVE, 0);
+    turn(EN_PRESET, 1);
+    btn(B_SAVE, 0);
+    PFEXPECT(ses_aud == 1u, "AUDITION: ON again");
     btn(B_SAVE, 1);
     btn(B_SAVE, 1);
     btn(B_FX, 0);
@@ -6108,6 +6124,14 @@ static int cmd_perf(const char *dir)
         save_held(0);
         PFEXPECT(!prj_read(2, 0) && ((const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t)))->glk == 1u,
                  "GEN LOCK: saved with the session");
+        PFEXPECT(((const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t)))->aof == 0u,
+                 "AUDITION ON: saved as 0 (what builds before 109 saved)");
+        ses_aud = 0;
+        save_held(0);
+        PFEXPECT(!prj_read(2, 0) && ((const prj_body_t *)(const void *)(prj_buf + sizeof(prj_head_t)))->aof == 1u,
+                 "AUDITION OFF: saved as 1");
+        ses_aud = 1;
+        save_held(0);
         ses_glk = 0;
         btn(B_HOME, 0);
         PFEXPECT(memcmp(&s0, &ui.snd[0][ui.eng[0]], sizeof s0) != 0, "GEN LOCK OFF: HOME, a new sound");
@@ -6720,6 +6744,16 @@ static int cmd_clkfx(void)
         for (k = 0; k < NVOICE; k++)
             gone &= !(vox[k].gate && vox_owner(&vox[k]) == 0u && vox[k].note == n);
         CXEXPECT(!ui.aud_n[0] && gone, "a moment later: let go");
+        ses_aud = 0;                             /* (build 109) AUDITION OFF: the note changes, nothing sounds */
+        turn(EN_K1, 1);
+        n = seq_note[0][2];
+        on = 0;
+        for (i = 0; i < 8u; i++)
+            mix_block(out);
+        for (k = 0; k < NVOICE; k++)
+            on |= vox[k].gate && vox_owner(&vox[k]) == 0u && vox[k].note == n;
+        CXEXPECT(!ui.aud_n[0] && !on, "AUDITION OFF: KNOB 1 turned, the note changed in silence");
+        ses_aud = 1;
         fm1_in.notes &= ~(1u << kw[2]);
         ui_input();
         tap(KEY_TRIG);

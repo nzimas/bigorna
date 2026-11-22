@@ -1,5 +1,16 @@
 # Changelog
 
+## Build 109
+
+Added
+- AUDITION, a session setting on the session's page (after GEN LOCK): ON (the default) or OFF. With OFF, turning
+  KNOB 1 on a held step with TRIG on changes the note without playing it (the audition added in build 91). Asked for
+  in issue 16, for editing steps during a performance.
+
+Compatibility
+- Kept in a spare byte of the session record. Sessions saved by earlier builds load with AUDITION ON.
+- Tests: the row, its default, OFF silent, saved with the session.
+
 ## Build 108
 
 Changed

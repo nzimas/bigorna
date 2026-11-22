@@ -335,6 +335,8 @@ static uint8_t perf_on;                          /* PERFORMANCE (the 7th black k
 static uint8_t ses_ctrl;                         /* (the session's CTRL: PERFORMANCE's KNOBS 0, ALL 1 -- its page) */
 static uint8_t ses_glk;                          /* (the session's GEN LOCK: HOME and SHIFT + HOME no new sound -- its
                                                   * page; build 85) */
+static uint8_t ses_aud = 1;                      /* (the session's AUDITION: TRIG's KNOB 1 plays the step's new note --
+                                                  * its page; build 109, ON at first) */
 static void phrase_new(uint32_t t);              /* (phrase.c) */
 static void phrase_relock(uint32_t t);
 static int snd_kick(const sound_t *s);          /* (phrase.c: a kick's sound) */
@@ -1839,7 +1841,8 @@ static void step_knob(uint32_t j, int32_t s)
             return;
     } else if (j == 0u) {
         seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], s);
-        aud_step(t, i);                          /* (heard as it is turned) */
+        if (ses_aud)
+            aud_step(t, i);                      /* (heard as it is turned, AUDITION ON) */
     } else if (j == 1u)
         seq_vel[t][i] = (uint8_t)clampi(pct_raw(pct_disp(seq_vel[t][i]) + s), 1, 127);   /* (shown 1 .. 100) */
     else if (j == 2u)

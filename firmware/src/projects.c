@@ -107,6 +107,7 @@ typedef struct {
     uint8_t ctrl;                /* (build 82: before, PRJ_LEN81) CTRL, PERFORMANCE's: 0 KNOBS, 1 ALL */
     uint8_t glk;                 /* GEN LOCK (build 85: in the padding at the end, saved as 0 before -- OFF) */
     uint8_t psw;                 /* PAT SW (build 98: in the padding at the end, saved as 0 before -- END) */
+    uint8_t aof;                 /* AUDITION off (build 109: the last byte of the padding, saved as 0 before -- ON) */
 } prj_body_t;
 #define PRJ_LEN23 __builtin_offsetof(prj_body49_t, cp)   /* (the lengths builds 18 .. 49 saved: the sound without LFOs) */
 #define PRJ_LEN28 __builtin_offsetof(prj_body49_t, sc_src)
@@ -1760,6 +1761,7 @@ static void prj_take(prj_body_t *b)          /* the state playing, into a body .
     b->ctrl = ses_ctrl;
     b->glk = ses_glk;
     b->psw = ses_psw;
+    b->aof = (uint8_t)!ses_aud;
 }
 static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, every track's sound published again */
 {
@@ -1799,6 +1801,7 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     ses_ctrl = (uint8_t)(b->ctrl == 1u);
     ses_glk = (uint8_t)(b->glk == 1u);
     ses_psw = (uint8_t)(b->psw == 1u);
+    ses_aud = (uint8_t)(b->aof != 1u);
     for (t = 0; t < NXL; t++) {                  /* (build 79) the subtracks: each lane as it was, a DRUM sound; one
                                                   * twice for a track's subtrack, or out of range: free */
         uint32_t l = NTRACK + t, tr = b->ln_t[t], s = b->ln_s[t];
@@ -1970,11 +1973,12 @@ static int prj_delete(uint32_t k)
 
 /* -------------------------------------------------------------- the pages --- */
 /* the rows of a session's page: the operations, then the values */
-enum { PR_BACK, PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_MUQ, PR_PSW, PR_CTRL, PR_GLK, PR_N };   /* (BACK at
+enum { PR_BACK, PR_LOAD, PR_SAVE, PR_COPY, PR_DELETE, PR_TEMPO, PR_MUQ, PR_PSW, PR_CTRL, PR_GLK, PR_AUD, PR_N };   /* (BACK at
                                                   * the top: SAVE on it, the list again; build 48. CTRL: PERFORMANCE's,
-                                                  * build 82. GEN LOCK: HOME's, build 85. PAT SW: build 98) */
+                                                  * build 82. GEN LOCK: HOME's, build 85. PAT SW: build 98.
+                                                  * AUDITION: TRIG's KNOB 1, build 109) */
 static const char *const PR_NAME[PR_N] = {"BACK", "LOAD", "SAVE", "COPY", "DELETE", "TEMPO", "MUTE QT", "PAT SW", "CTRL",
-                                          "GEN LOCK"};   /* (ROOT
+                                          "GEN LOCK", "AUDITION"};   /* (ROOT
                                                   * and SCALE: the SCALE page's, ARP -- build 78) */
 enum { PQ_NONE, PQ_LOAD, PQ_SAVE, PQ_DELETE, PQ_COPYTO, PQ_COPYOVER, PQ_SAVENEW, PQ_NEW };
 static struct {
@@ -2085,6 +2089,8 @@ static void prj_press(int sh)
             ses_ctrl = (uint8_t)pj.val;
         else if (pj.row == PR_GLK)
             ses_glk = (uint8_t)pj.val;
+        else if (pj.row == PR_AUD)
+            ses_aud = (uint8_t)pj.val;
         else if (pj.row == PR_PSW)
             ses_psw = (uint8_t)pj.val;
         else
@@ -2175,10 +2181,11 @@ static void prj_press(int sh)
         pj.ask = PQ_DELETE;
         pj.yes = 0;
         break;
-    default:                                     /* TEMPO, MUTE QT, PAT SW, CTRL, GEN LOCK: the focus on the value */
+    default:                                     /* TEMPO, MUTE QT, PAT SW, CTRL, GEN LOCK, AUDITION: the focus on the
+                                                  * value */
         pj.edit = 1;
         pj.val = pj.row == PR_TEMPO ? tempo_now() : pj.row == PR_CTRL ? ses_ctrl : pj.row == PR_GLK ? ses_glk :
-                 pj.row == PR_PSW ? ses_psw : ses_muq;
+                 pj.row == PR_AUD ? ses_aud : pj.row == PR_PSW ? ses_psw : ses_muq;
         break;
     }
 }
@@ -2665,7 +2672,7 @@ static void prj_field(uint32_t r, uint32_t k, const char *val, uint16_t fg, int 
 static void prj_value(uint32_t k, char *v, uint32_t n)
 {
     int32_t x = pj.edit && pj.row == k ? pj.val : k == PR_TEMPO ? tempo_now() : k == PR_CTRL ? ses_ctrl :
-                k == PR_GLK ? ses_glk : k == PR_PSW ? ses_psw : ses_muq;
+                k == PR_GLK ? ses_glk : k == PR_AUD ? ses_aud : k == PR_PSW ? ses_psw : ses_muq;
     v[0] = 0;
     if (k == PR_TEMPO)
         fmt_int(v, x);
@@ -2675,7 +2682,8 @@ static void prj_value(uint32_t k, char *v, uint32_t n)
         str_cpy(v, x ? "YES" : "NO", n);
     else if (k == PR_PSW)                        /* (a pattern: at the end of the time through, or with the next 16th) */
         str_cpy(v, x ? "NOW" : "END", n);
-    else if (k == PR_GLK)                        /* (HOME: new sounds, or none -- ui.c) */
+    else if (k == PR_GLK || k == PR_AUD)         /* (HOME: new sounds, or none; TRIG's KNOB 1: the note heard, or
+                                                  * not -- ui.c) */
         str_cpy(v, x ? "ON" : "OFF", n);
 }
 static void draw_noyes_rows(const char *q, uint16_t col)
@@ -2741,7 +2749,7 @@ static void prj_draw(void)
 {
     uint32_t kind = pg_kind();
     int32_t key = ui.page * 1000000 + pj.slot[kind] * 10000 + pj.row * 1000 + pj.ask * 100 + pj.yes * 50 + pj.to +
-                  ui.tempo * 7 + ses_muq * 131 + ses_ctrl * 977 + ses_glk * 1931 + ses_psw * 4099 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 + prj_set * 104729 +
+                  ui.tempo * 7 + ses_muq * 131 + ses_ctrl * 977 + ses_glk * 1931 + ses_aud * 8191 + ses_psw * 4099 + prj_dirty * 3 + prj_cur * 13 + pj.edit * 5000000 + prj_set * 104729 +
                   pj.val * 31 + pat_cur * 17 + pat_tempo * 11 + pat_dirty * 5 + pat_store[pj.slot[1]].used * 23 +
                   (pat_clip_from + 1) * 41 + (pat_clip_from >= 0 ? (int32_t)((fm1_ms / 400u) & 1u) * 7777 : 0) +
                   (ui.page == PG_PAT && ui.mute_mode ? (int32_t)(64u + px_mutes()) * 100003 : 0) +

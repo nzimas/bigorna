@@ -106,6 +106,7 @@ arpeggio	AA2 R P EH1 JH IY0 OW0
 as	AE1 Z
 attack	AH0 T AE1 K
 audio	AA1 D IY0 OW2
+audition	AO0 D IH1 SH AH0 N
 auto	AO1 T OW0
 back	B AE1 K
 ball	B AO1 L

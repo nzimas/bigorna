@@ -467,7 +467,8 @@ pattern then starts from where the rotation put its first step. EUCLID mode is n
 
 **TRIG**: KNOB 1 the step's note (in the scale), 2 its velocity, 3 its length, 4 its trig condition; with PRESETS turned
 right, KNOB 1 its RATCHET (the step played 2 to 8 times). Turning KNOB 1 plays the new note (its chord, if the step has one) for a
-moment, at the step's velocity, so you hear the note you are setting. The conditions are the Digitone II's: PRE and !PRE (as the
+moment, at the step's velocity, so you hear the note you are setting; the session's AUDITION set to OFF
+(its page, [Sessions](#sessions)) keeps it silent. The conditions are the Digitone II's: PRE and !PRE (as the
 last condition was met or not), NEI and !NEI (as the track before met its condition), 1ST and !1ST (the first time
 through), probabilities, and A:B (the A-th time of every B).
 
@@ -565,7 +566,8 @@ are the 16 slots (lit dimly; the session playing brighter). On the screen the se
 changes not saved), saved sessions white, empty ones grey, and the white square is the cursor: it opens on the session
 playing, and **PRESETS** moves it. **SAVE** opens the page of the slot under the cursor: BACK, LOAD, SAVE, COPY,
 DELETE, TEMPO, MUTE QT ([MUTE mode](#mute-mode)), PAT SW (how a pattern comes in while the sequencer plays: END or
-NOW, [Patterns](#patterns)), CTRL ([PERFORMANCE](#performance)) and GEN LOCK ([Sounds](#sounds)). SAVE runs the row chosen, or
+NOW, [Patterns](#patterns)), CTRL ([PERFORMANCE](#performance)), GEN LOCK ([Sounds](#sounds)) and AUDITION (ON or OFF: turning KNOB 1 on a held
+step plays its new note, [Step pages](#step-pages)). SAVE runs the row chosen, or
 moves to its value (PRESETS changes it, SAVE sets it, SHIFT + SAVE leaves it as it was); SHIFT + SAVE goes back to the
 grid. On the page, loading over changes not saved, saving over another session, copying over one and deleting ask
 first: NO or YES on PRESETS.
