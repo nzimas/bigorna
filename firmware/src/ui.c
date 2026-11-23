@@ -36,6 +36,8 @@
  *                             MOD, locks -- traded among the lanes that hold steps at random, a piece of 2 .. 8 16ths
  *                             at a time, each on its own sound at its own pitches. Let go, each plays its own again
  *   SHIFT + the 6th black key   the SCREEN READER on or off, from any page (speech.c; build 99)
+ *   the 6th black key         (PERFORMANCE on, the step view off; build 110) new locks on every lane with steps at
+ *                             once (phrase.c, phrase_relock); dim while it can
  *   the rightmost black key   SHIFT
  *   the 3rd black key from the right   STEP: the step view, on or off (lit while on). The white keys are the track's
  *                             16 steps, silent (build 70): a key on an empty step puts the track's last note played
@@ -2970,6 +2972,24 @@ static void ui_input(void)
             ui.force = 1;
             continue;
         }
+        if (((ch & keys) >> k & 1u) && k == KEY_READER && perf_on && !step_view() && !pg_any()) {   /* (build 110)
+                                                                         * PERFORMANCE, out of the step view: new locks
+                                                                         * on every lane with steps, as one (SHIFT with
+                                                                         * it: the SCREEN READER, taken above) */
+            uint32_t l, n = 0;
+            for (l = 0; l < NLANE; l++)
+                if (lane_material(l)) {
+                    phrase_relock(l);
+                    n++;
+                }
+            ui.gen_until = fm1_ms + 400u;
+            if (n)
+                flash("NEW", "LOCKS", TRACK_COL[ui.sel]);
+            else
+                say("NO STEPS", 900);
+            ui.force = 1;
+            continue;
+        }
         if (((ch & keys) >> k & 1u) && k == KEY_PERF && (step_view() ? sh : !pg_any())) {   /* PERFORMANCE on or off
                                                                          * (in the step view: SHIFT with it) */
             perf_toggle();
@@ -3204,6 +3224,12 @@ static void ui_leds(void)
         if (!step_view() && k == KEY_PERF && (!pg_any() || ui.page == PG_PAT)) {   /* (PERFORMANCE: dim, lit while
                                                                                    * on) */
             fm1_led_key(14u + k, perf_on);
+            led_dim_key(14u + k, 1);
+            continue;
+        }
+        if (perf_on && !step_view() && k == KEY_READER && !pg_any()) {   /* (build 110: PERFORMANCE's new locks
+                                                                       * key: dim, lit as it draws them) */
+            fm1_led_key(14u + k, (int32_t)(ui.gen_until - fm1_ms) > 0);
             led_dim_key(14u + k, 1);
             continue;
         }

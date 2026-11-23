@@ -74,6 +74,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **SHIFT + SAVE held** (0.8 s) | [GLOBAL SETUP](#global-setup): MIDI, AUDIO, SETTINGS and START. |
 | **SHIFT + black key 5** | Panic: every note stops, from any page. The sequencer plays on. |
 | **SHIFT + black key 6** | [Screen reader](#screen-reader) on or off, from any page. |
+| black key 6 | in [PERFORMANCE](#performance), out of the step view: new locks on every track and subtrack with steps. |
 | **MASTER** | output level. |
 | MIDI in (USB and TRS) | notes and CCs for each track ([MIDI](#midi)). |
 
@@ -338,6 +339,12 @@ turn on: WAIT shows.
 
 While it is on, KNOB 1–4 (and SHIFT + them) turn their parameter on the chosen track and on every other track and
 subtrack with notes (steps or a loop), each on its own sound, by the same steps.
+
+Black key 6, lit dimly while PERFORMANCE is on, draws new locks on every track and subtrack with steps at once, out of
+the step view: each lane as the step view's SHIFT + black key 1 draws them, for its sound's role, with the notes,
+velocities, lengths and conditions kept. It works with CTRL set to KNOBS or ALL. Off PERFORMANCE the key does nothing;
+in the step view it stays REVERSE. SHIFT + black key 6 still turns the screen reader on or off. As everything else,
+the locks drawn are put back as PERFORMANCE goes off, unless a pattern is kept.
 
 **Keeping a pattern.** SAVE still opens the PATTERNS grid: hold a white key 0.8 s to keep what is playing as that
 pattern, its steps and the tracks' state. Keeping a pattern also keeps the session as it plays at that moment (sounds, effects, tempo, scale); changes made after the last pattern kept are undone as

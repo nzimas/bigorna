@@ -6160,6 +6160,28 @@ static int cmd_perf(const char *dir)
     turn(EN_K1, -6);
     PFEXPECT(par_val(lane_snd(0), PG_FLT1, 4) != v0 && par_val(lane_snd(2), PG_FLT1, 4) != v2 &&
              par_val(lane_snd(3), PG_FLT1, 4) == v3, "KNOB 1: the chosen track's and track 3's, not track 4's (no notes)");
+    {   /* (build 110) the 6th black key: new locks on every lane with steps (track 1's and 3's), not track 4's; lit
+         * dimly; SHIFT with it still the SCREEN READER's */
+        static uint8_t id0[NSTEP][NPL], id2[NSTEP][NPL], id3[NSTEP][NPL];
+        static int16_t lv0[NSTEP][NPL], lv2[NSTEP][NPL];
+        int moved0 = 0, moved2 = 0, tries;
+        ui_leds();
+        PFEXPECT(!host_led[14u + KEY_READER] && host_dim_on(14u + KEY_READER), "6th black key: dim in PERFORMANCE");
+        memcpy(id3, (const void *)seq_lid[3], sizeof id3);
+        for (tries = 0; tries < 4 && !(moved0 && moved2); tries++) {
+            memcpy(id0, (const void *)seq_lid[0], sizeof id0);
+            memcpy(id2, (const void *)seq_lid[2], sizeof id2);
+            memcpy(lv0, (const void *)seq_lv[0], sizeof lv0);
+            memcpy(lv2, (const void *)seq_lv[2], sizeof lv2);
+            tap(KEY_READER);
+            moved0 |= memcmp(id0, (const void *)seq_lid[0], sizeof id0) || memcmp(lv0, (const void *)seq_lv[0], sizeof lv0);
+            moved2 |= memcmp(id2, (const void *)seq_lid[2], sizeof id2) || memcmp(lv2, (const void *)seq_lv[2], sizeof lv2);
+        }
+        PFEXPECT(moved0 && moved2, "6th black key: new locks on tracks 1 and 3");
+        PFEXPECT(!memcmp(id3, (const void *)seq_lid[3], sizeof id3), "6th black key: track 4 (no steps) left");
+        PFEXPECT(seq_dir[0] == DIR_FWD && ui.key_note[KEY_READER] == 0u && !set_reader,
+                 "6th black key: no direction, no note, no SCREEN READER");
+    }
     btn(B_HOME, 0);
     PFEXPECT(!memcmp(&snd0[2], &ui.snd[2], sizeof snd0[2]) || par_val(lane_snd(2), PG_FLT1, 4) != v2,
              "CTRL KNOBS: HOME the chosen track's alone");
@@ -6190,6 +6212,14 @@ static int cmd_perf(const char *dir)
     PFEXPECT(!memcmp(snd0, ui.snd, sizeof snd0), "every sound back");
     PFEXPECT(ui.tempo == 120 && !seq_note[2][5] && seq_note[2][0] == 60 && !trk_mute[2], "tempo, steps, mutes back");
     PFEXPECT(!prj_dirty && !pat_dirty, "nothing left marked unsaved");
+    {   /* (build 110) PERFORMANCE off: the 6th black key dark, and no new locks */
+        static uint8_t idx[NSTEP][NPL];
+        memcpy(idx, (const void *)seq_lid[0], sizeof idx);
+        tap(KEY_READER);
+        ui_leds();
+        PFEXPECT(!memcmp(idx, (const void *)seq_lid[0], sizeof idx) && !pat_dirty, "6th black key off PERFORMANCE: no locks");
+        PFEXPECT(!host_led[14u + KEY_READER] && !host_dim_on(14u + KEY_READER), "6th black key off PERFORMANCE: dark");
+    }
     /* a pattern kept meanwhile: what plays then, and the session then, stay; its sector written as it goes off */
     tap(KEY_PERF);
     ui.tempo = 140;

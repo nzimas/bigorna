@@ -1,5 +1,19 @@
 # Changelog
 
+## Build 110
+
+Added
+- In PERFORMANCE, out of the step view, black key 6 draws new locks on every track and subtrack with steps at once,
+  each as the step view's SHIFT + black key 1 draws them for its sound's role (notes, velocities, lengths and
+  conditions kept), with CTRL set to KNOBS or ALL. The key is lit dimly while PERFORMANCE is on; NEW LOCKS shows.
+  The locks are put back as PERFORMANCE goes off, as the rest of its changes.
+- Off PERFORMANCE black key 6 does nothing and stays dark; in the step view it is still REVERSE; SHIFT + black key 6
+  still turns the screen reader on or off.
+
+Compatibility
+- Sessions and patterns unchanged.
+- Tests: `perf` (new locks on the lanes with steps, none on a lane without; the key dim; nothing off PERFORMANCE).
+
 ## Build 109
 
 Added
