@@ -44,6 +44,17 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-110">Build 110</h2>
+<p>Added</p>
+<ul>
+<li>In PERFORMANCE, out of the step view, black key 6 draws new locks on every track and subtrack with steps at once, each as the step view's SHIFT + black key 1 draws them for its sound's role (notes, velocities, lengths and conditions kept), with CTRL set to KNOBS or ALL. The key is lit dimly while PERFORMANCE is on; NEW LOCKS shows. The locks are put back as PERFORMANCE goes off, as the rest of its changes.</li>
+<li>Off PERFORMANCE black key 6 does nothing and stays dark; in the step view it is still REVERSE; SHIFT + black key 6 still turns the screen reader on or off.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions and patterns unchanged.</li>
+<li>Tests: <code>perf</code> (new locks on the lanes with steps, none on a lane without; the key dim; nothing off PERFORMANCE).</li>
+</ul>
 <h2 id="build-109">Build 109</h2>
 <p>Added</p>
 <ul>
