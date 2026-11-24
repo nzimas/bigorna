@@ -1910,6 +1910,19 @@ static int cmd_projects(const char *dir)
         ui_draw();
         shot(dir, "shuffler");
         EXPECT(ui.msg[0], "SHUFFLER: its name shown");
+        {   /* (build 119) PLAY under SHUFFLER, SHIFT held: stops, and plays again -- not the metronome */
+            uint8_t ck = ui.click;
+            fm1_in.notes |= 1u << KEY_SHIFT;
+            host_press = 1u << PANEL_BTN[B_PLAY];
+            ui_input();
+            ui_input();
+            EXPECT(!seq_run && ui.click == ck && ui.shf, "SHUFFLER, SHIFT + PLAY: stopped (the metronome as it was)");
+            host_press = 1u << PANEL_BTN[B_PLAY];
+            ui_input();
+            ui_input();
+            fm1_in.notes &= ~(1u << KEY_SHIFT);
+            EXPECT(seq_run && ui.click == ck, "PLAY again: playing");
+        }
         key(KEY_SHF, 0);
         EXPECT(!ui.shf && !shf_on, "let go: SHUFFLER off");
         for (i = 0; i < 16u; i++) {

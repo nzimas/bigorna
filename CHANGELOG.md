@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 119
+
+Fixed
+- PLAY under SHUFFLER: with SHIFT held for it, PLAY turned the metronome on or off instead of stopping. It now plays
+  or stops, as under a BREAK (build 83); SHIFT + PLAY is the metronome only when neither is held.
+
+Compatibility
+- Sessions unchanged. Tests: `projects` (SHUFFLER, PLAY stops and plays again).
+
 ## Build 118
 
 Changed

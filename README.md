@@ -62,7 +62,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **KNOB 1–4** | chosen track's filter FREQ and RESO, delay send, reverb send. On a page: its rows A–D. |
 | **SHIFT + KNOB 3 / KNOB 4** | chosen track's chorus send / overdrive. |
 | **PLAY** | start or stop the [sequencer](#sequencer). **Held** (0.8 s): [TEMPO](#tempo) page. |
-| **SHIFT + PLAY** | metronome on or off (during a [BREAK](#break), PLAY stops instead). |
+| **SHIFT + PLAY** | metronome on or off (during a [BREAK](#break) or [SHUFFLER](#shuffler), PLAY plays or stops instead). |
 | **REC** | [record](#recording) the keys into the chosen track's steps. |
 | **SHIFT + REC** | [looper](#looper): arm a loop. **Held**: track's loops on the white keys. |
 | **ARP** | SCALE page ([Scales](#scales)); ARP again leaves it. |
