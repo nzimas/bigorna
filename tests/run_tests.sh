@@ -27,6 +27,9 @@ build/host projects build/screens
 build/host lfo build/screens
 build/host trn build/screens
 build/host xpscale build/screens
+mkdir -p build/dstlab
+build/host dstlab build/dstlab > build/dstlab/report.txt || { cat build/dstlab/report.txt; exit 1; }
+tail -1 build/dstlab/report.txt
 build/host euc build/screens
 build/host arp build/screens
 build/host newses build/screens

@@ -1,5 +1,24 @@
 # Changelog
 
+## Build 112
+
+Changed
+- DESTROY redone. Before, XOR and FLIP worked on fixed low bits and made no audible change below about 100, DROP's
+  holds were too short to hear on a kick, and WRAP went from nothing to wrapping the kick's peaks round (a broken,
+  flatulent sound) within a few steps. Now each mode is heard from low amounts and grows evenly to 127:
+  - CLIP (in WRAP's place): mids and highs lifted +3.5 dB above ~250 Hz, drive 0 to +42 dB into a hard clipper with
+    a rounded knee, a growing offset for even harmonics. Unity below the knee, ceiling -6 dBFS.
+  - XOR and FLIP are measured against the signal's level (a peak follower of ~12 ms): XOR from -33 dB of the signal
+    up to all bits but the top one, FLIP from -36 dB up to the top bit, crossfaded between bits.
+  - DROP freezes the sound or cuts it to silence at random, 6 to ~300 times a second, 2 to 25 ms each.
+- DESTROY runs from the flash, as WRECK does, which frees RAM code.
+
+Compatibility
+- Sessions unchanged: a sound set to WRAP now plays CLIP. Sounds with DESTROY, and DESTROY locks, will sound
+  different (stronger) than before.
+- Tests: `dstlab` (four kicks through every mode at 16 .. 127: each mode heard at 16, near the whole sound at 127;
+  a WAV each in build/dstlab).
+
 ## Build 111
 
 Added

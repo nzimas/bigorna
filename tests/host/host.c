@@ -7002,6 +7002,77 @@ static int cmd_xpscale(const char *dir)
     return fails != 0;
 }
 
+/* the DESTROY lab: kicks and a bass through each DST MODE at amounts 0 .. 127 -- the level coming in, how far each
+ * moves the sound (the difference from dry, dB), where (its spectral centroid, Hz), and a WAV each */
+static double lab_cent(const int16_t *a, const int16_t *b, uint32_t n)   /* (the difference's centroid, a crude DFT) */
+{
+    double num = 0, den = 0;
+    uint32_t k, i, N = 2048, st = 0;
+    for (k = 1; k < N / 2; k += 4) {
+        double re = 0, im = 0, f = 2 * M_PI * k / N, m;
+        for (i = 0; i < N && st + i < n; i++) {
+            double d = (a[2 * (st + i)] - (b ? b[2 * (st + i)] : 0)) / 32768.0;
+            re += d * cos(f * i);
+            im += d * sin(f * i);
+        }
+        m = re * re + im * im;
+        num += m * k * 44100.0 / N;
+        den += m;
+    }
+    return den > 0 ? num / den : 0;
+}
+static int cmd_dstlab(const char *dir)
+{
+    static int16_t dry[2 * 44100 * 4];
+    static const char *const NM[] = {"TIGHT KICK", "DEEP KICK", "DRIVEN KICK", "CRUSH KICK"};
+    static const uint8_t AM[] = {16, 32, 48, 64, 80, 96, 112, 127};
+    uint32_t r, m, a, i, n = 44100u * 3u / CTL * CTL;
+    int bad = 0;
+    for (r = 0; r < NELEM(NM); r++) {
+        sound_t s;
+        int32_t rc = -1;
+        for (i = 0; i < NRECIPE; i++)
+            if (!strcmp(RECIPES[i].name, NM[r]))
+                rc = (int32_t)i;
+        if (rc < 0)
+            continue;
+        gen_sound(&s, RECIPES[rc].mach, rc, -1, 4242u);
+        s.mg[M_DST] = 0;
+        mg_host_peak = 0;
+        render_one(&s, 0, 60u, 0);
+        memcpy(dry, abuf, n * 4u);
+        printf("%s: in peak %.1f dBFS(16-bit), dry centroid %.0f Hz\n", NM[r], db(mg_host_peak / 32768.0), lab_cent(dry, 0, n));
+        for (m = 0; m < 4u; m++) {
+            printf("  %-5s", L_DMODE[m]);
+            for (a = 0; a < NELEM(AM); a++) {
+                double e = 0, d0 = 0;
+                char path[256];
+                s.mg[M_DST] = AM[a];
+                s.mg[M_DMODE] = (uint8_t)m;
+                snprintf(path, sizeof path, "%s/dst_%u_%s_%u.wav", dir, r, L_DMODE[m], AM[a]);
+                render_one(&s, 0, 60u, path);
+                for (i = 0; i < n; i++) {
+                    double x = (abuf[2 * i] - dry[2 * i]) / 32768.0, y = dry[2 * i] / 32768.0;
+                    e += x * x;
+                    d0 += y * y;
+                }
+                {
+                    double dd = 10 * log10(e / d0 + 1e-12);
+                    printf(" %3u:%6.1fdB/%5.0fHz", AM[a], dd, lab_cent(abuf, dry, n));
+                    if ((AM[a] == 16u && dd < -30) || (AM[a] == 127u && dd < -6)) {   /* (build 112: heard from
+                                                  * low on, near the whole sound at the top) */
+                        printf(" <- FAIL");
+                        bad++;
+                    }
+                }
+            }
+            printf("\n");
+        }
+    }
+    printf("dstlab: %d failures\n", bad);
+    return bad != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -7037,6 +7108,8 @@ int main(int argc, char **argv)
         return cmd_arp(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "trn"))
         return cmd_trn(argv[2]);
+    if (argc >= 3 && !strcmp(argv[1], "dstlab"))
+        return cmd_dstlab(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "xpscale"))
         return cmd_xpscale(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "euc"))

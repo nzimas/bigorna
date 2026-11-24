@@ -22,7 +22,7 @@ static const char *const L_ODT[] = {"VALVE", "RAT", "FOLD"};
 static const char *const L_LEGT[] = {"LP", "HP"};
 static const char *const L_MODE[] = {"AHD", "ADSR"};
 static const char *const L_FLT[] = {"MULTI", "LP4", "LEGACY", "COMB-", "COMB+", "EQ"};
-static const char *const L_DMODE[] = {"WRAP", "XOR", "FLIP", "DROP"};
+static const char *const L_DMODE[] = {"CLIP", "XOR", "FLIP", "DROP"};   /* (CLIP: WRAP before build 112) */
 static const char *const L_SLICE[] = {"OFF", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
                                       "15", "16"};
 static const char *const L_SRATE[] = {"1/8", "1/16", "1/32", "1/16T"};

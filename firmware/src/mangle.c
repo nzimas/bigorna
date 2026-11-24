@@ -2,14 +2,20 @@
  * MANGLE, a track's (its own page, after FX): on the track's voices summed, before its limiter, set by the sound the
  * track plays and lockable step by step (a lock holds until the track's next step plays, as the sends' do).
  *
- *   DESTROY   digital destruction, on the samples as 16-bit words: the amount (0 off), and its kind --
- *               WRAP   the signal driven up to x 16 and let overflow, wrapping round as two's complement does
- *               XOR    the low bits XORed with a fixed pattern, more of them as it goes up: a noise that follows
- *                      the signal, then breaks it
- *               FLIP   one bit flipped, a higher one as it goes up: a square error riding the wave
- *                      (both, from build 95, scaled down with the signal under -24 dB: silence stays silent)
- *               DROP   samples dropped and held, more often and longer as it goes up: data errors, crackle
- *             (fading in over its first eight steps)
+ *   DESTROY   destruction (build 112, redone): the amount (0 off), and its kind --
+ *               CLIP   (WRAP before build 112) the signal, its mids and highs lifted (+3.5 dB above ~250 Hz),
+ *                      driven 0 .. +42 dB into a hard clipper with a rounded knee, a little more one side than the
+ *                      other as it goes up (even harmonics; the DC blocker after takes the offset): the
+ *                      hardcore / gabber kind of distortion
+ *               XOR    the bits under the signal's own top XORed with a fixed pattern, at -33 dB of the signal
+ *                      at 1 up to all but the top one at 127, smoothly: a noise that follows the signal, then
+ *                      breaks it
+ *               FLIP   one bit flipped, from -36 dB of the signal up to its top: a square error riding the wave
+ *                      (both measured against the signal's level, a peak follower of ~12 ms -- the same bite on a
+ *                      quiet tail as on the hit; under ~-60 dB, nothing: silence stays silent)
+ *               DROP   the signal frozen (its sample held) or cut to silence, at random: 6 times a second at 1 to
+ *                      ~300 at 127, each up to 2 .. 25 ms long: data errors, stutter, crunch
+ *             (fading in over its first eight steps; in the flash, as WRECK)
  *   SLICE     a gate in time with the tempo (the sequencer's steps; stopped, a clock of its own at the tempo): one of
  *             16 patterns (OFF: none) of 16 slices, a slice an 1/8, 1/16, 1/32 or 1/16 triplet; DEPTH how far a closed
  *             slice cuts (127: to silence); EDGE how soft its edges (0: ~0.3 ms, a click; 127: ~30 ms); SHIFT the
@@ -23,8 +29,10 @@
 
 typedef struct {
     int32_t g;                   /* the gate's level as it moves, Q15 */
-    int32_t hold;                /* DROP: the sample held, and samples left */
+    int32_t hold;                /* DROP: the sample held (0: a cut), and samples left */
     uint32_t hold_n;
+    int32_t env;                 /* XOR, FLIP: the signal's level (a peak follower) */
+    int32_t lp;                  /* CLIP: the lows, under ~250 Hz (the rest lifted) */
     uint32_t rnd;
     uint32_t rph;                /* WRECK: RING's phase */
 } mangle_t;
@@ -48,6 +56,9 @@ static void mangle_init(void)
 
 /* the bar's clock, for SLICE: where the block starts, in steps (Q24, 0 .. 16 steps), and its step a sample */
 static uint32_t mg_pos, mg_dpos;
+#ifdef HOST
+static int32_t mg_host_peak;
+#endif
 
 /* WRECK over x (in place): FOLD, then RING. In the flash, as the 4-OP's render is (the RAM code's room is spent),
  * called only when one of them is up */
@@ -69,6 +80,62 @@ __attribute__((noinline)) static void wreck_block(mangle_t *q, int32_t *x, const
     }
     q->rph = ph;
 }
+/* DESTROY over x (in place), amount a (1 .. 127) of mode mode. In the flash, as WRECK */
+__attribute__((noinline)) static void destroy_block(mangle_t *q, int32_t *x, uint32_t a, uint32_t mode)
+{
+    int32_t w = a >= 8u ? Q15 : (int32_t)a * (Q15 / 8);
+    uint32_t i;
+    if (mode == 0u) {                            /* CLIP */
+        int32_t g = (int32_t)exp2_q16((int32_t)a * 3612), bias = (int32_t)(a * a * 48u / 127u), lp = q->lp;
+        for (i = 0; i < CTL; i++) {
+            int32_t s = clampi(x[i], -32767, 32767), e, t;
+            lp += mulq15(s - lp, 1167);          /* (~250 Hz) */
+            e = s + ((s - lp) >> 1);
+            t = clampi(2 * (mulq16(e, g) + bias), -49152, 49152);   /* (Q15 of v / 16384: the knee 0 .. 1.5) */
+            t -= mulq15(mulq15(mulq15(t, t), t), 4855);   /* t - 4/27 t^3: flat at 1.5 */
+            x[i] = s + mulq15((t >> 1) - s, w);   /* (unity below the knee; the ceiling -6 dBFS) */
+        }
+        q->lp = lp;
+        return;
+    }
+    if (mode <= 2u) {                            /* XOR, FLIP: on the signal scaled to near full scale */
+        uint32_t pos = 9u * 256u + a * 5u * 256u / 127u, b = pos >> 8;   /* (bit 9 .. 14, Q8) */
+        int32_t fr = (int32_t)(pos & 255u) << 7, env = q->env;
+        uint32_t m0 = mode == 1u ? 0x5A5Au >> (14u - b) : 1u << b,
+                 m1 = mode == 1u ? 0x5A5Au >> (b < 14u ? 13u - b : 0u) : 1u << (b < 14u ? b + 1u : 14u);
+        for (i = 0; i < CTL; i++) {
+            int32_t s = clampi(x[i], -32767, 32767), as = absi(s), sh, u, e0, e1;
+            env = as > env ? as : env - (env >> 9);
+            sh = env > 0 ? __builtin_clz((uint32_t)env) - 17 : 10;   /* (env << sh in 16384 .. 32767) */
+            if (sh > 10)
+                sh = 10;
+            u = s << sh;
+            e0 = (int32_t)(int16_t)(uint16_t)((uint32_t)u ^ m0) - u;
+            e1 = (int32_t)(int16_t)(uint16_t)((uint32_t)u ^ m1) - u;
+            e0 += mulq15(e1 - e0, fr);
+            x[i] = s + mulq15(e0 >> sh, w);
+        }
+        q->env = env;
+        return;
+    }
+    {                                            /* DROP */
+        uint32_t p16 = (uint32_t)((9u * exp2_q16((int32_t)a * 2890)) >> 16),   /* (the odds a sample, of 2^16) */
+                 dmax = (uint32_t)((88u * exp2_q16((int32_t)a * 1884)) >> 16);  /* (2 .. 25 ms) */
+        for (i = 0; i < CTL; i++) {
+            int32_t s = clampi(x[i], -32767, 32767), y = s;
+            q->rnd = q->rnd * 1664525u + 1013904223u;
+            if (q->hold_n) {
+                q->hold_n--;
+                y = q->hold;
+            } else if ((q->rnd >> 16) < p16) {
+                q->hold_n = 1u + (q->rnd >> 4) % dmax;
+                q->hold = (q->rnd & 0x300u) == 0u ? 0 : s;   /* (a quarter of them cut, the rest frozen) */
+                y = q->hold;
+            }
+            x[i] = s + mulq15(y - s, w);
+        }
+    }
+}
 /* one block of track t's mangling over x (in place): m the MANGLE values (the sound's, the track's locks over them) */
 FAST static void mangle_block(uint32_t t, int32_t *x, const uint8_t *m)
 {
@@ -76,43 +143,13 @@ FAST static void mangle_block(uint32_t t, int32_t *x, const uint8_t *m)
     uint32_t i, a = m[M_DST] & 127u, pat = m[M_SLICE] && m[M_SLICE] <= 16u ? SLICE_PAT[m[M_SLICE] - 1u] : 0u;
     if (m[M_FOLD] | m[M_RING])                  /* WRECK */
         FAR(wreck_block)(q, x, m);
-    if (a) {
-        int32_t w = a >= 8u ? Q15 : (int32_t)a * (Q15 / 8);
-        uint32_t mode = m[M_DMODE] & 3u;
-        int32_t gw = 4096 + (int32_t)a * (15 * 4096) / 127;          /* WRAP: x 1 .. x 16 */
-        uint32_t xm = ((1u << (1u + a * 14u / 127u)) - 1u) & 0x5A5Au;  /* XOR: the pattern on the low bits */
-        uint32_t fb = 1u << (a * 14u / 127u);                          /* FLIP: the bit */
-        uint32_t pd = a * 260u;                                        /* DROP: the odds a sample, of 2^16 (to ~0.5) */
-        for (i = 0; i < CTL; i++) {
-            int32_t s = clampi(x[i], -32767, 32767), y;
-            switch (mode) {
-            case 0:
-                y = (int16_t)(uint16_t)(uint32_t)mulq12(s, gw);         /* (two's complement: it wraps) */
-                break;
-            case 1:
-            case 2: {   /* (build 95: the error scaled down under -24 dB -- a fixed pattern XORed in made a loud noise
-                         * of a tail or near silence) */
-                int32_t lv = absi(s) << 4;
-                y = (int16_t)(uint16_t)((uint32_t)s ^ (mode == 1u ? xm : fb));
-                y = s + mulq15(y - s, lv < Q15 ? lv : Q15);
-                break;
-            }
-            default:
-                q->rnd = q->rnd * 1664525u + 1013904223u;
-                if (q->hold_n) {
-                    q->hold_n--;
-                    y = q->hold;
-                } else if ((q->rnd >> 16) < pd) {
-                    q->hold = s;
-                    q->hold_n = 1u + ((q->rnd >> 8) & 255u) % (1u + a / 3u);
-                    y = s;
-                } else
-                    y = s;
-                break;
-            }
-            x[i] = s + mulq15(y - s, w);
-        }
-    }
+#ifdef HOST
+    for (i = 0; i < CTL; i++)                    /* (the host's DESTROY lab: the level coming in) */
+        if (absi(x[i]) > mg_host_peak)
+            mg_host_peak = absi(x[i]);
+#endif
+    if (a)                                       /* DESTROY */
+        FAR(destroy_block)(q, x, a, m[M_DMODE] & 3u);
     if (pat || q->g != Q15) {   /* SLICE (or a gate still opening back up after it was turned off) */
         uint32_t r = m[M_SRATE] & 3u, sh = m[M_SSHIFT] & 15u, pos = mg_pos;
         int32_t shut = Q15 - (int32_t)(m[M_SDEPTH] & 127u) * Q15 / 127;

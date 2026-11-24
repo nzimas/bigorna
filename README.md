@@ -205,7 +205,14 @@ These pages are the same on every machine.
 - **FILTER**: MULTI (multimode), LP4 (4-pole low-pass), LEGACY (low- or high-pass), COMB−, COMB+, EQ.
 - **OD TYPE**: VALVE (2 valve-style stages), RAT (a RAT-style clipper, darker as it rises), FOLD (a wavefolder,
   which bites only once the signal is loud). RAT and FOLD come from the LXR firmware.
-- **DESTROY** breaks the sound digitally; DST MODE chooses how: WRAP, XOR, FLIP, DROP.
+- **DESTROY** breaks the sound; DST MODE chooses how. Each mode is heard from low amounts and grows evenly to the top:
+  - CLIP: the mids and highs lifted, then driven up to +42 dB into a hard clipper with a rounded knee, more one side
+    than the other as it goes up: hardcore and gabber distortion. Below the knee the level is unchanged; the ceiling
+    is -6 dBFS.
+  - XOR: bits under the signal's top XORed with a fixed pattern, from a fine grit (-33 dB) to the sound broken up.
+  - FLIP: one bit flipped, from -36 dB up to the top bit: a square error riding the wave.
+    XOR and FLIP follow the signal's level, so a quiet tail is hit as hard as the attack; silence stays silent.
+  - DROP: the sound frozen or cut to silence at random, from 6 times a second to about 300, each 2 to 25 ms long.
 - **SLICE** is a gate in time with the tempo: 16 patterns at 1/8, 1/16, 1/32 or 1/16 triplets, with its depth,
   edge and shift.
 - **WRECK** comes from the Quasar firmware. **FOLD** drives the track's signal up to 5 times into a triangle
