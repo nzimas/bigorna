@@ -249,7 +249,8 @@ CONTROLS = [
                      '<a href="#euclidean-steps">EUCLID mode</a>, a step more or fewer.'),
     ([4], "ALGORITHM", "Chosen track's pan. On the SCALE page: scale. A step held: its pan, locked."),
     ([5], "OCT−", "Chosen track's octave down. In the step view: its "
-                  '<a href="#transposition">transposition</a>. <b>SHIFT +</b>: every track\'s transposition. '
+                  '<a href="#transposition">transposition</a>. <b>SHIFT +</b>: every track\'s transposition; in the step '
+                  "view, the chosen track's notes a semitone (TRSP). "
                   "On the EDIT and SEQ pages: the page before."),
     ([6], "OCT+", "Same, up."),
     ([7], "screen", 'See <a href="#screen">Screen</a>.'),
@@ -259,7 +260,9 @@ CONTROLS = [
     ([11], "KNOB 4", "Chosen track's reverb send. <b>SHIFT +</b>: its overdrive. On a page: row D."),
     ([12, 13, 14, 15, 16, 17], ["FX (T1)", "SEL (T2)", "ENV (T3)", "LFO (T4)", "EDIT (T5)", "GLO (T6)"],
      "<b>T1</b> to <b>T6</b>: choose track 1 to 6. From any page, back to the track. <b>Held + white key 1–4</b>, "
-     'on DRUM: its <a href="#subtracks">subtrack</a> ST-A to ST-D (<b>SHIFT +</b>: give one up). In '
+     'on DRUM: its <a href="#subtracks">subtrack</a> ST-A to ST-D (<b>SHIFT +</b>: give one up; the key '
+     '<b>held</b> 0.8 s: copy or paste the subtrack). <b>SHIFT + held</b> (0.8 s), let go: '
+     '<a href="#copying-a-track">copy</a> the track, or paste the copy onto it. In '
      '<a href="#mute-mode">MUTE mode</a>: mute; <b>held</b> (1 s), solo.'),
     ([18], "HOME", '<a href="#sounds">New sound</a> for the chosen track. <b>SHIFT +</b>: of the same family. '
                    "<b>Held</b> (0.8 s): save the session."),

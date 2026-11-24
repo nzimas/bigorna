@@ -44,6 +44,49 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-117">Build 117</h2>
+<p>Changed</p>
+<ul>
+<li>The step view's SHIFT + OCT− / OCT+ (build 116) shows TRSP and the semitones moved (TRSP +3: presses less than 2 s apart add up), TRSP MAX at the range's end, instead of SEMITONE UP / DOWN and OUT OF RANGE, which were too wide for the screen.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions unchanged. Tests: <code>trn</code>.</li>
+</ul>
+<h2 id="build-116">Build 116</h2>
+<p>Changed</p>
+<ul>
+<li>In the step view, SHIFT + OCT− / OCT+ moves the chosen track's (or subtrack's) steps 1 semitone down or up, any note. Its loops, the other tracks and the TRN count are left alone; a note that would leave 12 .. 120: none moved. SHIFT + OCT− / OCT+ in the track's view still transposes every track.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions unchanged. Tests: <code>trn</code>.</li>
+</ul>
+<h2 id="build-115">Build 115</h2>
+<p>Added</p>
+<ul>
+<li>Track copy and paste. SHIFT + a track button held 0.8 s and let go copies the track (its button blinks); the same on another track, in any pattern, pastes it: steps and locks, length, clock, direction, PROB, SWING, DENSITY, COMPLEXITY, transposition, its sounds on every machine, machine, octave, level, pan, CHORD, arpeggiator, sidechain, and on DRUM its subtracks (taken where free; NO SUBTRACK when not). Not the loops, not the mutes. The same gesture on the track copied lets it go.</li>
+<li>Subtrack copy and paste: a DRUM track's button held and a subtrack's white key held 0.8 s; onto subtracks only.</li>
+<li>The copy holds only where it came from (16 B of RAM): the paste reads that pattern as it is then.</li>
+</ul>
+<p>Fixed</p>
+<ul>
+<li>The patterns' sounds (build 113) read a byte past the subtracks' pans for the store's last, unused byte.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions unchanged. Tests: <code>trkcopy</code>.</li>
+</ul>
+<h2 id="build-114">Build 114</h2>
+<p>Changed</p>
+<ul>
+<li>TRIG's KNOB 1 moves the step's note by semitones: any note of the chromatic scale, whatever the session's scale. The keys, the phrase generator, MUTATE and the randomizers stay in the scale.</li>
+<li>A new scale or root (build 111) leaves a note that was outside the old scale outside the new one, at the same distance from its degree, so a note set off the scale by hand is not snapped.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions unchanged. Tests: <code>projects</code> (TRIG's KNOB 1 by semitones), <code>xpscale</code> (a note off the scale kept off it).</li>
+</ul>
 <h2 id="build-113">Build 113</h2>
 <p>Changed</p>
 <ul>
