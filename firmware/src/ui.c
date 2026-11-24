@@ -54,9 +54,10 @@
  *                                         KNOB 2 its CLOCK against the tempo's 16ths (1/8, 1/4, 1/2, 1X, 2X, 4X),
  *                                         KNOB 3 its PROB (0 .. 100%: each step's chance to play), KNOB 4 its SWING
  *                                         (50 .. 80%; build 88)
- *                               the 3rd   TRIG on or off: on, a step held shows its own page -- KNOB 1 its note (in
- *                                         the scale), 2 its velocity, 3 its length, 4 its trig condition; PRESETS
- *                                         right, its other half: KNOB 1 its RATCHET (the step played 2 .. 8 times)
+ *                               the 3rd   TRIG on or off: on, a step held shows its own page -- KNOB 1 its note (by
+ *                                         semitones, any note: build 114), 2 its velocity, 3 its length, 4 its trig
+ *                                         condition; PRESETS right, its other half: KNOB 1 its RATCHET (the step
+ *                                         played 2 .. 8 times)
  *                               the 4th   MOD on or off (TRIG off): on, a step held shows its MOD page -- KNOB 1
  *                                         MUTATE (its note moved -N .. +N steps of the scale, or RND: at random up to
  *                                         an octave either way), 2 MUT EVERY (every so many times the step plays), 3
@@ -593,10 +594,11 @@ static int32_t scale_move(int32_t n, int32_t d)
 /* (build 111) note n, in scale os at root orr, as it is in the scale and root chosen now: the same degree (scales of
  * other sizes: the degree nearest in proportion), in the same octave of its root, the root moved the shorter way
  * (-6 .. +5 semitones); a note between degrees keeps its distance from the one below. CHROMATIC on either side: the
- * notes moved with the root. Then to the nearest note of the scale (below, of two), within 12 .. 120 */
+ * notes moved with the root. Then to the nearest note of the scale (below, of two) -- not a note that was off the old
+ * scale (build 114: set so by hand) -- within 12 .. 120 */
 static uint32_t xp_note(uint32_t n, uint32_t os, uint32_t orr)
 {
-    int32_t dr = (int32_t)((ui.root + 18u - orr) % 12u) - 6, m, k;
+    int32_t dr = (int32_t)((ui.root + 18u - orr) % 12u) - 6, m, k, off = 0;
     if (!n)
         return 0;
     if (os == 0 || os >= NSCALE || ui.scale == 0)
@@ -607,6 +609,7 @@ static uint32_t xp_note(uint32_t n, uint32_t os, uint32_t orr)
         for (d = on - 1; d > 0 && SCALE_STEP[os][d] > pc; d--)
             ;
         e = pc - SCALE_STEP[os][d];
+        off = e != 0;
         d = (2 * d * nn + on) / (2 * on);
         if (d >= nn) {
             d -= nn;
@@ -614,9 +617,12 @@ static uint32_t xp_note(uint32_t n, uint32_t os, uint32_t orr)
         }
         m = (int32_t)orr + dr + 12 * o + SCALE_STEP[ui.scale][d] + e;
     }
-    for (k = 0; k < 6 && !in_scale(m - k) && !in_scale(m + k); k++)
-        ;
-    m = in_scale(m - k) ? m - k : m + k;
+    if (!off) {                                  /* (build 114: a note off the old scale -- TRIG's KNOB 1 is
+                                                  * chromatic -- keeps its distance from its degree, not snapped) */
+        for (k = 0; k < 6 && !in_scale(m - k) && !in_scale(m + k); k++)
+            ;
+        m = in_scale(m - k) ? m - k : m + k;
+    }
     while (m < 12)
         m += 12;
     while (m > 120)
@@ -1900,7 +1906,9 @@ static void step_knob(uint32_t j, int32_t s)
         else
             return;
     } else if (j == 0u) {
-        seq_note[t][i] = (uint8_t)scale_move((int32_t)seq_note[t][i], s);
+        if (seq_note[t][i])                      /* (build 114: by semitones, any note -- the scale not enforced
+                                                  * here; an empty step left so) */
+            seq_note[t][i] = (uint8_t)clampi((int32_t)seq_note[t][i] + s, 12, 120);
         if (ses_aud)
             aud_step(t, i);                      /* (heard as it is turned, AUDITION ON) */
     } else if (j == 1u)

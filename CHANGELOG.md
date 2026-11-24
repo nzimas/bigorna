@@ -1,5 +1,16 @@
 # Changelog
 
+## Build 114
+
+Changed
+- TRIG's KNOB 1 moves the step's note by semitones: any note of the chromatic scale, whatever the session's scale. The
+  keys, the phrase generator, MUTATE and the randomizers stay in the scale.
+- A new scale or root (build 111) leaves a note that was outside the old scale outside the new one, at the same
+  distance from its degree, so a note set off the scale by hand is not snapped.
+
+Compatibility
+- Sessions unchanged. Tests: `projects` (TRIG's KNOB 1 by semitones), `xpscale` (a note off the scale kept off it).
+
 ## Build 113
 
 Changed

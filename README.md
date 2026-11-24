@@ -235,7 +235,8 @@ belong to the session. A new session draws them at random.
 The session's notes follow a new scale or root: the steps of every pattern and the notes of every loop move into it,
 degree by degree (a scale with fewer or more notes: the degree nearest in proportion), each in the same octave of its
 root, the root moving the shorter way (up to 6 semitones). A note outside the new scale goes to the nearest one in
-it. On the SCALE page this happens 0.4 s after the knob stops, so turning through several scales applies only the
+it, except a note that was outside the old scale too (set so on TRIG's KNOB 1): it keeps its distance from its degree.
+On the SCALE page this happens 0.4 s after the knob stops, so turning through several scales applies only the
 last one; SHIFT + ARP applies at once. Tracks on DRUM keep their notes (their tuning). Moving to a scale with fewer
 notes and back does not always give the same notes back.
 
@@ -486,7 +487,7 @@ pattern then starts from where the rotation put its first step. EUCLID mode is n
 
 ### Step pages
 
-**TRIG**: KNOB 1 the step's note (in the scale), 2 its velocity, 3 its length, 4 its trig condition; with PRESETS turned
+**TRIG**: KNOB 1 the step's note, by semitones (any note, the scale not enforced), 2 its velocity, 3 its length, 4 its trig condition; with PRESETS turned
 right, KNOB 1 its RATCHET (the step played 2 to 8 times). Turning KNOB 1 plays the new note (its chord, if the step has one) for a
 moment, at the step's velocity, so you hear the note you are setting; the session's AUDITION set to OFF
 (its page, [Sessions](#sessions)) keeps it silent. The conditions are the Digitone II's: PRE and !PRE (as the

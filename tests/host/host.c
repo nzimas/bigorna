@@ -782,8 +782,11 @@ static int cmd_projects(const char *dir)
         EXPECT(seq_vel[5][0] == VEL_DEF && seq_glen[5][0] == GLEN_DEF && !seq_cond[5][0], "a new step: the defaults");
         turn(EN_K1, 1);                          /* (a step held, EDIT not up: the knobs its note, velocity ..) */
         n1 = seq_note[5][0];
-        EXPECT(n1 > n0 && in_scale((int32_t)n1), "TRIG, KNOB 1: the note up the scale");
+        EXPECT(n1 == n0 + 1u, "TRIG, KNOB 1: the note a semitone up, any note (build 114)");
         EXPECT(ev_w == w0 + 1u && ui.aud_n[0] == n1, "its note turned: the new note heard (build 91)");
+        turn(EN_K1, 13);
+        turn(EN_K1, -13);
+        EXPECT(seq_note[5][0] == n1, "an octave and a semitone up and back: by semitones each way");
         turn(EN_K2, -20);
         turn(EN_K3, 2);
         turn(EN_K4, CD_AB - CD_NONE + 2);        /* 1:2, !1:2, 2:2 */
@@ -6950,8 +6953,8 @@ static int cmd_xpscale(const char *dir)
     XSEXPECT(ui.scale == 2u && seq_note[3][1] == 64, "the scale turned: the notes as they were for now");
     fm1_ms += 500;
     ui_input();
-    XSEXPECT(seq_note[3][0] == 60 && seq_note[3][1] == 63 && seq_note[3][2] == 70 && seq_note[3][3] == 65,
-             "0.4 s on: C E B into C Eb Bb, degree by degree (F#, out of both: to the scale's F)");
+    XSEXPECT(seq_note[3][0] == 60 && seq_note[3][1] == 63 && seq_note[3][2] == 70 && seq_note[3][3] == 66,
+             "0.4 s on: C E B into C Eb Bb, degree by degree (F#, off MAJOR, set so by hand: F's semitone up)");
     XSEXPECT(seq_note[0][0] == 37, "DRUM's notes left alone");
     pat_decode(&pat_store[1], &sb);
     XSEXPECT(sb.note[3][1] == 63 && sb.note[3][2] == 70 && sb.note[0][0] == 37 && pat_dirtyv[1],
@@ -6976,15 +6979,16 @@ static int cmd_xpscale(const char *dir)
     ui_input();
     fm1_ms += 500;
     ui_input();
-    for (i = 0; i < 4u; i++)
-        XSEXPECT(in_scale(seq_note[3][i]), "a scale of five: every note in it");
+    for (i = 0; i < 3u; i++)
+        XSEXPECT(in_scale(seq_note[3][i]), "a scale of five: every note of the old scale in it");
+    XSEXPECT(!in_scale(seq_note[3][3]), "the note off the scale still off it, not snapped (build 114)");
     XSEXPECT(seq_note[3][0] == 62 && seq_note[3][0] < seq_note[3][1] && seq_note[3][1] < seq_note[3][2],
              "the root kept, the line's shape kept");
     btn(B_ARP, 0);
     btn(B_ARP, 1);                               /* SHIFT + ARP: at random, at once */
     ui_input();
-    for (i = 0; i < 4u; i++)
-        XSEXPECT(in_scale(seq_note[3][i]), "SHIFT + ARP: every note in the scale drawn");
+    for (i = 0; i < 3u; i++)
+        XSEXPECT(in_scale(seq_note[3][i]), "SHIFT + ARP: every note of the old scale in the scale drawn");
     XSEXPECT(lp->ev[0].note && in_scale(lp->ev[0].note) && seq_note[0][0] == 37, "the loop in it, the drum not");
     /* the SESSIONS grid: the cursor's key lit, the one playing blinking */
     btn(B_SAVE, 1);
