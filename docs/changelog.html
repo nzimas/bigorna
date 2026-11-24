@@ -44,6 +44,47 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-113">Build 113</h2>
+<p>Changed</p>
+<ul>
+<li>A pattern is the machine's state: it now holds the sounds as well. Every parameter of every track's sound on each machine (SYN, FLTR, AMP, FX with the sends, MANGLE with DESTROY and its mode, WRECK, LFOs, a sound from HOME or SHIFT + PRESETS, MIDI CCs and PERFORMANCE's knobs on them), the subtracks' sounds, and the subtracks' octave, level and pan belong to the pattern playing. Switching patterns (stopped, playing, by program change) brings each pattern's own.</li>
+<li>Session-level, the same in every pattern: scale and root; the effects' settings (delay, reverb, chorus, master compressor); the session page's values; the subtracks' layout.</li>
+<li>Kept as what each pattern changes from the session's sounds, a value at a time, in room shared by the session's 16 patterns: 3072 values (9 KB). Full: PATTERN FULL, and the pattern keeps what it held. A pattern takes its sounds as it is left (switched from, saved, the session saved); an empty one, or one of an earlier build not left since, starts with the sounds playing. Copy and paste take the sounds; emptying a pattern drops them; PERFORMANCE gives them back.</li>
+<li>The session record now holds the session's sounds (not the pattern playing's); the patterns' changes are written after the loops in the loop store, so they are in the USB backup with the loops.</li>
+<li>The loops' room, shared by all patterns, is 2432 notes (from 4608): its RAM holds the patterns' sounds. A session with more loop notes loads the loops that fit (the others: LOOPS LOST).</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions of earlier builds load as they were; each of their patterns plays the sounds as they are until it is left. Earlier builds read a build 113 session's loops and ignore the patterns' sounds.</li>
+<li>Tests: <code>patsound</code> (DESTROY, a HOME sound and a subtrack's level per pattern, stopped and playing; saved and loaded; the session record; copy, paste, empty; PERFORMANCE; PATTERN FULL; an earlier build's pattern). <code>patsnd</code>'s and <code>projects</code>'s expectations moved to the new rule and the smaller loop room.</li>
+</ul>
+<h2 id="build-112">Build 112</h2>
+<p>Changed</p>
+<ul>
+<li>DESTROY redone. Before, XOR and FLIP worked on fixed low bits and made no audible change below about 100, DROP's holds were too short to hear on a kick, and WRAP went from nothing to wrapping the kick's peaks round (a broken, flatulent sound) within a few steps. Now each mode is heard from low amounts and grows evenly to 127:
+<ul>
+<li>CLIP (in WRAP's place): mids and highs lifted +3.5 dB above ~250 Hz, drive 0 to +42 dB into a hard clipper with a rounded knee, a growing offset for even harmonics. Unity below the knee, ceiling -6 dBFS.</li>
+<li>XOR and FLIP are measured against the signal's level (a peak follower of ~12 ms): XOR from -33 dB of the signal up to all bits but the top one, FLIP from -36 dB up to the top bit, crossfaded between bits.</li>
+<li>DROP freezes the sound or cuts it to silence at random, 6 to ~300 times a second, 2 to 25 ms each.</li>
+</ul></li>
+<li>DESTROY runs from the flash, as WRECK does, which frees RAM code.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions unchanged: a sound set to WRAP now plays CLIP. Sounds with DESTROY, and DESTROY locks, will sound different (stronger) than before.</li>
+<li>Tests: <code>dstlab</code> (four kicks through every mode at 16 .. 127: each mode heard at 16, near the whole sound at 127; a WAV each in build/dstlab).</li>
+</ul>
+<h2 id="build-111">Build 111</h2>
+<p>Added</p>
+<ul>
+<li>A new scale or root moves the session's notes into it: the steps of every pattern (the one playing, the one waiting to play, the ones in the store, the one copied) and the notes of every loop, degree by degree, each in the same octave of its root, the root moving the shorter way. A scale of another size maps each degree to the nearest one in proportion; a note outside the new scale goes to the nearest note in it. On the SCALE page it happens 0.4 s after SELECT or ALGORITHM stops turning (only the last scale counts); SHIFT + ARP applies at once. Tracks on DRUM keep their notes. PERFORMANCE going off puts the scale back and moves the notes back with it.</li>
+<li>SESSIONS grid: the white key under the cursor is lit brightly as PRESETS moves it, and the key of the session playing blinks. The other slots stay dim.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions and patterns unchanged. The patterns changed this way are marked unsaved.</li>
+<li>Tests: <code>xpscale</code> (steps, store, loop, DRUM untouched, a knob turned through and back, a five-note scale, SHIFT + ARP; the grid's keys).</li>
+</ul>
 <h2 id="build-110">Build 110</h2>
 <p>Added</p>
 <ul>

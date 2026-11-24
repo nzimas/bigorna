@@ -293,7 +293,8 @@ CONTROLS = [
     ([33], "black key 10", '<b>EDIT</b>: <a href="#sound-pages-edit">sound pages</a> (not the EDIT button, T5).'),
     ([34], "black key 11", "<b>SHIFT</b>."),
     ([35], "16 white keys", "Play the chosen track (its subtrack chosen) in the scale; the root's keys glow. In the "
-                                "step view: 16 steps. On the PATTERNS grid: 16 patterns. With a DRUM track's "
+                                "step view: 16 steps. On the PATTERNS grid: 16 patterns. On the SESSIONS grid: 16 "
+                                "sessions, the cursor's lit, the one playing blinking. With a DRUM track's "
                                 "button held, 1–4: its subtracks."),
 ]
 
