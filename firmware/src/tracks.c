@@ -1331,7 +1331,8 @@ static void fxq_block(void)                      /* (each block, playing: the MI
 #define NLOOP 3u                 /* (loops a track, in a pattern) */
 #define NLP 40u                  /* (loops in all, every pattern's) */
 #define LOOP_EV 256u             /* (notes a loop) */
-#define LP_POOL 4608u            /* (notes in all: as the 18 loops of 256 before build 73) */
+#define LP_POOL 2432u            /* (notes in all, every pattern's: 4608 before build 113, whose RAM the
+                                  * patterns' sounds took -- projects.c, PS_ROOM) */
 #define LOOP_MAX 512u            /* (steps: 32 bars) */
 #define LP_FREE 0xFFu
 typedef struct { uint16_t step, len8; uint8_t note, vel; } lev_t;

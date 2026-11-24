@@ -402,6 +402,209 @@ static int prj_write(uint32_t k, uint32_t s)
     return 0;
 }
 /* ------------------------------------------------------------ the loops --- */
+/* ------------------------------------------------------------ the patterns' sounds (build 113) ---
+ * A pattern is the machine's state: besides its steps and the tracks' state (px), the sounds it plays -- every
+ * track's sound on each machine, the subtracks' sounds, and the subtracks' octave, level and pan. Kept as what differs
+ * from the session's sounds (ps_b: the sounds the session record holds), a byte at a time: in ps_pool, three bytes
+ * each -- the pattern (top 4 bits) and the byte's place (12 bits: ps_b's layout), then its value. Session-level, not
+ * in it: the scale and root, the effects' settings, the session page's values, the subtracks' layout.
+ * A pattern left (switched from, saved, the session saved) takes what differs then; a pattern given (switched to,
+ * loaded) gets the session's sounds with its own over them -- one that never took any (ps_set's bit clear: empty,
+ * or saved before build 113) keeps the sounds as they play. Kept with the loops, in their stream (lop_save). */
+typedef struct {
+    sound_t t[NTRACK][NENG];     /* (as ui.snd) */
+    sound_t l[NXL];              /* (as ui_lsnd) */
+    int8_t loct[NXL], llevel[NXL], lpan[NXL];   /* (as ui.oct, ui.level, ui.pan of the shared lanes) */
+} ps_base_t;
+#define PS_SND ((uint32_t)sizeof(sound_t))
+#define PS_TB ((uint32_t)(NTRACK * NENG) * PS_SND)
+#define PS_LB (PS_TB + (uint32_t)NXL * PS_SND)
+#define PS_BYTES ((uint32_t)sizeof(ps_base_t))
+#define PS_ROOM 3072u            /* (changes, every pattern's: 9 KB) */
+typedef char ps_fits[PS_BYTES <= 4096u && __builtin_offsetof(ps_base_t, l) == PS_TB &&
+                     __builtin_offsetof(ps_base_t, loct) == PS_LB && PAT_SLOTS <= 16u ? 1 : -1];
+static ps_base_t ps_b;
+static uint8_t ps_pool[PS_ROOM * 3u];
+static uint16_t ps_n;                            /* (changes in the pool) */
+static uint16_t ps_set;                          /* (the patterns that took their sounds, a bit each) */
+static uint32_t ps_full_t;                       /* (PATTERN FULL last said) */
+static uint8_t ps_cur(uint32_t p)                /* byte p as it plays */
+{
+    if (p < PS_TB)
+        return ((const uint8_t *)ui.snd)[p];
+    if (p < PS_LB)
+        return ((const uint8_t *)ui_lsnd)[p - PS_TB];
+    p -= PS_LB;
+    return (uint8_t)(p < NXL ? ui.oct[NTRACK + p] : p < 2u * NXL ? ui.level[NTRACK + p - NXL] : ui.pan[NTRACK + p - 2u * NXL]);
+}
+static void ps_put(uint32_t p, uint8_t v)        /* .. set, its sound published again (its level applied) */
+{
+    if (p < PS_TB) {
+        ((uint8_t *)ui.snd)[p] = v;
+        ui.dirty[p / (NENG * PS_SND)] = 1;
+        return;
+    }
+    if (p < PS_LB) {
+        ((uint8_t *)ui_lsnd)[p - PS_TB] = v;
+        ui.dirty[NTRACK + (p - PS_TB) / PS_SND] = 1;
+        return;
+    }
+    p -= PS_LB;
+    if (p < NXL)
+        ui.oct[NTRACK + p] = (int8_t)clampi((int8_t)v, -3, 3);
+    else if (p < 2u * NXL) {
+        ui.level[NTRACK + p - NXL] = (int8_t)clampi((int8_t)v, 0, LEVEL_MAX);
+        level_pan_apply(NTRACK + p - NXL);
+    } else if (p < 3u * NXL) {
+        ui.pan[NTRACK + p - 2u * NXL] = (int8_t)clampi((int8_t)v, -PAN_MAX, PAN_MAX);
+        level_pan_apply(NTRACK + p - 2u * NXL);
+    }
+}
+static uint32_t ps_pos(const uint8_t *e) { return (uint32_t)(e[0] & 15u) << 8 | e[1]; }
+static uint32_t ps_pat(const uint8_t *e) { return (uint32_t)e[0] >> 4; }
+/* the session's sounds: as they play now (a session given, a new one) -- no pattern holds any */
+static void ps_rebase(void)
+{
+    uint32_t p;
+    for (p = 0; p < PS_BYTES; p++)
+        ((uint8_t *)&ps_b)[p] = ps_cur(p);
+    ps_n = 0;
+    ps_set = 0;
+}
+static uint32_t ps_diff(void)                    /* the bytes that differ from the session's now */
+{
+    uint32_t p, n = 0;
+    for (p = 0; p < PS_BYTES; p++)
+        n += ps_cur(p) != ((const uint8_t *)&ps_b)[p];
+    return n;
+}
+static uint32_t ps_of(uint32_t k)                /* pattern k's changes held */
+{
+    uint32_t i, n = 0;
+    for (i = 0; i < ps_n; i++)
+        n += ps_pat(&ps_pool[3u * i]) == k;
+    return n;
+}
+static void ps_drop(uint32_t k)                  /* pattern k's changes gone (its bit cleared) */
+{
+    uint32_t i, o = 0;
+    for (i = 0; i < ps_n; i++)
+        if (ps_pat(&ps_pool[3u * i]) != k) {
+            if (o != i)
+                memcpy(&ps_pool[3u * o], &ps_pool[3u * i], 3u);
+            o++;
+        }
+    ps_n = (uint16_t)o;
+    ps_set &= (uint16_t)~(1u << k);
+}
+static void ps_say_full(void)
+{
+    if ((uint32_t)(fm1_ms - ps_full_t) >= 3000u) {
+        ps_full_t = fm1_ms;
+        say("PATTERN FULL", 1500);
+    }
+}
+/* the sounds playing kept as pattern k's (0; -1: no room -- what k held kept, PATTERN FULL said) */
+static int ps_stash(uint32_t k)
+{
+    uint32_t need, p;
+    if (k >= PAT_SLOTS)
+        return 0;
+    need = ps_diff();
+    if (need > PS_ROOM - ps_n + ps_of(k)) {
+        ps_say_full();
+        return -1;
+    }
+    ps_drop(k);
+    for (p = 0; p < PS_BYTES; p++) {
+        uint8_t v = ps_cur(p);
+        if (v != ((const uint8_t *)&ps_b)[p]) {
+            uint8_t *e = &ps_pool[3u * ps_n++];
+            e[0] = (uint8_t)(k << 4 | p >> 8);
+            e[1] = (uint8_t)p;
+            e[2] = v;
+        }
+    }
+    ps_set |= (uint16_t)(1u << k);
+    return 0;
+}
+/* pattern k's sounds given: the session's, its own over them; each sound changed published again (one that never
+ * took any: as they play) */
+static void ps_give(uint32_t k)
+{
+    uint32_t p, i;
+    if (k >= PAT_SLOTS || !(ps_set >> k & 1u))
+        return;
+    for (p = 0; p < PS_BYTES; p++)
+        if (ps_cur(p) != ((const uint8_t *)&ps_b)[p])
+            ps_put(p, ((const uint8_t *)&ps_b)[p]);
+    for (i = 0; i < ps_n; i++) {
+        const uint8_t *e = &ps_pool[3u * i];
+        if (ps_pat(e) == k && ps_pos(e) < PS_BYTES && ps_cur(ps_pos(e)) != e[2])
+            ps_put(ps_pos(e), e[2]);
+    }
+}
+/* pattern from's sounds copied to to (0; -1 no room) */
+static int ps_copy(uint32_t from, uint32_t to)
+{
+    uint32_t i, n0;
+    if (from >= PAT_SLOTS || to >= PAT_SLOTS || from == to)
+        return 0;
+    if (!(ps_set >> from & 1u)) {
+        ps_drop(to);
+        return 0;
+    }
+    if (ps_of(from) > PS_ROOM - ps_n + ps_of(to)) {
+        ps_say_full();
+        return -1;
+    }
+    ps_drop(to);
+    for (i = 0, n0 = ps_n; i < n0; i++)
+        if (ps_pat(&ps_pool[3u * i]) == from) {
+            uint8_t *e = &ps_pool[3u * ps_n++];
+            memcpy(e, &ps_pool[3u * i], 3u);
+            e[0] = (uint8_t)(to << 4 | (e[0] & 15u));
+        }
+    ps_set |= (uint16_t)(1u << to);
+    return 0;
+}
+/* (session-level) shared lane l taken or given up: its sound, octave, level and pan the session's as they are now,
+ * in no pattern */
+static void ps_lane_new(uint32_t l)
+{
+    uint32_t x = l - NTRACK, i, o = 0;
+    if (l < NTRACK || l >= NLANE)
+        return;
+    ps_b.l[x] = ui_lsnd[x];
+    ps_b.loct[x] = ui.oct[l];
+    ps_b.llevel[x] = ui.level[l];
+    ps_b.lpan[x] = ui.pan[l];
+    for (i = 0; i < ps_n; i++) {
+        uint32_t p = ps_pos(&ps_pool[3u * i]);
+        int mine = (p >= PS_TB + x * PS_SND && p < PS_TB + (x + 1u) * PS_SND) ||
+                   (p >= PS_LB && (p - PS_LB) % NXL == x);
+        if (!mine) {
+            if (o != i)
+                memcpy(&ps_pool[3u * o], &ps_pool[3u * i], 3u);
+            o++;
+        }
+    }
+    ps_n = (uint16_t)o;
+}
+/* the main loop, every 0.25 s: the pattern playing's changes past the room left -- PATTERN FULL, until they fit */
+static uint32_t ps_poll_t;
+static void ps_poll(void)
+{
+    if ((uint32_t)(fm1_ms - ps_poll_t) < 250u)
+        return;
+    ps_poll_t = fm1_ms;
+    if (pat_dirty && ps_diff() > PS_ROOM - ps_n + ps_of(pat_cur))
+        ps_say_full();
+}
+/* in the loops' stream, after the loops: 0xA5, 1, ps_set (2 bytes), the changes' count (2), the changes */
+#define PS_MARK 0xA5u
+static uint32_t ps_bytes(void) { return ps_set ? 6u + 3u * ps_n : 0u; }
+
 /* The loop store (build 38): 31 sectors the FM-1's flash has free (beyond the sessions' 64, apart from the update's
  * staging area), shared by the sessions. A session's loops are a stream -- how many loops, then each: its track,
  * its number, muted, its length, its notes as they are in RAM -- cut into as many sectors as it takes (up to 7: 18
@@ -515,7 +718,7 @@ static uint32_t lop_bytes(void)          /* the stream's length (0: no loop) */
             n++;
             b += 8u + lps[i].n * (uint32_t)sizeof(lev_t);
         }
-    return n ? b : 0u;
+    return n || ps_bytes() ? b + ps_bytes() : 0u;   /* (build 113: the patterns' sounds after the loops) */
 }
 /* (build 73) pattern k's transposition on track t (the one playing: as it plays) */
 static int32_t pat_trn(uint32_t k, uint32_t t)
@@ -571,6 +774,11 @@ static int lop_save(uint32_t k, uint32_t *gen, uint8_t *nsec)
             }
         }
     }
+    if (ps_bytes()) {                            /* (build 113) the patterns' sounds */
+        uint8_t h[6] = {PS_MARK, 1, (uint8_t)ps_set, (uint8_t)(ps_set >> 8), (uint8_t)ps_n, (uint8_t)(ps_n >> 8)};
+        lw_put(h, 6);
+        lw_put(ps_pool, 3u * ps_n);
+    }
     lw_flush();                                  /* (the last, part full) */
     if (lw.err || lw.j != lw.nsec)
         return lw.err ? lw.err : -3;
@@ -623,7 +831,7 @@ static int lp_copy_pat(uint32_t from, uint32_t to);
  * other pattern saved, as they played there (-6: not all of them fitted) */
 static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t pat)
 {
-    uint32_t i, j, a, old = 0;
+    uint32_t i, j, a, old = 0, lost = 0;
     uint8_t cnt;
     lop_clear();
     if (!gen || !nsec)
@@ -659,8 +867,16 @@ static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t pat)
             len > LOOP_MAX)
             break;
         p = lp_new(pk, h[0], h[1], n);
-        if (!p || p->cap < n)
-            break;
+        if (!p || p->cap < n) {                  /* (build 113: no room -- the loop read past, the others kept) */
+            uint32_t e;
+            lev_t v;
+            if (p)
+                lp_free(p);
+            for (e = 0; e < n; e++)
+                lr_get(&v, sizeof v);
+            lost = 1;
+            continue;
+        }
         lr_get(p->ev, n * (uint32_t)sizeof(lev_t));
         p->n = (uint16_t)n;
         p->len = (uint16_t)len;
@@ -673,6 +889,28 @@ static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t pat)
     if (lr.err || i != cnt) {
         lop_clear();
         return -2;
+    }
+    if (lr.left >= 6u) {                         /* (build 113) the patterns' sounds, after the loops */
+        uint8_t h[6];
+        uint32_t n;
+        lr_get(h, 6);
+        n = h[4] | (uint32_t)h[5] << 8;
+        if (!lr.err && h[0] == PS_MARK && h[1] == 1u && n <= PS_ROOM && lr.left >= 3u * n) {
+            lr_get(ps_pool, 3u * n);
+            ps_n = (uint16_t)n;
+            ps_set = (uint16_t)(h[2] | h[3] << 8);
+            for (j = 0, n = 0; j < ps_n; j++)    /* (a change out of place: dropped) */
+                if (ps_pos(&ps_pool[3u * j]) < PS_BYTES) {
+                    if (n != j)
+                        memcpy(&ps_pool[3u * n], &ps_pool[3u * j], 3u);
+                    n++;
+                }
+            ps_n = (uint16_t)n;
+            if (lr.err) {
+                ps_n = 0;
+                ps_set = 0;
+            }
+        }
     }
     RING_PUBLISH();
     for (i = 0; i < NLP; i++)
@@ -688,7 +926,7 @@ static int lop_load(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t pat)
                 lps[i].anchor = a;
         return rc;
     }
-    return 0;
+    return lost ? -6 : 0;                        /* (-6: a loop past the room, not loaded) */
 }
 /* session k's loops copied for session to: their new generation and sectors */
 static int lop_copy(uint32_t k, uint32_t gen, uint32_t nsec, uint32_t to, uint32_t *ngen)
@@ -1411,6 +1649,7 @@ static void pat_give(uint32_t k, int follow)
     pat_cur = (uint8_t)k;
     pat_tempo_of(p);
     pat_dirty = pat_dirtyv[k];
+    ps_give(k);                                  /* (its sounds: build 113) */
     px_load(p);
     tempo_apply();
 }
@@ -1421,6 +1660,7 @@ static void pat_stash(void)
     if (!pat_dirty)
         return;
     pat_take(&pat_store[pat_cur]);
+    ps_stash(pat_cur);                           /* (its sounds: build 113) */
     pat_dirtyv[pat_cur] = 1;
 }
 /* the store's patterns k (and the three beside it in its sector) into the flash, if the project has a slot */
@@ -1439,6 +1679,7 @@ static int pat_flush(uint32_t k)
 static int pat_save(uint32_t k)
 {
     pat_take(&pat_store[k]);
+    ps_stash(k);                                 /* (its sounds: build 113) */
     px_note_base();
     pat_cur = (uint8_t)k;
     pat_dirty = 0;
@@ -1495,6 +1736,7 @@ static void pat_clear(uint32_t k)
         return;
     memset(&pat_store[k], 0, sizeof pat_store[k]);
     pat_dirtyv[k] = 0;
+    ps_drop(k);                                  /* (its sounds: the ones playing kept, build 113) */
     lp_clear_pat(k);                             /* (its loops too: build 73) */
     if (seq_pend == 1u && seq_pend_k == k)
         seq_pend = 0;                            /* (it was waiting to play: not now) */
@@ -1527,6 +1769,7 @@ static void pat_save_as(uint32_t k)
         uint32_t i, from = pat_cur;
         lr = lp_copy_pat(from, k);
         pat_take(&pat_store[k]);
+        ps_stash(k);                             /* (the sounds playing: build 113) */
         pat_dirtyv[k] = 0;
         for (i = 0; i < NLP; i++)
             if (lps[i].pat == k) {
@@ -1551,6 +1794,7 @@ static void pat_save_as(uint32_t k)
     } else {                                     /* (PERFORMANCE: the one playing plays on, it goes back to it) */
         lr = lp_copy_pat(pat_cur, k);            /* (its loops too: build 73) */
         pat_take(&pat_store[k]);
+        ps_stash(k);                             /* (the sounds playing: build 113) */
         pat_dirtyv[k] = 0;
         if (seq_pend == 1u && seq_pend_k == k) {   /* (waiting to play: as saved now) */
             seq_pend = 0;
@@ -1586,6 +1830,9 @@ static void pat_copy_hold(uint32_t k)
     }
     if (pat_clip_from >= 0) {                    /* pasted (its loops too: build 73) */
         int lr = lp_copy_pat((uint32_t)pat_clip_from, k);
+        if ((uint32_t)pat_clip_from == pat_cur)  /* (its sounds with it, as they are now: build 113) */
+            ps_stash(pat_cur);
+        ps_copy((uint32_t)pat_clip_from, k);
         pat_store[k] = pat_clip;
         pat_dirtyv[k] = 0;
         rc = pat_flush(k);
@@ -1694,6 +1941,7 @@ static void pat_brk_save(uint32_t k)
         pat_encode(&pat_store[k], s);
         sb_done();
     }
+    ps_stash(k);                                 /* (the sounds playing: build 113) */
     pat_dirtyv[k] = 0;
     lr = lp_copy_pat(pat_cur, k);                /* (the loops playing with it: build 73) */
     if (seq_pend == 1u && seq_pend_k == k)
@@ -1840,12 +2088,21 @@ static int prj_save(uint32_t k)              /* the loops into the store, the pa
     int rc;
     if (!prj_ok || k >= PRJ_SLOTS)
         return -1;
+    ps_stash(pat_cur);                           /* (the pattern playing's sounds, before the stream: build 113) */
     if ((rc = lop_save(k, &gen, &nsec)) != 0)
         return rc;
     pat_take(&pat_store[pat_cur]);
     px_note_base();
     pat_dirty = 0;
     prj_take((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)));
+    {                                            /* (build 113) the session's sounds, not the pattern's */
+        prj_body_t *b = (prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t));
+        memcpy(b->snd, ps_b.t, sizeof b->snd);
+        memcpy(b->lsnd, ps_b.l, sizeof b->lsnd);
+        memcpy(b->loct, ps_b.loct, sizeof b->loct);
+        memcpy(b->llevel, ps_b.llevel, sizeof b->llevel);
+        memcpy(b->lpan, ps_b.lpan, sizeof b->lpan);
+    }
     ((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->loop_gen = gen;
     ((prj_body_t *)(void *)(prj_buf + sizeof(prj_head_t)))->loop_nsec = nsec;
     if ((rc = prj_write(k, 0)) != 0)
@@ -1895,6 +2152,7 @@ static void prj_fresh(void)
     lop_clear();
     ui.mute_mode = 0;
     prj_give(b);
+    ps_rebase();                                 /* (build 113: no pattern holds sounds) */
     memset(pat_store, 0, sizeof pat_store);
     memset(pat_dirtyv, 0, sizeof pat_dirtyv);
     pat_give(0, 0);
@@ -1917,11 +2175,14 @@ static int prj_load(uint32_t k)
             memcpy(&pat_store[s * PAT_PER], prj_buf + sizeof(prj_head_t), PAT_PER * sizeof(pat_t));
     }
     prj_give(&b);
+    ps_rebase();                                 /* (build 113: the session's sounds; the patterns' from the stream) */
     prj_cur = (int8_t)k;
     memset(pat_dirtyv, 0, sizeof pat_dirtyv);
     pat_give(b.pat < PAT_SLOTS ? b.pat : 0u, 0);    /* (the pattern it was saved playing) */
     prj_dirty = 0;
     rc = lop_load(k, b.loop_gen, b.loop_nsec, b.pat < PAT_SLOTS ? b.pat : 0u);
+    ps_give(pat_cur);                            /* (its sounds, as the stream had them) */
+    pat_dirty = 0;
     lst_note(k);
     return rc ? -5 : 0;                          /* (-5: loaded, but its loops did not read whole) */
 }
@@ -2332,6 +2593,7 @@ static void pat_poll(void)
         memcpy(sb_old.cx, ui.gen_cx, NLANE);
         memcpy(sb_old.trn, ui.trn, NLANE);
         pat_encode(&pat_store[pat_cur], &sb_old);
+        ps_stash(pat_cur);                       /* (its sounds: build 113) */
         pat_dirtyv[pat_cur] = 1;
     }
     memcpy(ui.gen_den, sb_next.den, NLANE);
@@ -2340,6 +2602,7 @@ static void pat_poll(void)
     pat_cur = seq_pend_k;
     pat_tempo_of(&pat_store[pat_cur]);
     pat_dirty = pat_dirtyv[pat_cur];
+    ps_give(pat_cur);                            /* (its sounds: build 113) */
     px_mu_over = -1;
     if (was & 0x80u)
         ui.solo = 0xFF;                          /* (the mutes the pattern's: no solo to undo) */

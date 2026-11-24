@@ -324,7 +324,10 @@ static void pat_brk_save(uint32_t k);
 static void pat_save_as(uint32_t k);
 static void pat_grid_open(void);
 static void pat_poll(void);
-static void scale_follow(uint32_t os, uint32_t orr);   /* (projects.c: the material moved into the scale; build 111) */
+static void scale_follow(uint32_t os, uint32_t orr);
+static void ps_rebase(void);                     /* (projects.c: the patterns' sounds, build 113) */
+static void ps_lane_new(uint32_t l);
+static void ps_poll(void);   /* (projects.c: the material moved into the scale; build 111) */
 static uint8_t seq_pend_k;                       /* (projects.c: the pattern waiting to play) */
 static void tempo_apply(void);
 static int32_t tempo_now(void);
@@ -774,6 +777,7 @@ static void mark(uint32_t t)
 {
     ui.dirty[t] = 1;
     prj_dirty = 1;                               /* (the project playing has changed) */
+    pat_dirty = 1;                               /* (.. and the pattern: its sounds are its own, build 113) */
 }
 /* the main loop: each changed track's sound cooked and published (the ISR takes it at its next block) */
 static void ui_publish(void)
@@ -840,6 +844,7 @@ static uint32_t lane_take(uint32_t t, uint32_t s)
     base = f >= 0 && f < 16 ? (uint32_t)f / 4u : 3u;
     gen_sound(&ui_lsnd[l - NTRACK], ENG_FMD, KIT[(base + s) % 4u], -1, next_seed());
     ui.dirty[l] = 1;
+    ps_lane_new(l);                              /* (the subtracks' layout is the session's: build 113) */
     RING_PUBLISH();
     ln_on[l] = (uint8_t)trk_lanes(t);
     return l;
@@ -851,6 +856,7 @@ static void lane_free(uint32_t l)                /* (a subtrack given up: its la
     RING_PUBLISH();
     ln_s[l] = 0;
     lane_fresh(l);
+    ps_lane_new(l);                              /* (build 113) */
     if (lane_find(t, ui.sub[t]) >= NLANE)
         ui.sub[t] = 0;
     ev_post(EV_ARP_CLR, t, 0, 0);                /* (its arpeggiator back on the track's own lane) */
@@ -2126,6 +2132,7 @@ static void ui_input(void)
     lmu_apply();
     (void)rel;
     pat_poll();                                      /* (a pattern switched as the sequencer took it in) */
+    ps_poll();                                       /* (the pattern's sounds past its room: PATTERN FULL, build 113) */
     if (ui.xp_wait && (int32_t)(fm1_ms - ui.xp_due) >= 0) {   /* (build 111: a new scale or root, settled -- the steps
                                                       * and loops into it) */
         ui.xp_wait = 0;
@@ -4274,4 +4281,5 @@ static void ui_init(void)
     ui.touched = -1;
     ui.shown_sel = ui.shown_eng = ui.shown_msg = -1;
     ui.force = 1;
+    ps_rebase();                                     /* (the session's sounds as at the start: build 113) */
 }

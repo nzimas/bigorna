@@ -3086,13 +3086,16 @@ static int cmd_projects(const char *dir)
                         (*HL(t, l)).len == want[t][l].h.len && (*HL(t, l)).mute == want[t][l].h.mute &&
                         !memcmp((*HL(t, l)).ev, want[t][l].ev, (*HL(t, l)).n * sizeof(lev_t));
         EXPECT(!rc && same && ui.sel == 4u, "loaded: its loop back, length, notes and mute; the track chosen");
-        for (t = 0; t < NTRACK; t++)             /* every loop full: 32 bars, 256 notes */
+        for (t = 0; t < NTRACK; t++)             /* every loop full: 32 bars, 256 notes -- as far as the pool goes
+                                                  * (build 113: 2432 notes, nine full loops and a part) */
             for (l = 0; l < NLOOP; l++) {
                 loop_t *p = HN(t, l);
-                p->n = LOOP_EV;
+                if (!p)
+                    continue;
+                p->n = p->cap;
                 p->len = LOOP_MAX;
                 p->mute = (uint8_t)(l == 2u);
-                for (i = 0; i < LOOP_EV; i++) {
+                for (i = 0; i < p->n; i++) {
                     p->ev[i].step = (uint16_t)(i * 2u);
                     p->ev[i].len8 = (uint16_t)(1u + (i * 37u + t) % 4096u);
                     p->ev[i].note = (uint8_t)(24u + (i + t * 3u + l) % 90u);
@@ -3108,8 +3111,9 @@ static int cmd_projects(const char *dir)
         rc = prj_load(k);
         for (t = 0, same = 1; t < NTRACK; t++)
             for (l = 0; l < NLOOP; l++)
-                same &= (*HL(t, l)).on && (*HL(t, l)).n == LOOP_EV && (*HL(t, l)).len == LOOP_MAX &&
-                        (*HL(t, l)).mute == want[t][l].h.mute && !memcmp((*HL(t, l)).ev, want[t][l].ev, sizeof want[t][l].ev);
+                same &= (*HL(t, l)).n == want[t][l].h.n && (!want[t][l].h.n || ((*HL(t, l)).on &&
+                        (*HL(t, l)).len == LOOP_MAX && (*HL(t, l)).mute == want[t][l].h.mute &&
+                        !memcmp((*HL(t, l)).ev, want[t][l].ev, want[t][l].h.n * sizeof(lev_t))));
         EXPECT(!rc && same, "every loop full: loaded back whole");
         {
             uint32_t to;
@@ -3122,7 +3126,8 @@ static int cmd_projects(const char *dir)
             rc = prj_load(to);
             for (t = 0, same = 1; t < NTRACK; t++)
                 for (l = 0; l < NLOOP; l++)
-                    same &= (*HL(t, l)).n == LOOP_EV && !memcmp((*HL(t, l)).ev, want[t][l].ev, sizeof want[t][l].ev);
+                    same &= (*HL(t, l)).n == want[t][l].h.n &&
+                            (!want[t][l].h.n || !memcmp((*HL(t, l)).ev, want[t][l].ev, want[t][l].h.n * sizeof(lev_t)));
             EXPECT(!rc && same, "the copy's loops whole, the first deleted");
             /* the start: the last session (the copy, just loaded) loaded again */
             lop_clear();
@@ -5509,7 +5514,7 @@ static int cmd_patnow(void)
 static int cmd_patsnd(void)
 {
     int32_t out[2 * CTL];
-    uint32_t i, e0, e1;
+    uint32_t i, e0, e1, rv1;
     int fails = 0;
     memset(host_flash, 0xFF, sizeof host_flash);
     prj_scan(1);
@@ -5523,6 +5528,7 @@ static int cmd_patsnd(void)
     ui.snd[0][ui.eng[0]].fx[X_DEL] = 20;
     ui.snd[3][ui.eng[3]].fx[X_CHR] = 77;
     tempo_set(100);
+    rv1 = ui.snd[0][e1].fx[X_REV];               /* (track 1's other machine's send, as pattern 1 has it) */
     PSNDX(!prj_save(0) && pat_snd(&pat_store[0]) && pat_store[0].tempo == 100u, "(session 1 saved; pattern 1 with its sends, its tempo)");
     pat_switch(1);
     PSNDX(pat_cur == 1u && lane_snd(0)->fx[X_REV] == 100u && tempo_now() == 100, "an empty pattern: the sends and tempo left as they play");
@@ -5549,7 +5555,8 @@ static int cmd_patsnd(void)
     ui.snd[0][e1].fx[X_REV] = 33;
     PSNDX(!pat_save(1), "(pattern 2 saved, track 1 on WAVY)");
     pat_switch(0);
-    PSNDX(ui.eng[0] == e0 && ui.snd[0][e0].fx[X_REV] == 100u && ui.snd[0][e1].fx[X_REV] == 33u, "pattern 1: its machine, its send");
+    PSNDX(ui.eng[0] == e0 && ui.snd[0][e0].fx[X_REV] == 100u && ui.snd[0][e1].fx[X_REV] == rv1,
+          "pattern 1: its machine, its send (build 113: the other machine's sound its own too, not pattern 2's)");
     pat_switch(1);
     PSNDX(ui.eng[0] == e1 && ui.snd[0][e1].fx[X_REV] == 33u, "pattern 2: WAVY, its send");
     /* the flash holds them */
@@ -5569,8 +5576,8 @@ static int cmd_patsnd(void)
         PSNDX(!pat_snd(q), "(a pattern without the record)");
     }
     pat_switch(2);
-    PSNDX(pat_cur == 2u && lane_snd(0)->fx[X_REV] == 33u && ui.eng[0] == e1 && tempo_now() == 100 && seq_note[1][4] == 62u,
-            "a pattern of build 96: the sends and tempo left as they play, its steps");
+    PSNDX(pat_cur == 2u && lane_snd(0)->fx[X_REV] == rv1 && ui.eng[0] == e1 && tempo_now() == 100 && seq_note[1][4] == 62u,
+            "a pattern of build 96: the sends, sounds and tempo left as they play (pattern 1's), its steps");
     {   /* an earlier build's decoder: the notes read, the record not taken for a step */
         static seqbuf_t b;
         uint32_t t, n = 0;
@@ -5859,7 +5866,8 @@ static int cmd_loopin(const char *dir)
         QEXPECT(!pat_save(0) && !pat_save_as_rc(2), "(patterns 1 and 3)");
         pat_switch(0);                           /* (3 plays from its save, build 82: pattern 1 again) */
         lp_clear_pat(2);
-        QEXPECT(!prj_save(6) && lop_bytes() == 1u + 8u + 2u * sizeof(lev_t), "(session 7: one loop, in pattern 1)");
+        QEXPECT(!prj_save(6) && lop_bytes() == 1u + 8u + 2u * sizeof(lev_t) + ps_bytes(),
+                "(session 7: one loop, in pattern 1; the patterns' sounds after it, build 113)");
         for (sec = 0; sec < LOP_N; sec++)        /* (its loop as builds 38 .. 72 wrote it: no pattern) */
             if (!lop_peek(sec, &m) && m.slot == 6u && m.idx == 0u && m.gen == prj_lgen[6])
                 break;
@@ -7073,6 +7081,132 @@ static int cmd_dstlab(const char *dir)
     return bad != 0;
 }
 
+/* (build 113) a pattern is the machine's state: its sounds its own -- DESTROY, a sound from HOME, a subtrack's level --
+ * kept as it is left, given back as it comes in (stopped, playing), with the session saved and loaded; the session
+ * record the session's own; copied, emptied, PERFORMANCE given back; PATTERN FULL; a pattern of an earlier build */
+#define PSEXPECT(c, what) do { if (!(c)) { printf("FAIL patsound: %s\n", what); fails++; } } while (0)
+static int cmd_patsound(void)
+{
+    static sound_t s4a, s4b;
+    sound_t *d;
+    int32_t out[2 * CTL];
+    uint32_t i, e3;
+    int fails = 0;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    PSEXPECT(!ps_n && !ps_set && !ps_diff(), "the start: the session's sounds, none a pattern's");
+    seq_note[3][0] = 60;
+    ui.eng[3] = ENG_FMT;
+    e3 = ui.eng[3];
+    d = &ui.snd[3][e3];
+    d->mg[M_DST] = 90;                           /* pattern 1: DESTROY 90, FLIP */
+    d->mg[M_DMODE] = 2;
+    mark(3);
+    s4a = ui.snd[4][ui.eng[4]];
+    PSEXPECT(pat_dirty, "a sound changed: the pattern changed");
+    PSEXPECT(!pat_save(0) && (ps_set & 1u) && ps_of(0) == 2u, "pattern 1 saved: its two changes, DESTROY and its mode");
+    pat_switch(1);
+    PSEXPECT(pat_cur == 1u && d->mg[M_DST] == 90u && d->mg[M_DMODE] == 2u, "an empty pattern: the sounds as they play");
+    d->mg[M_DST] = 10;                           /* pattern 2: DESTROY 10, DROP; a new sound on track 5 */
+    d->mg[M_DMODE] = 3;
+    mark(3);
+    gen_sound(&ui.snd[4][ui.eng[4]], ui.eng[4], -1, -1, 777u);
+    mark(4);
+    s4b = ui.snd[4][ui.eng[4]];
+    PSEXPECT(memcmp(&s4a, &s4b, sizeof s4a), "(a new sound on track 5)");
+    pat_switch(0);
+    PSEXPECT(pat_cur == 0u && d->mg[M_DST] == 90u && d->mg[M_DMODE] == 2u && !memcmp(&ui.snd[4][ui.eng[4]], &s4a, sizeof s4a) &&
+             ui.dirty[3] && ui.dirty[4], "pattern 1 again: its DESTROY, its track 5 sound; both published");
+    pat_switch(1);
+    PSEXPECT(d->mg[M_DST] == 10u && d->mg[M_DMODE] == 3u && !memcmp(&ui.snd[4][ui.eng[4]], &s4b, sizeof s4b),
+             "pattern 2: left unsaved, its own still (kept as it was left)");
+    /* a subtrack's level: the layout the session's, the level the pattern's */
+    {
+        uint32_t l;
+        ui.eng[0] = ENG_FMD;
+        lanes_apply(0);
+        l = lane_take(0, 1);
+        PSEXPECT(l >= NTRACK && l < NLANE, "(a subtrack on track 1)");
+        ui.level[l] = 7;
+        level_pan_apply(l);
+        mark(l);
+        pat_switch(0);
+        PSEXPECT(ui.level[l] == LEVEL_UNITY && ln_s[l] == 1u, "pattern 1: the subtrack there (the session's), at its level");
+        pat_switch(1);
+        PSEXPECT(ui.level[l] == 7, "pattern 2: the subtrack's level its own");
+    }
+    /* saved, changed, loaded: each pattern's own; the session record the session's */
+    PSEXPECT(!prj_save(0), "(session 1 saved, at pattern 2)");
+    {
+        const prj_body_t *b = (const prj_body_t *)(void *)(host_flash + prj_sector(0, 0) + sizeof(prj_head_t));
+        PSEXPECT(b->snd[3][e3].mg[M_DST] == 0u && !memcmp(&b->snd[4][ui.eng[4]], &s4a, sizeof s4a),
+                 "the session record: the session's sounds, not the pattern's");
+    }
+    d->mg[M_DST] = 55;
+    mark(3);
+    PSEXPECT(!prj_load(0) && pat_cur == 1u && d->mg[M_DST] == 10u && !memcmp(&ui.snd[4][ui.eng[4]], &s4b, sizeof s4b) &&
+             !pat_dirty, "loaded: pattern 2 playing, its sounds");
+    pat_switch(0);
+    PSEXPECT(d->mg[M_DST] == 90u && !memcmp(&ui.snd[4][ui.eng[4]], &s4a, sizeof s4a), "and pattern 1's, from the flash");
+    /* switched while playing: at the end of the chosen track's time through */
+    seq_run = 1;
+    pat_switch(1);
+    for (i = 0; i < 4000u && seq_pend; i++) {
+        mix_block(out);
+        pat_poll();
+    }
+    PSEXPECT(!seq_pend && pat_cur == 1u && d->mg[M_DST] == 10u, "taken in playing: pattern 2's DESTROY");
+    seq_run = 0;
+    for (i = 0; i < 8u; i++)
+        mix_block(out);
+    /* copied and pasted; emptied */
+    pat_switch(0);
+    pat_copy_hold(0);
+    pat_copy_hold(4);
+    PSEXPECT(pat_cur == 4u && d->mg[M_DST] == 90u && ps_of(4) == ps_of(0) && (ps_set >> 4 & 1u),
+             "pattern 1 pasted into 5: its sounds with it");
+    pat_switch(1);
+    pat_clear(4);
+    PSEXPECT(!ps_of(4) && !(ps_set >> 4 & 1u), "pattern 5 emptied: its sounds gone");
+    /* PERFORMANCE: a sound changed, given back as it goes off */
+    PSEXPECT(perf_enter(), "(PERFORMANCE on)");
+    perf_on = 1;
+    d->mg[M_DST] = 127;
+    mark(3);
+    PSEXPECT(perf_exit() && d->mg[M_DST] == 10u, "PERFORMANCE off: DESTROY as it was");
+    pat_switch(0);
+    PSEXPECT(d->mg[M_DST] == 90u, "(pattern 1 untouched)");
+    /* the room full: the pattern left keeps what it held, PATTERN FULL said */
+    {
+        uint16_t n0 = ps_n;
+        uint32_t of0 = ps_of(0);
+        while (ps_n < PS_ROOM) {                 /* (the room taken by pattern 16) */
+            uint8_t *e = &ps_pool[3u * ps_n++];
+            e[0] = (uint8_t)(15u << 4);
+            e[1] = 0;
+            e[2] = 0;
+        }
+        gen_sound(&ui.snd[2][ui.eng[2]], ui.eng[2], -1, -1, 4242u);
+        mark(2);
+        ui.msg[0] = 0;
+        PSEXPECT(ps_stash(0) == -1 && ps_of(0) == of0 && !strcmp(ui.msg, "PATTERN FULL"),
+                 "no room: pattern 1 keeps what it held, PATTERN FULL");
+        ps_drop(15);
+        PSEXPECT(ps_n == n0 && !ps_stash(0), "(the room back: kept)");
+    }
+    /* a session of an earlier build: no pattern holds sounds -- each plays the sounds as they are */
+    ps_rebase();
+    d->mg[M_DST] = 33;
+    mark(3);
+    pat_switch(1);
+    PSEXPECT(d->mg[M_DST] == 33u, "a pattern that never took its sounds (an earlier build's): the sounds as they play");
+    printf("patsound: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -7108,6 +7242,8 @@ int main(int argc, char **argv)
         return cmd_arp(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "trn"))
         return cmd_trn(argv[2]);
+    if (argc >= 2 && !strcmp(argv[1], "patsound"))
+        return cmd_patsound();
     if (argc >= 3 && !strcmp(argv[1], "dstlab"))
         return cmd_dstlab(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "xpscale"))

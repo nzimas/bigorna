@@ -1,5 +1,30 @@
 # Changelog
 
+## Build 113
+
+Changed
+- A pattern is the machine's state: it now holds the sounds as well. Every parameter of every track's sound on each
+  machine (SYN, FLTR, AMP, FX with the sends, MANGLE with DESTROY and its mode, WRECK, LFOs, a sound from HOME or SHIFT +
+  PRESETS, MIDI CCs and PERFORMANCE's knobs on them), the subtracks' sounds, and the subtracks' octave, level and pan
+  belong to the pattern playing. Switching patterns (stopped, playing, by program change) brings each pattern's own.
+- Session-level, the same in every pattern: scale and root; the effects' settings (delay, reverb, chorus, master
+  compressor); the session page's values; the subtracks' layout.
+- Kept as what each pattern changes from the session's sounds, a value at a time, in room shared by the session's 16
+  patterns: 3072 values (9 KB). Full: PATTERN FULL, and the pattern keeps what it held. A pattern takes its sounds as it
+  is left (switched from, saved, the session saved); an empty one, or one of an earlier build not left since, starts
+  with the sounds playing. Copy and paste take the sounds; emptying a pattern drops them; PERFORMANCE gives them back.
+- The session record now holds the session's sounds (not the pattern playing's); the patterns' changes are written
+  after the loops in the loop store, so they are in the USB backup with the loops.
+- The loops' room, shared by all patterns, is 2432 notes (from 4608): its RAM holds the patterns' sounds. A session
+  with more loop notes loads the loops that fit (the others: LOOPS LOST).
+
+Compatibility
+- Sessions of earlier builds load as they were; each of their patterns plays the sounds as they are until it is left.
+  Earlier builds read a build 113 session's loops and ignore the patterns' sounds.
+- Tests: `patsound` (DESTROY, a HOME sound and a subtrack's level per pattern, stopped and playing; saved and loaded;
+  the session record; copy, paste, empty; PERFORMANCE; PATTERN FULL; an earlier build's pattern). `patsnd`'s and
+  `projects`'s expectations moved to the new rule and the smaller loop room.
+
 ## Build 112
 
 Changed

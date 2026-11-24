@@ -35,6 +35,7 @@ build/host arp build/screens
 build/host newses build/screens
 build/host pstate build/screens
 build/host patsnd
+build/host patsound
 build/host patnow
 build/host reader
 build/host hang

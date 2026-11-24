@@ -534,7 +534,7 @@ loops a track, up to 256 notes each.
 
 A loop belongs to the pattern it was recorded in. Another pattern does not play it, and an empty pattern plays
 nothing. When a pattern comes in, its loops start with its steps. Saving, copying or pasting a pattern takes its loops
-along; emptying it removes them. All patterns share room for 40 loops and 4608 notes: when it is full, arming a loop
+along; emptying it removes them. All patterns share room for 40 loops and 2432 notes (4608 before build 113): when it is full, arming a loop
 shows NO ROOM, and a pattern saved into another slot shows LOOPS LOST for the loops that did not fit.
 
 ## Tempo
@@ -551,12 +551,25 @@ view, does not set RANDOM. While the FM-1 follows an external clock, a tap shows
 
 ## Patterns
 
-A session has 16 patterns. A pattern holds every track's and subtrack's steps (with their length, clock, direction,
-probability, swing and transposition), its loops, its tempo, and each track's mute, subtrack mutes, machine, octave, level, pan, sidechain, CHORD mode,
-arpeggiator and DELAY, REVERB and CHORUS sends (the sends of the sound on the machine the track plays, and of each
-subtrack). A pattern switch gives the sends to those sounds. A pattern saved before build 97 leaves the sends as they
-play; so does one so full of steps that the sends do not fit (more than about 90 notes).
-The sounds (apart from their sends), the effects themselves, the scale and the root belong to the session.
+A session has 16 patterns. A pattern is the machine's state. It holds every track's and subtrack's steps (with their
+length, clock, direction, probability, swing and transposition), its loops, its tempo, and each track's mute, subtrack
+mutes, machine, octave, level, pan, sidechain, CHORD mode and arpeggiator. It also holds the sounds (from build 113):
+every parameter of every track's sound on each of its machines (SYN, FLTR, AMP, FX with the sends, MANGLE with
+DESTROY, WRECK, LFOs, and a new sound from HOME), the subtracks' sounds, and the subtracks' octave, level and pan.
+Change a parameter and the change belongs to the pattern playing; switch to another pattern and its own sounds come in.
+
+What belongs to the session, the same in every pattern: the scale and the root, the effects' own settings (DELAY,
+REVERB, CHORUS and the master compressor; the sends are the pattern's), the session page's values (TEMPO's default,
+MUTE QT, PAT SW, CTRL, GEN LOCK, AUDITION) and which subtracks exist on which track.
+
+How the sounds are kept: the session holds a set of sounds, and each pattern holds what differs from them. A pattern
+takes its sounds as you leave it (switch away, save it, or save the session). An empty pattern, and a pattern saved
+before build 113 that has not been left since, starts with the sounds playing as you switch to it. All 16 patterns of a
+session share room for about 3000 changed values, each sound parameter counting once (a 4-OP ratio twice). A new sound
+from HOME changes about 80. When a pattern's changes do not fit, PATTERN FULL shows and the pattern keeps the sounds it
+held before. Emptying a pattern frees its room. The patterns' sounds are written to the flash with the session (hold
+SAVE), with the loops: saving a pattern on the grid keeps them in the session until then, and the session shows as
+changed. Sessions saved before build 113 load as they were.
 
 **SAVE** opens the PATTERNS grid; SAVE again leaves it. The white keys are the 16 patterns, the one playing brighter.
 On the screen the pattern playing is green (orange with changes not saved), saved patterns white, empty ones grey, and
@@ -579,8 +592,9 @@ too, and MIDI program changes 0 to 15 choose patterns 1 to 16 ([MIDI](#midi)).
 
 ## Sessions
 
-16 sessions are kept in the FM-1's flash. A session holds everything: every track's and subtrack's sounds and settings, the effects,
-the tempo, the scale and root, the 16 patterns with their loops, and the pattern playing.
+16 sessions are kept in the FM-1's flash. A session holds everything: its sounds (each pattern's own changes over
+them, [Patterns](#patterns)), the effects, the tempo, the scale and root, the subtracks' layout, the 16 patterns with
+their loops and sounds, and the pattern playing.
 
 **SHIFT + SAVE** opens the SESSIONS grid, laid out as the PATTERNS grid; SHIFT + SAVE again leaves it. The white keys
 are the 16 slots, lit dimly: the key of the slot under the cursor is lit brightly, and the key of the session
