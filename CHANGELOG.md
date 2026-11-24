@@ -1,5 +1,15 @@
 # Changelog
 
+## Build 116
+
+Changed
+- In the step view, SHIFT + OCT− / OCT+ moves the chosen track's (or subtrack's) steps 1 semitone down or up, any note.
+  Its loops, the other tracks and the TRN count are left alone; a note that would leave 12 .. 120: none moved (OUT OF
+  RANGE). SHIFT + OCT− / OCT+ in the track's view still transposes every track.
+
+Compatibility
+- Sessions unchanged. Tests: `trn`.
+
 ## Build 115
 
 Added

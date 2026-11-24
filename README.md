@@ -45,7 +45,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **HOME** | new sound for the chosen track ([Sounds](#sounds)). Nothing with GEN LOCK on. |
 | **SHIFT + HOME** | new sound of the same family. |
 | **OCT− / OCT+** | chosen track's octave, −3 to +3. In the step view: track's [transposition](#transposition). |
-| **SHIFT + OCT− / OCT+** | every track's transposition. |
+| **SHIFT + OCT− / OCT+** | every track's transposition. In the step view: the chosen track's notes 1 semitone down or up. |
 | white keys | play the chosen track in the scale; the keys that play the root glow dimly. In the step view: track's 16 steps. On the PATTERNS grid: 16 patterns. |
 | black key 1 | [CHORD mode](#chord-mode) on or off. **SHIFT +**: next chord form. |
 | black key 2 | [MUTE mode](#mute-mode) on or off. |
@@ -269,8 +269,11 @@ JAPANESE IWATO, PELOG, OCTATONIC, PROMETHEUS.
 ### Transposition
 
 In the step view, **OCT− / OCT+** move the chosen track's steps and loops 1 step of the scale down or up (in
-CHROMATIC, a semitone). **SHIFT + OCT− / OCT+**, in the track's view or the step view, move every track's. Notes stay
-in the scale. The transposition shows at the top right, under the octave (T+2, T−1), up to 24 steps each way. It is
+CHROMATIC, a semitone). **SHIFT + OCT− / OCT+** in the track's view move every track's. Notes stay in the scale.
+
+In the step view, **SHIFT + OCT− / OCT+** move the chosen track's (or subtrack's) steps 1 semitone down or up, into or
+out of the scale (SEMITONE UP, SEMITONE DOWN). Its loops, the other tracks and the transposition count stay as they
+are. If a note would go past the range (MIDI notes 12 to 120), no note moves and OUT OF RANGE shows. The transposition shows at the top right, under the octave (T+2, T−1), up to 24 steps each way. It is
 part of the pattern: saved with it, and copied with it. It moves only the loops of the pattern playing; a loop being
 recorded is left as it is. The keys' octave does not change.
 

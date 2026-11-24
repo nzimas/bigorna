@@ -4347,10 +4347,12 @@ static int cmd_trn(const char *dir)
         btn(B_OCTUP, 0);
         TEXPECT(LPN(0, 0, 0) == 62 && LPN(0, 0, 1) == 71 && (*HL(0, 1)).ev[0].note == 60 && seq_note[0][0] == 62 &&
                 ui.trn[0] == 1, "the step view: OCT+ the track's loop up a step of the scale too, with its steps");
+        ui.sv = 0;                               /* (SHIFT + OCT: every track's on the track's view; build 116) */
         btn(B_OCTDN, 1);
         TEXPECT(LPN(0, 0, 0) == 60 && LPN(0, 0, 1) == 69 && seq_note[0][0] == 60 && !ui.trn[0] && ui.trn[1] == 0,
                 "SHIFT + OCT-: every track's steps and loops down");
         btn(B_OCTUP, 1);                         /* (back as the tests below had it: track 1 at 0, track 2 at +1) */
+        ui.sv = 1;
         btn(B_OCTDN, 0);
         lop_clear();
     }
@@ -4362,13 +4364,27 @@ static int cmd_trn(const char *dir)
     ui.scale = 1;
     btn(B_OCTDN, 0);
     TEXPECT(seq_note[1][0] == 50 && ui.trn[1] == 1, "a note out of the scale: to the scale's next");
+    {   /* (build 116) the step view, SHIFT + OCT: the chosen track's steps a semitone, any note, TRN kept */
+        uint8_t n0 = seq_note[0][0];
+        btn(B_OCTUP, 1);
+        TEXPECT(seq_note[1][0] == 51 && ui.trn[1] == 1 && seq_note[0][0] == n0 && str_eq(ui.msg, "SEMITONE UP"),
+                "the step view, SHIFT + OCT+: the track's steps a semitone up (out of the scale), TRN and the others kept");
+        btn(B_OCTDN, 1);
+        TEXPECT(seq_note[1][0] == 50 && ui.trn[1] == 1, "SHIFT + OCT-: a semitone down");
+        seq_note[1][5] = 120;
+        btn(B_OCTUP, 1);
+        TEXPECT(seq_note[1][0] == 50 && seq_note[1][5] == 120 && str_eq(ui.msg, "OUT OF RANGE"), "a note at the top: none moved");
+        seq_note[1][5] = 0;
+    }
 
     /* the pattern keeps it: pattern 1 copied to 2, 2 transposed, each as it was left */
     pat_take(&pat_store[0]);
     pat_store[1] = pat_store[0];
     pat_give(1, 1);
     TEXPECT(ui.trn[1] == 1 && seq_note[1][0] == 50, "a copy of the pattern: its transposition with it");
+    ui.sv = 0;
     btn(B_OCTUP, 1);
+    ui.sv = 1;
     TEXPECT(ui.trn[0] == 1 && ui.trn[1] == 2 && seq_note[0][0] == 62 && seq_note[1][0] == 52, "pattern 2 transposed");
     pat_take(&pat_store[1]);
     pat_give(0, 1);

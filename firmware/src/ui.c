@@ -14,6 +14,7 @@
  *                             (GEN LOCK on, the session's page: neither does anything; build 85)
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after; in the step
  *                             view, the track's steps transposed a step of the scale (build 51); SHIFT: every track's
+ *                             (in the step view, SHIFT: the track's steps a semitone instead -- build 116)
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
  *   the 1st black key         (the track's view, the step view off) CHORD mode on or off for the track (lit while
  *                             on, dim off): each white key then plays a triad from its note, in the scale (after
@@ -2573,6 +2574,20 @@ static void ui_input(void)
             if (!fx_arp())
                 ui.fx_pg = (uint8_t)((ui.fx_pg + NFXP + (uint32_t)(d + (int)NFXP)) % NFXP);
             ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
+            ui.force = 1;
+        } else if (sh && step_view()) {             /* (build 116) the step view, SHIFT: the chosen track's steps a
+                                                      * semitone, any note (not its loops, not TRN's count; a note that
+                                                      * would leave 12 .. 120: none moved) */
+            uint32_t i, ok = 1, l = ui.sl;
+            for (i = 0; i < NSTEP; i++)
+                if (seq_note[l][i] && ((int32_t)seq_note[l][i] + d < 12 || (int32_t)seq_note[l][i] + d > 120))
+                    ok = 0;
+            for (i = 0; ok && i < NSTEP; i++)
+                if (seq_note[l][i])
+                    seq_note[l][i] = (uint8_t)((int32_t)seq_note[l][i] + d);
+            if (ok)
+                pat_dirty = 1;
+            say(!ok ? "OUT OF RANGE" : d > 0 ? "SEMITONE UP" : "SEMITONE DOWN", 1200);
             ui.force = 1;
         } else if (sh || step_view()) {             /* transposition: SHIFT every track's steps; the step view the
                                                       * track's */
