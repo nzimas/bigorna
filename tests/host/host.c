@@ -4367,13 +4367,24 @@ static int cmd_trn(const char *dir)
     {   /* (build 116) the step view, SHIFT + OCT: the chosen track's steps a semitone, any note, TRN kept */
         uint8_t n0 = seq_note[0][0];
         btn(B_OCTUP, 1);
-        TEXPECT(seq_note[1][0] == 51 && ui.trn[1] == 1 && seq_note[0][0] == n0 && str_eq(ui.msg, "SEMITONE UP"),
+        TEXPECT(seq_note[1][0] == 51 && ui.trn[1] == 1 && seq_note[0][0] == n0 && str_eq(ui.msg, "TRSP +1"),
                 "the step view, SHIFT + OCT+: the track's steps a semitone up (out of the scale), TRN and the others kept");
         btn(B_OCTDN, 1);
         TEXPECT(seq_note[1][0] == 50 && ui.trn[1] == 1, "SHIFT + OCT-: a semitone down");
+        fm1_ms -= 3000;                          /* (btn waits 2 s: three presses close together) */
+        btn(B_OCTUP, 1);
+        fm1_ms -= 1500;
+        btn(B_OCTUP, 1);
+        fm1_ms -= 1500;
+        btn(B_OCTUP, 1);
+        TEXPECT(seq_note[1][0] == 53 && str_eq(ui.msg, "TRSP +3"), "three presses close together: TRSP +3");
+        btn(B_OCTDN, 1);
+        btn(B_OCTDN, 1);
+        btn(B_OCTDN, 1);
+        TEXPECT(seq_note[1][0] == 50 && str_eq(ui.msg, "TRSP -1"), "presses 2 s apart: each counted alone");
         seq_note[1][5] = 120;
         btn(B_OCTUP, 1);
-        TEXPECT(seq_note[1][0] == 50 && seq_note[1][5] == 120 && str_eq(ui.msg, "OUT OF RANGE"), "a note at the top: none moved");
+        TEXPECT(seq_note[1][0] == 50 && seq_note[1][5] == 120 && str_eq(ui.msg, "TRSP MAX"), "a note at the top: none moved");
         seq_note[1][5] = 0;
     }
 

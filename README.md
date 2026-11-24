@@ -270,12 +270,14 @@ JAPANESE IWATO, PELOG, OCTATONIC, PROMETHEUS.
 
 In the step view, **OCT− / OCT+** move the chosen track's steps and loops 1 step of the scale down or up (in
 CHROMATIC, a semitone). **SHIFT + OCT− / OCT+** in the track's view move every track's. Notes stay in the scale.
+The transposition shows at the top right, under the octave (T+2, T−1), up to 24 steps each way. It is part of the
+pattern: saved with it, and copied with it. It moves only the loops of the pattern playing; a loop being recorded is
+left as it is. The keys' octave does not change.
 
 In the step view, **SHIFT + OCT− / OCT+** move the chosen track's (or subtrack's) steps 1 semitone down or up, into or
-out of the scale (SEMITONE UP, SEMITONE DOWN). Its loops, the other tracks and the transposition count stay as they
-are. If a note would go past the range (MIDI notes 12 to 120), no note moves and OUT OF RANGE shows. The transposition shows at the top right, under the octave (T+2, T−1), up to 24 steps each way. It is
-part of the pattern: saved with it, and copied with it. It moves only the loops of the pattern playing; a loop being
-recorded is left as it is. The keys' octave does not change.
+out of the scale. The screen shows TRSP and the semitones moved: presses less than 2 s apart add up (TRSP +3), a later
+one starts again from ±1. Its loops, the other tracks and the T+2 count stay as they are. If a note would go past the
+range (MIDI notes 12 to 120), no note moves and TRSP MAX shows.
 
 ### CHORD mode
 

@@ -1,11 +1,20 @@
 # Changelog
 
+## Build 117
+
+Changed
+- The step view's SHIFT + OCT− / OCT+ (build 116) shows TRSP and the semitones moved (TRSP +3: presses less than 2 s
+  apart add up), TRSP MAX at the range's end, instead of SEMITONE UP / DOWN and OUT OF RANGE, which were too wide for
+  the screen.
+
+Compatibility
+- Sessions unchanged. Tests: `trn`.
+
 ## Build 116
 
 Changed
 - In the step view, SHIFT + OCT− / OCT+ moves the chosen track's (or subtrack's) steps 1 semitone down or up, any note.
-  Its loops, the other tracks and the TRN count are left alone; a note that would leave 12 .. 120: none moved (OUT OF
-  RANGE). SHIFT + OCT− / OCT+ in the track's view still transposes every track.
+  Its loops, the other tracks and the TRN count are left alone; a note that would leave 12 .. 120: none moved. SHIFT + OCT− / OCT+ in the track's view still transposes every track.
 
 Compatibility
 - Sessions unchanged. Tests: `trn`.

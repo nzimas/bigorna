@@ -166,6 +166,10 @@ static struct {
     uint8_t tw_k, tw_t, tw_long; /* .. and a DRUM track's button held, a subtrack's white key held (KEY_NONE none),
                                   * since tw_t0; 0.8 s: the subtrack copied or pasted */
     uint32_t tb_k0, tw_t0;
+    int8_t st_n;                 /* (build 117) the step view's SHIFT + OCT: the semitones moved so far, on lane st_l,
+                                  * the last at st_t0 */
+    uint8_t st_l;
+    uint32_t st_t0;
     uint8_t page;
     uint8_t edit_pg;             /* the EDIT page shown (0 .. pages_n - 1) */
     uint8_t fx_pg;               /* the effect shown: FXP_* (CHORUS, COMP, DELAY, REVERB) */
@@ -2579,15 +2583,23 @@ static void ui_input(void)
                                                       * semitone, any note (not its loops, not TRN's count; a note that
                                                       * would leave 12 .. 120: none moved) */
             uint32_t i, ok = 1, l = ui.sl;
+            char m[12] = "TRSP ";
             for (i = 0; i < NSTEP; i++)
                 if (seq_note[l][i] && ((int32_t)seq_note[l][i] + d < 12 || (int32_t)seq_note[l][i] + d > 120))
                     ok = 0;
             for (i = 0; ok && i < NSTEP; i++)
                 if (seq_note[l][i])
                     seq_note[l][i] = (uint8_t)((int32_t)seq_note[l][i] + d);
-            if (ok)
+            if (ok) {                                /* (TRSP +3: the semitones moved, the presses 2 s apart or
+                                                      * less on this lane counted together; build 117) */
                 pat_dirty = 1;
-            say(!ok ? "OUT OF RANGE" : d > 0 ? "SEMITONE UP" : "SEMITONE DOWN", 1200);
+                ui.st_n = (int8_t)(l == ui.st_l && (uint32_t)(fm1_ms - ui.st_t0) < 2000u ? clampi(ui.st_n + d, -99, 99) : d);
+                ui.st_l = (uint8_t)l;
+                ui.st_t0 = fm1_ms;
+                trn_text(m + 5, ui.st_n);
+            } else
+                str_cpy(m + 5, "MAX", 4);
+            say(m, 1200);
             ui.force = 1;
         } else if (sh || step_view()) {             /* transposition: SHIFT every track's steps; the step view the
                                                       * track's */
