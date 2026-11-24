@@ -435,7 +435,8 @@ static uint8_t ps_cur(uint32_t p)                /* byte p as it plays */
     if (p < PS_LB)
         return ((const uint8_t *)ui_lsnd)[p - PS_TB];
     p -= PS_LB;
-    return (uint8_t)(p < NXL ? ui.oct[NTRACK + p] : p < 2u * NXL ? ui.level[NTRACK + p - NXL] : ui.pan[NTRACK + p - 2u * NXL]);
+    return (uint8_t)(p < NXL ? ui.oct[NTRACK + p] : p < 2u * NXL ? ui.level[NTRACK + p - NXL]
+                     : p < 3u * NXL ? ui.pan[NTRACK + p - 2u * NXL] : 0);   /* (past them: ps_base_t's padding) */
 }
 static void ps_put(uint32_t p, uint8_t v)        /* .. set, its sound published again (its level applied) */
 {
@@ -1663,6 +1664,189 @@ static void pat_stash(void)
     ps_stash(pat_cur);                           /* (its sounds: build 113) */
     pat_dirtyv[pat_cur] = 1;
 }
+/* ------------------------------------------------------------ track copy (build 115) ---
+ * SHIFT and a track's button held 0.8 s, let go (no white key touched): the track copied -- which pattern and track
+ * only, no RAM for more: the paste reads them from that pattern as it is then. The same on another track (or the same
+ * track, another pattern playing): pasted there, in the pattern playing -- its steps and their locks, its length,
+ * clock, direction, PROB, SWING, DENSITY, COMPLEXITY, transposition, its sounds on every machine, its machine, octave,
+ * level, pan, CHORD, arpeggiator and sidechain; on DRUM its subtracks too, each taken on the track pasted onto (none
+ * free: NO SUBTRACK), the ones it lacks emptied there. A subtrack the same way, a DRUM track's button held and its
+ * white key held 0.8 s: onto a subtrack only -- its steps, its sound, octave, level and pan. The same gesture on what
+ * was copied: let go. Not the loops, nor the mutes. One copy at a time; a session loaded lets it go */
+static int8_t tc_k = -1;                         /* (the pattern copied from; -1 none) */
+static uint8_t tc_t, tc_s, tc_whole;             /* (its track, subtrack, and the whole track or the subtrack) */
+static void tc_bytes(uint32_t k, uint32_t p0, uint32_t n, uint8_t *o)   /* pattern k's sounds, bytes p0 .. p0 + n */
+{
+    uint32_t p, i;
+    int own = k == pat_cur || !(ps_set >> k & 1u);   /* (none taken: as they play) */
+    for (p = 0; p < n; p++)
+        o[p] = own ? ps_cur(p0 + p) : ((const uint8_t *)&ps_b)[p0 + p];
+    for (i = 0; !own && i < ps_n; i++) {
+        const uint8_t *e = &ps_pool[3u * i];
+        if (ps_pat(e) == k && ps_pos(e) >= p0 && ps_pos(e) < p0 + n)
+            o[ps_pos(e) - p0] = e[2];
+    }
+}
+static void tc_snd(uint32_t k, uint32_t p0, sound_t *d, uint32_t l)   /* .. a sound (its sends, lane l's in a
+                                                  * pattern that holds no sounds) */
+{
+    const uint8_t *x = k != pat_cur && !(ps_set >> k & 1u) ? pat_snd(&pat_store[k]) : 0;
+    tc_bytes(k, p0, PS_SND, (uint8_t *)d);
+    if (x && l >= NTRACK) {
+        x += 3u * NTRACK + 4u * (l - NTRACK);
+        x = x[0] && ln_t[l] == (x[0] & 15u) && ln_s[l] == (x[0] >> 4) ? x + 1 : 0;
+    } else if (x)
+        x += 3u * l;
+    if (x) {
+        d->fx[X_DEL] = (uint8_t)(x[0] & 127u);
+        d->fx[X_REV] = (uint8_t)(x[1] & 127u);
+        d->fx[X_CHR] = (uint8_t)(x[2] & 127u);
+    }
+}
+static void tc_row(const seqbuf_t *b, uint32_t s, uint32_t d)   /* lane s of b as lane d's steps */
+{
+    uint32_t i;
+    for (i = 0; i < NSTEP; i++)
+        seq_note[d][i] = 0;                      /* (silent while they change) */
+    RING_PUBLISH();
+    for (i = 0; i < NSTEP; i++) {
+        seq_vel[d][i] = b->vel[s][i];
+        seq_glen[d][i] = b->glen[s][i];
+        seq_cond[d][i] = b->cond[s][i];
+        seq_rtg[d][i] = b->rtg[s][i];
+        seq_mut[d][i] = b->mut[s][i];
+        seq_mcy[d][i] = b->mcy[s][i];
+        seq_mfx[d][i] = b->mfx[s][i];
+        seq_fcy[d][i] = b->fcy[s][i];
+        seq_chf[d][i] = b->chf[s][i];
+        memcpy((void *)seq_lid[d][i], b->lid[s][i], NPL);
+        memcpy((void *)seq_lv[d][i], b->lv[s][i], sizeof b->lv[s][i]);
+    }
+    seq_len[d] = b->len[s];
+    seq_div[d] = b->div[s];
+    seq_dir[d] = b->dir[s];
+    seq_pms[d] = b->pms[s];
+    seq_swg[d] = b->swg[s];
+    ui.gen_den[d] = b->den[s];
+    ui.gen_cx[d] = b->cx[s];
+    ui.trn[d] = b->trn[s];
+    RING_PUBLISH();
+    for (i = 0; i < NSTEP; i++)
+        seq_note[d][i] = b->note[s][i];
+}
+static void tc_lane(uint32_t k, const seqbuf_t *b, const uint8_t *y, uint32_t sl, uint32_t dl)   /* (a subtrack:
+                                                  * lane sl of pattern k onto lane dl -- y its track's state) */
+{
+    sound_t *d = dl < NTRACK ? &ui.snd[dl][ENG_FMD] : &ui_lsnd[dl - NTRACK];
+    int8_t v[3];
+    tc_row(b, sl, dl);
+    tc_snd(k, sl < NTRACK ? (sl * NENG + ENG_FMD) * PS_SND : PS_TB + (sl - NTRACK) * PS_SND, d, sl);
+    if (sl < NTRACK) {
+        v[0] = (int8_t)((int32_t)(y[1] >> 2 & 7u) - 3);
+        v[1] = (int8_t)y[2];
+        v[2] = (int8_t)y[3];
+    } else {
+        uint32_t j;
+        for (j = 0; j < 3u; j++)
+            tc_bytes(k, PS_LB + j * NXL + (sl - NTRACK), 1, (uint8_t *)&v[j]);
+    }
+    ui.oct[dl] = (int8_t)clampi(v[0], -3, 3);
+    ui.level[dl] = (int8_t)clampi(v[1], 0, LEVEL_MAX);
+    ui.pan[dl] = (int8_t)clampi(v[2], -PAN_MAX, PAN_MAX);
+    level_pan_apply(dl);
+    ui.dirty[dl] = 1;
+}
+/* the copy pasted onto track t (whole), or onto lane dl (a subtrack); 0, or -1 (NO SUBTRACK: some left out) */
+static int tc_paste(uint32_t t, uint32_t dl)
+{
+    uint8_t x[NTRACK * PX_T], z[NTRACK * PX_T], *y;
+    const pat_t *p = &pat_store[(uint32_t)tc_k];
+    uint32_t k = (uint32_t)tc_k, st = tc_t, s, e, r = 0;
+    seqbuf_t *b;
+    px_take(x);                                  /* (the state as it plays) */
+    y = z + st * PX_T;
+    if (k != pat_cur && p->used && p->st == PX_ON)
+        px_unpack(z, p->seq + SEQ_PX);
+    else
+        memcpy(z, x, sizeof z);
+    b = sb_scratch();
+    if (k == pat_cur) {
+        seq_copy_out(b);
+        memcpy(b->den, ui.gen_den, NLANE);
+        memcpy(b->cx, ui.gen_cx, NLANE);
+        memcpy(b->trn, ui.trn, NLANE);
+    } else
+        pat_decode(p, b);
+    if (!tc_whole) {
+        uint32_t sl = lane_find(st, tc_s);
+        if (sl < NLANE)
+            tc_lane(k, b, y, sl, dl);
+        sb_done();
+        return sl < NLANE ? 0 : -1;
+    }
+    tc_row(b, st, t);
+    for (e = 0; e < NENG; e++)                   /* (its sounds, on every machine) */
+        tc_snd(k, (st * NENG + e) * PS_SND, &ui.snd[t][e], e == (y[1] & 3u) ? st : NLANE);
+    y[0] = (uint8_t)((y[0] & ~1u) | (x[t * PX_T] & 1u));   /* (not its mute, nor its subtracks') */
+    y[PX_SUB] = x[t * PX_T + PX_SUB];
+    memcpy(x + t * PX_T, y, PX_T);
+    px_give(x);                                  /* (its machine, octave, level, pan, CHORD, arpeggiator, sidechain) */
+    ui.dirty[t] = 1;
+    for (s = 1; (y[1] & 3u) == ENG_FMD && s < NSUB; s++) {   /* (on DRUM: its subtracks) */
+        uint32_t sl = lane_find(st, s), dl2 = lane_find(t, s);
+        if (sl < NLANE && dl2 >= NLANE)
+            dl2 = lane_take(t, s);
+        if (sl < NLANE && dl2 < NLANE)
+            tc_lane(k, b, y, sl, dl2);
+        else if (sl < NLANE)
+            r = 1;
+        else if (dl2 < NLANE)
+            steps_clear(dl2);
+    }
+    sb_done();
+    return r ? -1 : 0;
+}
+/* the gesture: track t's subtrack s (whole: the track) copied, let go, or the copy pasted there */
+static void tc_hold(uint32_t t, uint32_t s, int whole)
+{
+    char m[16] = "T1";
+    int same = tc_k >= 0 && (uint32_t)tc_k == pat_cur && tc_t == t && (whole ? tc_whole : !tc_whole && tc_s == s);
+    m[1] = (char)('1' + t);
+    if (!whole) {
+        m[2] = '-';
+        m[3] = (char)('A' + s);
+        m[4] = 0;
+    }
+    if (same) {
+        tc_k = -1;
+        say("COPY OFF", 900);
+    } else if (tc_k >= 0 && (int)tc_whole != whole) {
+        say(whole ? "COPY: SUBTRACK" : "COPY: TRACK", 1200);   /* (subtracks onto subtracks only) */
+    } else if (tc_k >= 0) {
+        uint32_t dl = whole ? t : lane_find(t, s);
+        char n[20] = "PASTED ";
+        if (!whole && dl >= NLANE)
+            return;
+        str_cpy(n + 7, m, 6);
+        say(tc_paste(t, dl) ? "NO SUBTRACK" : n, 1200);
+        tc_k = -1;
+        pat_dirty = 1;
+        prj_dirty = 1;
+    } else {
+        char n[20] = "COPY ";
+        tc_k = (int8_t)pat_cur;
+        tc_t = (uint8_t)t;
+        tc_s = (uint8_t)s;
+        tc_whole = (uint8_t)whole;
+        str_cpy(n + 5, m, 6);
+        say(n, 1200);
+    }
+    ui.force = 1;
+}
+static int tc_lit(uint32_t t, uint32_t s, int whole)   /* (what was copied, for its LED: in the pattern it is from) */
+{
+    return tc_k >= 0 && tc_t == t && (whole ? tc_whole : !tc_whole && tc_s == s);
+}
 /* the store's patterns k (and the three beside it in its sector) into the flash, if the project has a slot */
 static int pat_flush(uint32_t k)
 {
@@ -2046,6 +2230,7 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     ui.root = (uint8_t)(b->root % 12u);
     ui.scale = (uint8_t)(b->scale < NSCALE ? b->scale : 0);
     ui.xp_wait = 0;                              /* (the session's steps in its own scale: none to move, build 111) */
+    tc_k = -1;                                   /* (a track copied: let go -- another session's, build 115) */
     ui.sel = (uint8_t)(b->sel < NTRACK ? b->sel : 0);
     ses_muq = (uint8_t)(b->muq == 1u);
     ses_ctrl = (uint8_t)(b->ctrl == 1u);

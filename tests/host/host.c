@@ -7211,6 +7211,114 @@ static int cmd_patsound(void)
     return fails != 0;
 }
 
+#define TCEXPECT(c, what) do { if (!(c)) { printf("FAIL trkcopy: %s\n", what); fails++; } } while (0)
+static void tc_trk(uint32_t t, int sh)          /* (SHIFT and) track t's button held 0.9 s, let go */
+{
+    uint32_t b = 1u << PANEL_BTN[TRACK_BTN[t]];
+    if (sh)
+        fm1_in.notes |= 1u << KEY_SHIFT;
+    fm1_in.buttons |= b;
+    host_press = b;
+    ui_input();
+    fm1_ms += 900;
+    ui_input();
+    fm1_in.buttons &= ~b;
+    ui_input();
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    fm1_ms += 2000;
+}
+static void tc_sub(uint32_t t, uint32_t w)      /* track t's button held, its white key w held 0.9 s, let go */
+{
+    uint32_t b = 1u << PANEL_BTN[TRACK_BTN[t]], k;
+    for (k = 0; k < NKEY && white_ix(k) != (int32_t)w; k++)
+        ;
+    fm1_in.buttons |= b;
+    host_press = b;
+    ui_input();
+    fm1_in.notes |= 1u << k;
+    ui_input();
+    fm1_ms += 900;
+    ui_input();
+    fm1_in.notes &= ~(1u << k);
+    ui_input();
+    fm1_in.buttons &= ~b;
+    ui_input();
+    fm1_ms += 2000;
+}
+static int cmd_trkcopy(void)
+{
+    uint32_t e, l1, l2, l3;
+    int fails = 0;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    memset((void *)seq_note, 0, sizeof seq_note);
+    ui.eng[2] = ENG_FMT;
+    e = ENG_FMT;
+    seq_note[2][0] = 60;
+    seq_note[2][4] = 61;                         /* (off the scale, as TRIG may set it) */
+    seq_len[2] = 12;
+    (void)pl_set(2, 4, PG_FLT1 * 8u + 4u, 33);
+    ui.snd[2][e].mg[M_DST] = 77;
+    ui.level[2] = 20;
+    level_pan_apply(2);
+    mark(2);
+    seq_note[4][0] = 50;
+    pat_dirty = 1;
+    tc_trk(2, 1);
+    TCEXPECT(tc_k == 0 && tc_t == 2u && tc_whole && str_eq(ui.msg, "COPY T3"), "SHIFT + track 3 held, let go: copied");
+    tc_trk(2, 0);
+    TCEXPECT(tc_k == 0, "without SHIFT: nothing");
+    pat_switch(1);
+    tc_trk(4, 1);
+    TCEXPECT(tc_k < 0 && str_eq(ui.msg, "PASTED T5"), "pattern 2, SHIFT + track 5: pasted");
+    TCEXPECT(seq_note[4][0] == 60u && seq_note[4][4] == 61u && seq_len[4] == 12u && pl_find(4, 4, PG_FLT1 * 8u + 4u) >= 0,
+             "its steps, a lock, its length");
+    TCEXPECT(ui.eng[4] == e && ui.snd[4][e].mg[M_DST] == 77u && ui.level[4] == 20, "its machine, its sound, its level");
+    pat_switch(0);
+    TCEXPECT(seq_note[4][0] == 50u && ui.snd[4][ui.eng[4]].mg[M_DST] != 77u, "pattern 1's track 5 as it was");
+    pat_switch(1);
+    tc_trk(4, 1);                                /* copied in pattern 2 .. */
+    pat_switch(0);
+    tc_trk(5, 1);                                /* .. pasted in pattern 1: read from the store */
+    TCEXPECT(seq_note[5][0] == 60u && seq_note[5][4] == 61u && ui.eng[5] == e && ui.snd[5][e].mg[M_DST] == 77u &&
+             ui.level[5] == 20, "from a pattern not playing: its steps and sounds from the store");
+    tc_trk(0, 1);
+    tc_trk(0, 1);
+    TCEXPECT(tc_k < 0 && str_eq(ui.msg, "COPY OFF"), "the same again: let go");
+    /* subtracks */
+    ui.eng[0] = ENG_FMD;
+    lanes_apply(0);
+    ui.dirty[0] = 1;
+    l1 = lane_take(0, 1);
+    seq_note[l1][2] = 40;
+    ui_lsnd[l1 - NTRACK].mg[M_DST] = 99;
+    ui.pan[l1] = -5;
+    pat_dirty = 1;
+    tc_sub(0, 1);
+    TCEXPECT(tc_k == 0 && !tc_whole && tc_s == 1u && str_eq(ui.msg, "COPY T1-B"), "track 1 held, ST-B held: copied");
+    tc_trk(3, 1);
+    TCEXPECT(tc_k == 0 && str_eq(ui.msg, "COPY: SUBTRACK"), "a track: not pasted (subtracks onto subtracks)");
+    tc_sub(0, 2);
+    l2 = lane_find(0, 2);
+    TCEXPECT(l2 < NLANE && tc_k < 0 && seq_note[l2][2] == 40u && ui_lsnd[l2 - NTRACK].mg[M_DST] == 99u && ui.pan[l2] == -5,
+             "ST-C held: taken, ST-B pasted -- steps, sound, pan");
+    tc_sub(0, 1);
+    tc_sub(0, 0);
+    TCEXPECT(seq_note[0][2] == 40u && ui.snd[0][ENG_FMD].mg[M_DST] == 99u, "ST-B onto ST-A, the track's own lane");
+    /* a DRUM track whole, its subtracks with it: one shared lane left for two */
+    tc_trk(0, 1);
+    tc_trk(3, 1);
+    l3 = lane_find(3, 1);
+    TCEXPECT(ui.eng[3] == ENG_FMD && seq_note[3][2] == 40u && l3 < NLANE && seq_note[l3][2] == 40u &&
+             lane_find(3, 2) >= NLANE && str_eq(ui.msg, "NO SUBTRACK"), "DRUM track 1 onto 4: ST-B taken, no room for ST-C");
+    ui_leds();
+    printf("trkcopy: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -7248,6 +7356,8 @@ int main(int argc, char **argv)
         return cmd_trn(argv[2]);
     if (argc >= 2 && !strcmp(argv[1], "patsound"))
         return cmd_patsound();
+    if (argc >= 2 && !strcmp(argv[1], "trkcopy"))
+        return cmd_trkcopy();
     if (argc >= 3 && !strcmp(argv[1], "dstlab"))
         return cmd_dstlab(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "xpscale"))

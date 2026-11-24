@@ -2,6 +2,9 @@
  * The panel and the screen (after TONITOR's ui.c: its panel map, its bands, its dial, its scale page).
  *
  *   FX SEL ENV LFO EDIT GLO   the top row: tracks 1 to 6 (lit: the chosen one; the others glow while they sound)
+ *   SHIFT + a track's button  held 0.8 s, let go (no white key touched): the track copied, or the copy pasted onto it
+ *                             (projects.c, tc_hold; build 115); a DRUM track's button held and a subtrack's white
+ *                             key held 0.8 s: the same for a subtrack
  *   PRESETS (knob)            the track's machine: 4-OP, DRUM, WAVY, HIVE (each track keeps a sound of
  *                             each, so turning back finds it) -- on the track's view only: on the EDIT pages it moves
  *                             through them, on the effects' pages the half shown. In the step view (no step held) the
@@ -157,6 +160,11 @@ static struct {
     uint8_t sv_k, sv_t, sv_long; /* .. and SHIFT with a track's button held: the white key held (KEY_NONE none), its
                                   * track, held 0.8 s */
     uint32_t sv_t0;
+    uint8_t tb_k, tb_touch;      /* (build 115) SHIFT and a track's button held (NTRACK none), a white key touched
+                                  * meanwhile; since tb_k0 -- let go after 0.8 s: the track copied or pasted .. */
+    uint8_t tw_k, tw_t, tw_long; /* .. and a DRUM track's button held, a subtrack's white key held (KEY_NONE none),
+                                  * since tw_t0; 0.8 s: the subtrack copied or pasted */
+    uint32_t tb_k0, tw_t0;
     uint8_t page;
     uint8_t edit_pg;             /* the EDIT page shown (0 .. pages_n - 1) */
     uint8_t fx_pg;               /* the effect shown: FXP_* (CHORUS, COMP, DELAY, REVERB) */
@@ -328,6 +336,8 @@ static void pat_poll(void);
 static void scale_follow(uint32_t os, uint32_t orr);
 static void ps_rebase(void);                     /* (projects.c: the patterns' sounds, build 113) */
 static void ps_lane_new(uint32_t l);
+static void tc_hold(uint32_t t, uint32_t s, int whole);   /* (projects.c: track copy, build 115) */
+static int tc_lit(uint32_t t, uint32_t s, int whole);
 static void ps_poll(void);   /* (projects.c: the material moved into the scale; build 111) */
 static uint8_t seq_pend_k;                       /* (projects.c: the pattern waiting to play) */
 static void tempo_apply(void);
@@ -2214,8 +2224,19 @@ static void ui_input(void)
             ui.force = 1;
         }
     }
+    if (ui.tb_k < NTRACK && !btn_bit(fm1_in.buttons, TRACK_BTN[ui.tb_k])) {   /* (build 115: SHIFT and a track's
+                                                      * button held 0.8 s, let go, no white key touched: copy, paste) */
+        if (!ui.tb_touch && !ui.mute_mode && (uint32_t)(fm1_ms - ui.tb_k0) >= 800u)
+            tc_hold(ui.tb_k, 0, 1);
+        ui.tb_k = NTRACK;
+    }
     for (t = 0; !ui.mute_mode && t < NTRACK; t++)
         if (btn_bit(press, TRACK_BTN[t])) {
+            if (sh) {
+                ui.tb_k = (uint8_t)t;
+                ui.tb_touch = 0;
+                ui.tb_k0 = fm1_ms;
+            }
             ui.sel = (uint8_t)t;
             sel_sync();
             if (ui.page == PG_TEMPO || ui.page == PG_SCALE || pg_any() || (ui.page == PG_FXP && !sh))   /* (the effects' pages: back to the
@@ -2747,6 +2768,13 @@ static void ui_input(void)
             if (!((keys >> k) & 1u))
                 continue;
             m[3] = (char)('A' + w);
+            ui.tb_touch = 1;                     /* (SHIFT and the track's button: not a track copied) */
+            if (!sh && ui.tw_k == KEY_NONE) {    /* (build 115: held 0.8 s, the subtrack copied or pasted) */
+                ui.tw_k = (uint8_t)k;
+                ui.tw_t = (uint8_t)ht;
+                ui.tw_long = 0;
+                ui.tw_t0 = fm1_ms;
+            }
             if (sh) {                            /* (SHIFT: muted or given up as it is let go or held) */
                 if (ui.sv_k == KEY_NONE && lane_find(ht, (uint32_t)w) < NLANE) {
                     ui.sv_k = (uint8_t)k;
@@ -2765,6 +2793,16 @@ static void ui_input(void)
                 say(m, 900);
             }
             ui.force = 1;
+        }
+        if (ui.tw_k != KEY_NONE) {               /* (build 115: the subtrack's key held, its track's button too) */
+            ch &= ~(1u << ui.tw_k);              /* (its key's own, until let go) */
+            if (!((keys >> ui.tw_k) & 1u))
+                ui.tw_k = KEY_NONE;
+            else if (!ui.tw_long && !sh && btn_bit(fm1_in.buttons, TRACK_BTN[ui.tw_t]) &&
+                     lane_find(ui.tw_t, (uint32_t)white_ix(ui.tw_k)) < NLANE && (uint32_t)(fm1_ms - ui.tw_t0) >= 800u) {
+                ui.tw_long = 1;
+                tc_hold(ui.tw_t, (uint32_t)white_ix(ui.tw_k), 0);
+            }
         }
         if (ui.sv_k != KEY_NONE) {               /* (the subtrack's key held with SHIFT) */
             uint32_t w = (uint32_t)white_ix(ui.sv_k), l = lane_find(ui.sv_t, w);
@@ -3211,7 +3249,8 @@ static void ui_leds(void)
             led_dim_key(PANEL_BTN[TRACK_BTN[t]], mu);
             continue;
         }
-        fm1_led_key(PANEL_BTN[TRACK_BTN[t]], t == ui.sel);
+        fm1_led_key(PANEL_BTN[TRACK_BTN[t]], tc_lit(t, 0, 1) ? (fm1_ms / 250u) & 1u : t == ui.sel);   /* (a track
+                                                  * copied: blinking, build 115) */
         led_dim_key(PANEL_BTN[TRACK_BTN[t]], trk_sounding(t));
     }
     fm1_led_key(PANEL_BTN[B_HOME], (int32_t)(ui.home_until - fm1_ms) > 0);
@@ -3238,7 +3277,8 @@ static void ui_leds(void)
                 fm1_led_key(14u + k, l < NLANE && !(ui.lmu >> l & 1u));
                 led_dim_key(14u + k, l < NLANE && (ui.lmu >> l & 1u));
             } else {
-                fm1_led_key(14u + k, in && (uint32_t)w == ui.sub[ht]);
+                fm1_led_key(14u + k, in && tc_lit(ht, (uint32_t)w, 0) ? (fm1_ms / 250u) & 1u
+                                                                       : in && (uint32_t)w == ui.sub[ht]);
                 led_dim_key(14u + k, in);
             }
             continue;
@@ -4258,7 +4298,8 @@ static void ui_init(void)
     ui.step_key = ui.qk = ui.sk = KEY_NONE;
     memset(ui.rec_step, 0xFF, sizeof ui.rec_step);
     memset(ui.lk_ev, 0xFF, sizeof ui.lk_ev);
-    ui.lv_k = ui.sv_k = KEY_NONE;
+    ui.lv_k = ui.sv_k = ui.tw_k = KEY_NONE;
+    ui.tb_k = NTRACK;
     memset(ui.gen_den, 50, sizeof ui.gen_den);
     memset(ui.gen_cx, 50, sizeof ui.gen_cx);
     ui.click = 1;

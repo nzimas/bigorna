@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 115
+
+Added
+- Track copy and paste. SHIFT + a track button held 0.8 s and let go copies the track (its button blinks); the same on
+  another track, in any pattern, pastes it: steps and locks, length, clock, direction, PROB, SWING, DENSITY,
+  COMPLEXITY, transposition, its sounds on every machine, machine, octave, level, pan, CHORD, arpeggiator, sidechain,
+  and on DRUM its subtracks (taken where free; NO SUBTRACK when not). Not the loops, not the mutes. The same gesture on
+  the track copied lets it go.
+- Subtrack copy and paste: a DRUM track's button held and a subtrack's white key held 0.8 s; onto subtracks only.
+- The copy holds only where it came from (16 B of RAM): the paste reads that pattern as it is then.
+
+Fixed
+- The patterns' sounds (build 113) read a byte past the subtracks' pans for the store's last, unused byte.
+
+Compatibility
+- Sessions unchanged. Tests: `trkcopy`.
+
 ## Build 114
 
 Changed

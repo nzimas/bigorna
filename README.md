@@ -39,6 +39,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | --- | --- |
 | **6 top buttons** | choose track **1–6** (lit: chosen; glowing dimly: sounding). From any page, back to the track. In [MUTE mode](#mute-mode): mute and solo. |
 | **Track button held + white key 1–4** | on DRUM: its [subtrack](#subtracks) **ST-A**–**ST-D**. **SHIFT +**: mute or unmute it; held 0.8 s, give up a subtrack past ST-A. |
+| **SHIFT + track button held 0.8 s**, let go | [copy the track](#copying-a-track); the next time, paste it onto the track held. Track button held + white key 1–4 held 0.8 s: the same for a subtrack. |
 | **PRESETS** knob | chosen track's machine: **4-OP**, **DRUM**, **WAVY**, **HIVE**. Each track keeps 1 sound per machine. In the [step view](#step-view): rotate the steps. |
 | **SHIFT + PRESETS** | new sound of the family before or after. In the step view, in [EUCLID mode](#euclidean-steps): a step more or fewer. |
 | **HOME** | new sound for the chosen track ([Sounds](#sounds)). Nothing with GEN LOCK on. |
@@ -85,6 +86,26 @@ While a knob turns, the screen shows its value as a large dial for a second.
 6 tracks, each with its own machine, sound, octave, level, pan, steps and loops. Each track keeps a sound for each
 of the 4 machines, so turning PRESETS back finds the sound it had. The tracks share 12 voices; when all 12
 sound, a new note takes the quietest one. DRUM tracks choke: each hit fades the track's previous one.
+
+### Copying a track
+
+**SHIFT +** a track's button, held 0.8 s and let go, copies the track: its button blinks and COPY T3 shows. Do the same
+on another track, in any pattern, to paste it there (PASTED T5). The paste takes:
+- the track's steps and their locks, and its length, clock, direction, PROB, SWING, DENSITY, COMPLEXITY and
+  transposition;
+- its sounds on all 4 machines, its machine, octave, level, pan, CHORD mode, arpeggiator and sidechain;
+- on DRUM, its subtracks. Each is taken on the track pasted onto (when none is free: NO SUBTRACK, and that one is left
+  out). The subtracks the track pasted onto has and the copied track lacks are emptied.
+
+It does not take the loops or the mutes. The copy only remembers which pattern and track it came from, so the paste
+reads them as they are at that moment: a change made to the copied track before pasting is in the paste. The same
+gesture on the track copied, in the same pattern, lets the copy go (COPY OFF). Loading a session lets it go too.
+
+Subtracks copy the same way: hold the DRUM track's button and hold the subtrack's white key 0.8 s (COPY T1-B, its key
+blinking while the track's button is held). Then do the same on another subtrack, on this track or another DRUM track,
+to paste its steps, settings, sound, octave, level and pan there (an unused subtrack is taken first). A subtrack copied
+pastes only onto a subtrack, and a track only onto a track (COPY: SUBTRACK, or COPY: TRACK, shows what is held). There is
+one copy at a time, a track or a subtrack; a [step copied](#step-view) is kept apart.
 
 The FM-1's second processor core plays half the voices and the effects. If it ever faults, the first core carries on
 alone until the FM-1 is switched off, and the screen says **1 CORE**.
