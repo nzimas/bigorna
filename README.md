@@ -225,6 +225,13 @@ that play the root glow dimly. USB and TRS MIDI notes play the chosen track as t
 it. **SHIFT + ARP** draws a scale and a root at random and shows them for 1.5 s over any page. The scale and root
 belong to the session. A new session draws them at random.
 
+The session's notes follow a new scale or root: the steps of every pattern and the notes of every loop move into it,
+degree by degree (a scale with fewer or more notes: the degree nearest in proportion), each in the same octave of its
+root, the root moving the shorter way (up to 6 semitones). A note outside the new scale goes to the nearest one in
+it. On the SCALE page this happens 0.4 s after the knob stops, so turning through several scales applies only the
+last one; SHIFT + ARP applies at once. Tracks on DRUM keep their notes (their tuning). Moving to a scale with fewer
+notes and back does not always give the same notes back.
+
 The scales: CHROMATIC (the black keys play too, except the first 5 and the last 3), MAJOR, MINOR NATURAL,
 MINOR HARMONIC, DORIAN, PHRYGIAN, MINOR PENTA, MAJOR PENTA, WHOLE TONE, JAPANESE IN, MINOR MELODIC, ENIGMATIC,
 LYDIAN, MIXOLYDIAN, LOCRIAN, BLUES, HUNGARIAN MINOR, DOUBLE HARMONIC, PHRYGIAN DOMINANT, JAPANESE HIRAJOSHI,
@@ -569,7 +576,8 @@ too, and MIDI program changes 0 to 15 choose patterns 1 to 16 ([MIDI](#midi)).
 the tempo, the scale and root, the 16 patterns with their loops, and the pattern playing.
 
 **SHIFT + SAVE** opens the SESSIONS grid, laid out as the PATTERNS grid; SHIFT + SAVE again leaves it. The white keys
-are the 16 slots (lit dimly; the session playing brighter). On the screen the session playing is green (orange with
+are the 16 slots, lit dimly: the key of the slot under the cursor is lit brightly, and the key of the session
+playing blinks. On the screen the session playing is green (orange with
 changes not saved), saved sessions white, empty ones grey, and the white square is the cursor: it opens on the session
 playing, and **PRESETS** moves it. **SAVE** opens the page of the slot under the cursor: BACK, LOAD, SAVE, COPY,
 DELETE, TEMPO, MUTE QT ([MUTE mode](#mute-mode)), PAT SW (how a pattern comes in while the sequencer plays: END or

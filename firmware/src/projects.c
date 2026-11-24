@@ -12,7 +12,8 @@
  *
  *   (the gestures as Tonitor's, build 76: its snapshots are the patterns here)
  *   SHIFT + SAVE      (build 82, after Quasar) the SESSIONS grid, as the PATTERNS': 1 .. 16 in four rows of four;
- *                     the white keys the 16 sessions, lit dimly (the one playing brighter): let go soon, its session
+ *                     the white keys the 16 sessions, lit dimly (build 111: the cursor's lit, the one playing
+ *                     blinks): let go soon, its session
  *                     loaded there and then (changes not saved: the same key again within 2 s); held 0.8 s, the
  *                     session playing saved there. PRESETS moves the cursor, SAVE opens its session's page. On the
  *                     page SAVE runs LOAD, SAVE, COPY or DELETE, or moves the focus to a value (TEMPO, MUTE QT,
@@ -1796,6 +1797,7 @@ static void prj_give(const prj_body_t *b)    /* .. and back: every note let go, 
     pat_tempo = 0;                               /* (build 97: the pattern given next sets its own) */
     ui.root = (uint8_t)(b->root % 12u);
     ui.scale = (uint8_t)(b->scale < NSCALE ? b->scale : 0);
+    ui.xp_wait = 0;                              /* (the session's steps in its own scale: none to move, build 111) */
     ui.sel = (uint8_t)(b->sel < NTRACK ? b->sel : 0);
     ses_muq = (uint8_t)(b->muq == 1u);
     ses_ctrl = (uint8_t)(b->ctrl == 1u);
@@ -2219,6 +2221,7 @@ static void prj_key_load(uint32_t w)
 }
 /* .. white key w lit: the session playing */
 static int prj_key_lit(uint32_t w) { return prj_cur >= 0 && w == (uint32_t)prj_cur; }
+static uint32_t pj_cursor(void) { return pj.slot[0]; }   /* (.. the cursor's, lit: build 111) */
 /* .. held 0.8 s: the session playing saved there, empty or not (as a pattern into the PATTERNS grid) */
 static void prj_key_save(uint32_t w)
 {
@@ -2345,6 +2348,96 @@ static void pat_poll(void)
     seq_pend = 0;
     px_load(&pat_store[pat_cur]);
     tempo_apply();
+    ui.force = 1;
+}
+/* (build 111) a new scale or root: the session's material moved into it (xp_note) from scale os at root orr -- the
+ * steps playing, the one waiting to play, every pattern in the store, the one copied, every loop. Not the tracks on
+ * DRUM (their notes their tuning), nor the subtracks (DRUM's) */
+static uint32_t xp_drums_now(void)               /* (the tracks on DRUM as they play, a bit each) */
+{
+    uint32_t t, m = 0;
+    for (t = 0; t < NTRACK; t++)
+        if (ui.eng[t] == ENG_FMD)
+            m |= 1u << t;
+    return m;
+}
+static uint32_t xp_drums(const pat_t *p)         /* (.. in p, as saved; saved without: as they play) */
+{
+    uint8_t x[NTRACK * PX_T];
+    const uint8_t *s = x;
+    uint32_t t, m = 0, w = PX_T;
+    if (p->used && p->st == PX_ON)
+        px_unpack(x, p->seq + SEQ_PX);
+    else if (p->used && p->st == PX_ON1) {
+        s = p->seq + SEQ_PX1;
+        w = PX_T1;
+    } else
+        return xp_drums_now();
+    for (t = 0; t < NTRACK; t++)
+        if ((s[t * w + 1u] & 3u) == ENG_FMD)
+            m |= 1u << t;
+    return m;
+}
+static uint32_t pat_xp(pat_t *p, uint32_t os, uint32_t orr)   /* (a pattern's notes, in its records: the notes changed) */
+{
+    uint32_t v4, o, r, dm, n = 0;
+    if (!p->used || (p->seq[SEQ_FMT] != SEQ_V3 && p->seq[SEQ_FMT] != SEQ_V4))
+        return 0;
+    dm = xp_drums(p);
+    v4 = p->seq[SEQ_FMT] == SEQ_V4;
+    o = v4 ? SEQ_REC4 : SEQ_REC;
+    for (r = 0; r < p->seq[SEQ_NREC] && o + 6u <= PAT_SEQ_ROOM; r++) {   /* (as pat_decode reads them) */
+        uint32_t id = p->seq[o], f = p->seq[o + 5u], v;
+        if (id == SEQ_LANE && v4 && o + SEQ_LANE_N <= PAT_SEQ_ROOM) {
+            o += SEQ_LANE_N;
+            continue;
+        }
+        if (id >= SEQ_XPL + NXL * NSTEP)
+            break;
+        if (id < SEQ_XPL && !(dm >> (id / NSTEP) & 1u) && (v = xp_note(p->seq[o + 1u], os, orr)) != p->seq[o + 1u]) {
+            p->seq[o + 1u] = (uint8_t)v;
+            n++;
+        }
+        o += 6u + (f >> 7 ? 3u : 0u) + (f >> 6 & 1u) + 3u * (f & 63u);
+    }
+    return n;
+}
+static void scale_follow(uint32_t os, uint32_t orr)
+{
+    uint32_t t, i, j, k, dm, v;
+    if (os == ui.scale && orr == ui.root)
+        return;
+    if (seq_pend == 2u)                          /* (a pattern just taken in: its switch finished first) */
+        pat_poll();
+    for (t = 0; t < NTRACK; t++)                 /* (the steps playing) */
+        if (ui.eng[t] != ENG_FMD)
+            for (i = 0; i < NSTEP; i++)
+                if (seq_note[t][i])
+                    seq_note[t][i] = (uint8_t)xp_note(seq_note[t][i], os, orr);
+    if (seq_pend == 1u) {                        /* (the pattern waiting, decoded already) */
+        dm = xp_drums(&pat_store[seq_pend_k]);
+        for (t = 0; t < NTRACK; t++)
+            if (!(dm >> t & 1u))
+                for (i = 0; i < NSTEP; i++)
+                    sb_next.note[t][i] = (uint8_t)xp_note(sb_next.note[t][i], os, orr);
+    }
+    for (k = 0; k < PAT_SLOTS; k++)
+        if (pat_xp(&pat_store[k], os, orr))
+            pat_dirtyv[k] = 1;
+    pat_xp(&pat_clip, os, orr);
+    for (i = 0; i < NLP; i++) {                  /* (the loops, every pattern's) */
+        loop_t *p = &lps[i];
+        if (p->pat == LP_FREE || p->pat >= PAT_SLOTS || p->t >= NTRACK)
+            continue;
+        dm = p->pat == pat_cur ? xp_drums_now() : xp_drums(&pat_store[p->pat]);
+        if (dm >> p->t & 1u)
+            continue;
+        for (j = 0; j < p->n; j++)
+            if ((v = xp_note(p->ev[j].note, os, orr)) != p->ev[j].note)
+                p->ev[j].note = (uint8_t)v;
+    }
+    pat_dirty = pat_dirtyv[pat_cur] = 1;
+    prj_dirty = 1;
     ui.force = 1;
 }
 /* SAVE held: the session playing saved into its slot -- never saved, the first empty slot's page with SAVE
@@ -2526,8 +2619,13 @@ static int perf_exit(void)
     ses_psw = b->psw;
     ses_ctrl = b->ctrl;
     ui.tempo = (int16_t)b->tempo;
-    ui.root = b->root;
-    ui.scale = b->scale;
+    {                                            /* (build 111) the scale as it was, the steps and loops with it */
+        uint32_t ms = ui.xp_wait ? ui.xp_scale : ui.scale, mr = ui.xp_wait ? ui.xp_root : ui.root;
+        ui.xp_wait = 0;
+        ui.root = b->root;
+        ui.scale = b->scale;
+        scale_follow(ms, mr);
+    }
     if (!kept) {                                 /* (the patterns saved meanwhile kept, the one it began on as it was:
                                                   * pat_store's copy untouched -- switching, emptying, pasting wait) */
         pat_tempo = perf_tempo;

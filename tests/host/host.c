@@ -6907,6 +6907,101 @@ static int cmd_clkfx(void)
     return fails != 0;
 }
 
+/* (build 111) a new scale or root: the session's notes follow it -- the steps playing, the store's patterns, the
+ * loops; not DRUM's; a knob turned through several scales, the last alone. The SESSIONS grid: the cursor's key lit,
+ * the one playing blinking */
+#define XSEXPECT(c, what) do { if (!(c)) { printf("FAIL xpscale: %s\n", what); fails++; } } while (0)
+static int cmd_xpscale(const char *dir)
+{
+    static seqbuf_t sb;
+    uint32_t kw[16], k, i;
+    loop_t *lp;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    for (k = 0; k < NKEY; k++)
+        if (white_ix(k) >= 0)
+            kw[white_ix(k)] = k;
+    memset((void *)seq_note, 0, sizeof seq_note);
+    ui.scale = 1;                                /* MAJOR, from C */
+    ui.root = 0;
+    ui.eng[3] = ENG_FMT;
+    ui.eng[0] = ENG_FMD;
+    seq_note[3][0] = 60; seq_note[3][1] = 64; seq_note[3][2] = 71; seq_note[3][3] = 66;   /* C E B, F# (out) */
+    seq_note[0][0] = 37;                         /* (a drum's tuning) */
+    pat_take(&pat_store[1]);                     /* pattern 2: the same */
+    lp = HN(3, 0);
+    lp->n = 1; lp->len = 16; lp->ev[0].note = 64; lp->on = 1;
+    lp->ref = lp_trn[3] = ui.trn[3];
+    btn(B_ARP, 0);
+    XSEXPECT(ui.page == PG_SCALE, "(the SCALE page)");
+    host_enc[PANEL_ENC[EN_ALGO]] = 1;            /* MINOR NATURAL */
+    ui_input();
+    XSEXPECT(ui.scale == 2u && seq_note[3][1] == 64, "the scale turned: the notes as they were for now");
+    fm1_ms += 500;
+    ui_input();
+    XSEXPECT(seq_note[3][0] == 60 && seq_note[3][1] == 63 && seq_note[3][2] == 70 && seq_note[3][3] == 65,
+             "0.4 s on: C E B into C Eb Bb, degree by degree (F#, out of both: to the scale's F)");
+    XSEXPECT(seq_note[0][0] == 37, "DRUM's notes left alone");
+    pat_decode(&pat_store[1], &sb);
+    XSEXPECT(sb.note[3][1] == 63 && sb.note[3][2] == 70 && sb.note[0][0] == 37 && pat_dirtyv[1],
+             "pattern 2 in the store too");
+    XSEXPECT(lp->ev[0].note == 63, "the loop too");
+    host_enc[PANEL_ENC[EN_SELECT]] = 2;          /* root D */
+    ui_input();
+    fm1_ms += 500;
+    ui_input();
+    XSEXPECT(ui.root == 2u && seq_note[3][0] == 62 && seq_note[3][1] == 65 && seq_note[3][2] == 72,
+             "the root to D: D F C, the shorter way up");
+    host_enc[PANEL_ENC[EN_ALGO]] = 5;            /* through to MAJOR PENTA .. */
+    ui_input();
+    fm1_ms += 100;
+    host_enc[PANEL_ENC[EN_ALGO]] = -5;           /* .. and back, the knob not resting */
+    ui_input();
+    fm1_ms += 500;
+    ui_input();
+    XSEXPECT(ui.scale == 2u && seq_note[3][0] == 62 && seq_note[3][1] == 65 && seq_note[3][2] == 72,
+             "turned through a scale and back: the notes as they were");
+    host_enc[PANEL_ENC[EN_ALGO]] = 4;            /* MINOR PENTA, 5 notes */
+    ui_input();
+    fm1_ms += 500;
+    ui_input();
+    for (i = 0; i < 4u; i++)
+        XSEXPECT(in_scale(seq_note[3][i]), "a scale of five: every note in it");
+    XSEXPECT(seq_note[3][0] == 62 && seq_note[3][0] < seq_note[3][1] && seq_note[3][1] < seq_note[3][2],
+             "the root kept, the line's shape kept");
+    btn(B_ARP, 0);
+    btn(B_ARP, 1);                               /* SHIFT + ARP: at random, at once */
+    ui_input();
+    for (i = 0; i < 4u; i++)
+        XSEXPECT(in_scale(seq_note[3][i]), "SHIFT + ARP: every note in the scale drawn");
+    XSEXPECT(lp->ev[0].note && in_scale(lp->ev[0].note) && seq_note[0][0] == 37, "the loop in it, the drum not");
+    /* the SESSIONS grid: the cursor's key lit, the one playing blinking */
+    btn(B_SAVE, 1);
+    XSEXPECT(ui.page == PG_PRJ, "(the SESSIONS grid)");
+    ui_leds();
+    XSEXPECT(host_led[14u + kw[pj.slot[0]]], "the cursor's key lit");
+    turn(EN_PRESET, 3);
+    k = pj.slot[0];
+    prj_cur = (int8_t)(k == 5u ? 6 : 5);
+    fm1_ms = 1000u * 250u + 250u;                /* (blink: on) */
+    ui_leds();
+    XSEXPECT(host_led[14u + kw[k]] && host_led[14u + kw[prj_cur]], "PRESETS: the cursor's key lit, the playing one on");
+    for (i = 0; i < 16u; i++)
+        if (i != k && (int8_t)i != prj_cur && host_led[14u + kw[i]]) {
+            XSEXPECT(0, "no other key lit");
+            break;
+        }
+    fm1_ms += 250u;                              /* (blink: off) */
+    ui_leds();
+    XSEXPECT(host_led[14u + kw[k]] && !host_led[14u + kw[prj_cur]], "the playing one blinks, the cursor's stays");
+    (void)dir;
+    printf("xpscale: %d failures\n", fails);
+    return fails != 0;
+}
+
 int main(int argc, char **argv)
 {
     wt_init();
@@ -6942,6 +7037,8 @@ int main(int argc, char **argv)
         return cmd_arp(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "trn"))
         return cmd_trn(argv[2]);
+    if (argc >= 3 && !strcmp(argv[1], "xpscale"))
+        return cmd_xpscale(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "euc"))
         return cmd_euc(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "lfo"))

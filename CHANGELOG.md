@@ -1,5 +1,22 @@
 # Changelog
 
+## Build 111
+
+Added
+- A new scale or root moves the session's notes into it: the steps of every pattern (the one playing, the one waiting
+  to play, the ones in the store, the one copied) and the notes of every loop, degree by degree, each in the same
+  octave of its root, the root moving the shorter way. A scale of another size maps each degree to the nearest one in
+  proportion; a note outside the new scale goes to the nearest note in it. On the SCALE page it happens 0.4 s after
+  SELECT or ALGORITHM stops turning (only the last scale counts); SHIFT + ARP applies at once. Tracks on DRUM keep
+  their notes. PERFORMANCE going off puts the scale back and moves the notes back with it.
+- SESSIONS grid: the white key under the cursor is lit brightly as PRESETS moves it, and the key of the session
+  playing blinks. The other slots stay dim.
+
+Compatibility
+- Sessions and patterns unchanged. The patterns changed this way are marked unsaved.
+- Tests: `xpscale` (steps, store, loop, DRUM untouched, a knob turned through and back, a five-note scale, SHIFT +
+  ARP; the grid's keys).
+
 ## Build 110
 
 Added

@@ -99,7 +99,10 @@
  *                             FX -- eight parameters a page: KNOB 1 .. 4 its A .. D, or (PRESETS turned right; left
  *                             back) its E .. H; OCT- / OCT+ the page before / after
  *   ARP                       the SCALE page: SELECT the root, ALGORITHM the scale; ARP again, back (Tonitor's).
- *                             SHIFT + ARP: a scale and root at random, the SCALE page shown 1.5 s
+ *                             SHIFT + ARP: a scale and root at random, the SCALE page shown 1.5 s. Either way the
+ *                             session's notes follow (build 111): every pattern's steps and every loop moved into the
+ *                             new scale and root, degree by degree (0.4 s after the knob stops; SHIFT + ARP at once) --
+ *                             not the tracks on DRUM
  *   SEQ                       the effects' pages: CHORUS, COMP (the master compressor), DELAY, REVERB in turn, then
  *                             back (OCT- / OCT+ too; a track's button: back to its view; SHIFT and it, the track
  *                             chosen, the page kept -- COMP's SC SOURCE and SC LEVEL are the chosen track's);
@@ -236,6 +239,9 @@ static struct {
     uint8_t home_down, home_long, ssv_down, ssv_long, save_down, save_long;
     uint32_t seed;
     uint8_t scale, root;
+    uint8_t xp_wait, xp_scale, xp_root;   /* (build 111) a new scale or root not yet given to the steps and loops:
+                                  * the one they are in, until xp_due (scale_follow, projects.c) */
+    uint32_t xp_due;
     int16_t tempo;               /* the project's, BPM */
     int8_t level[NLANE], pan[NLANE];
     int8_t touched;              /* the row just turned (-1 none), until touch_until */
@@ -318,6 +324,7 @@ static void pat_brk_save(uint32_t k);
 static void pat_save_as(uint32_t k);
 static void pat_grid_open(void);
 static void pat_poll(void);
+static void scale_follow(uint32_t os, uint32_t orr);   /* (projects.c: the material moved into the scale; build 111) */
 static uint8_t seq_pend_k;                       /* (projects.c: the pattern waiting to play) */
 static void tempo_apply(void);
 static int32_t tempo_now(void);
@@ -328,6 +335,7 @@ static void prj_grid_open(void);                 /* (projects.c: the SESSIONS gr
 static void prj_key_load(uint32_t w);
 static void prj_key_save(uint32_t w);
 static int prj_key_lit(uint32_t w);
+static uint32_t pj_cursor(void);                 /* (.. the grid's cursor: build 111) */
 static void prj_key_mark(void);                  /* (.. SHIFT + the 1st black key: the SET; build 107) */
 static void prj_set_poll(void);
 static int perf_enter(void);                     /* (projects.c: PERFORMANCE's keeping and giving back) */
@@ -578,6 +586,50 @@ static int32_t scale_move(int32_t n, int32_t d)
         n = m;
     }
     return n;
+}
+/* (build 111) note n, in scale os at root orr, as it is in the scale and root chosen now: the same degree (scales of
+ * other sizes: the degree nearest in proportion), in the same octave of its root, the root moved the shorter way
+ * (-6 .. +5 semitones); a note between degrees keeps its distance from the one below. CHROMATIC on either side: the
+ * notes moved with the root. Then to the nearest note of the scale (below, of two), within 12 .. 120 */
+static uint32_t xp_note(uint32_t n, uint32_t os, uint32_t orr)
+{
+    int32_t dr = (int32_t)((ui.root + 18u - orr) % 12u) - 6, m, k;
+    if (!n)
+        return 0;
+    if (os == 0 || os >= NSCALE || ui.scale == 0)
+        m = (int32_t)n + dr;
+    else {
+        int32_t r = (int32_t)n - (int32_t)orr, o = r >= 0 ? r / 12 : -((11 - r) / 12), pc = r - 12 * o, d, e,
+                on = SCALE_N[os], nn = SCALE_N[ui.scale];
+        for (d = on - 1; d > 0 && SCALE_STEP[os][d] > pc; d--)
+            ;
+        e = pc - SCALE_STEP[os][d];
+        d = (2 * d * nn + on) / (2 * on);
+        if (d >= nn) {
+            d -= nn;
+            o++;
+        }
+        m = (int32_t)orr + dr + 12 * o + SCALE_STEP[ui.scale][d] + e;
+    }
+    for (k = 0; k < 6 && !in_scale(m - k) && !in_scale(m + k); k++)
+        ;
+    m = in_scale(m - k) ? m - k : m + k;
+    while (m < 12)
+        m += 12;
+    while (m > 120)
+        m -= 12;
+    return (uint32_t)m;
+}
+/* (build 111) the scale or root about to change: the one the steps and loops are in noted (if not already), and
+ * given to them a moment after the last change (a knob turned through several scales: the last one alone) */
+static void xp_mark(uint32_t wait)
+{
+    if (!ui.xp_wait) {
+        ui.xp_wait = 1;
+        ui.xp_scale = ui.scale;
+        ui.xp_root = ui.root;
+    }
+    ui.xp_due = fm1_ms + wait;
 }
 /* transposition (build 51): track t's steps moved d steps of the scale (CHROMATIC: semitones), each note to the
  * scale's next; TRN counts how far, kept with the pattern. Its loops too (build 54), each note the same way -- not
@@ -2074,6 +2126,11 @@ static void ui_input(void)
     lmu_apply();
     (void)rel;
     pat_poll();                                      /* (a pattern switched as the sequencer took it in) */
+    if (ui.xp_wait && (int32_t)(fm1_ms - ui.xp_due) >= 0) {   /* (build 111: a new scale or root, settled -- the steps
+                                                      * and loops into it) */
+        ui.xp_wait = 0;
+        scale_follow(ui.xp_scale, ui.xp_root);
+    }
     prj_set_poll();                                  /* (the SET changed: written, stopped; build 107) */
     arp_take();                                      /* (the arpeggiator's notes recorded: build 52) */
     midi_poll();                                     /* (the clock followed, the CCs out: build 46) */
@@ -2246,6 +2303,7 @@ static void ui_input(void)
     }
     if (btn_bit(press, B_ARP) && sh) {               /* SHIFT + ARP: a scale and root at random, the SCALE page shown
                                                       * a moment over any page (Tonitor's; build 77) */
+        xp_mark(0);                                  /* (the steps and loops into it at once: build 111) */
         scale_draw();
         prj_dirty = 1;
         ui.touch_until = fm1_ms;
@@ -2414,6 +2472,8 @@ static void ui_input(void)
         e_pre = e_sel = e_alg = 0;
     }
     if (ui.page == PG_SCALE) {                       /* the SCALE page: SELECT the root, ALGORITHM the scale (Tonitor's) */
+        if (e_sel || e_alg)
+            xp_mark(400u);                           /* (the steps and loops into it 0.4 s after the last turn: build 111) */
         if (e_sel) {
             ui.root = (uint8_t)(((int32_t)ui.root + e_sel % 12 + 12) % 12);   /* (round the octave) */
             ui.touched = 0;
@@ -3185,9 +3245,11 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (ui.page == PG_PRJ && white_ix(k) >= 0) {   /* (the SESSIONS grid: the sixteen dim, the one playing lit) */
+        if (ui.page == PG_PRJ && white_ix(k) >= 0) {   /* (the SESSIONS grid: the sixteen dim; build 111: the cursor's
+                                                        * lit, the one playing blinks) */
             int32_t w = white_ix(k);
-            fm1_led_key(14u + k, w < 16 && prj_key_lit((uint32_t)w));
+            fm1_led_key(14u + k, w < 16 && (prj_key_lit((uint32_t)w) ? (fm1_ms / 250u) & 1u
+                                                                     : (uint32_t)w == pj_cursor()));
             led_dim_key(14u + k, w < 16);
             continue;
         }
