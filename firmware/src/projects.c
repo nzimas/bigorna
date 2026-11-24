@@ -2347,6 +2347,31 @@ static void prj_fresh(void)
     prj_dirty = 0;
     pat_dirty = 0;
 }
+/* (build 120) the pattern a session opens at: the first with notes on its steps or a loop with notes; none, the first */
+static uint32_t pat_open(void)
+{
+    uint32_t k, i, j, has = 0;
+    seqbuf_t *s;
+    for (k = 0; k < PAT_SLOTS; k++)
+        for (i = 0; i < NLP; i++)
+            if (lps[i].pat == k && lps[i].on && lps[i].n)
+                has |= 1u << k;
+    s = sb_scratch();
+    for (k = 0; k < PAT_SLOTS && !(has & ((1u << k) | ((1u << k) - 1u))); k++)
+        if (pat_store[k].used) {
+            pat_decode(&pat_store[k], s);
+            for (j = 0; j < sizeof s->note; j++)
+                if ((&s->note[0][0])[j]) {
+                    has |= 1u << k;
+                    break;
+                }
+        }
+    sb_done();
+    for (k = 0; k < PAT_SLOTS; k++)
+        if (has >> k & 1u)
+            return k;
+    return 0;
+}
 static int prj_load(uint32_t k)
 {
     uint32_t s;
@@ -2368,6 +2393,10 @@ static int prj_load(uint32_t k)
     pat_give(b.pat < PAT_SLOTS ? b.pat : 0u, 0);    /* (the pattern it was saved playing) */
     prj_dirty = 0;
     rc = lop_load(k, b.loop_gen, b.loop_nsec, b.pat < PAT_SLOTS ? b.pat : 0u);
+    s = pat_open();                              /* (build 120: it opens at its first pattern with notes, not the one
+                                                  * it was saved playing) */
+    if (s != pat_cur)
+        pat_give(s, 0);
     ps_give(pat_cur);                            /* (its sounds, as the stream had them) */
     pat_dirty = 0;
     lst_note(k);

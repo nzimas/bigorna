@@ -1,5 +1,17 @@
 # Changelog
 
+## Build 120
+
+Changed
+- A session loaded opens at its first pattern with notes, on its steps or in a loop that is on (usually pattern 1),
+  instead of the pattern it was saved at. With no notes in any pattern, it opens at pattern 1. The same at the start,
+  with START set to LAST.
+
+Compatibility
+- Sessions unchanged; the pattern saved in the session record still places loops saved without one. Tests:
+  `pstate` (the first pattern with notes, one with only a loop, none), `patsnd`, `patsound`, `lptrn`, `subtrk`
+  updated.
+
 ## Build 119
 
 Fixed

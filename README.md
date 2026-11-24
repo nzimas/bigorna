@@ -658,7 +658,9 @@ in the flash, with the note of the last session: while the sequencer plays they 
 stops (writing the flash pauses the sound), or with the next session loaded or saved. The set list is not in the USB
 backup.
 
-Loading a session brings all of it back; while the sequencer plays, its loops start at the next bar. Loops take room
+Loading a session brings all of it back; while the sequencer plays, its loops start at the next bar. It opens at its
+first pattern with notes, on the steps or in a loop (usually pattern 1), not the pattern it was saved at; with no notes
+anywhere, at pattern 1. This holds when the FM-1 starts with the last session too. Loops take room
 in a store shared by all the sessions: if it is full, NO ROOM FOR LOOPS shows and nothing is saved; deleting a session
 frees room. Sessions saved by older builds load as they played. Changes not saved before the FM-1 is switched off are
 lost. During PERFORMANCE, sessions wait: PERF MODE shows.

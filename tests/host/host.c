@@ -4978,9 +4978,10 @@ static int cmd_pstate(const char *dir)
     {   /* (the flash holds it: the session loaded again, at pattern 2) */
         PEXPECT(!prj_save(0), "(session 1 saved at pattern 2)");
         ps_set_a();
-        PEXPECT(!prj_load(0) && pat_cur == 1u && ps_is_b(), "the session loaded: its pattern's state");
-        pat_switch(0);
-        PEXPECT(ps_is_a(), "and pattern 1's, from the flash");
+        PEXPECT(!prj_load(0) && pat_cur == 0u && ps_is_a() && seq_note[0][0] == 60u,
+                "the session loaded: at pattern 1, its first with notes (build 120), its state");
+        pat_switch(1);
+        PEXPECT(ps_is_b() && seq_note[1][4] == 62u, "and pattern 2's, from the flash");
     }
     /* a change not saved: kept in the store as the steps are, while another plays */
     pat_switch(1);
@@ -5019,7 +5020,31 @@ static int cmd_pstate(const char *dir)
             }
     }
     ps_set_a();
-    PEXPECT(!prj_load(3) && pat_cur == 2u && ps_is_b(), "a session of build 61: the session's mutes and settings");
+    PEXPECT(!prj_load(3) && pat_cur == 0u && ps_is_b(), "a session of build 61: the session's mutes and settings");
+    /* (build 120) a session opens at its first pattern with notes -- not the one it was saved at; a loop's notes count */
+    pat_switch(5);
+    memset(&pat_store[0], 0, 2 * sizeof(pat_t));
+    PEXPECT(!prj_save(5) && !prj_load(5) && pat_cur == 2u && seq_note[0][0] == 60u,
+            "saved at pattern 6, patterns 1 and 2 empty: opens at pattern 3");
+    pat_switch(5);
+    memset(&pat_store[2], 0, sizeof(pat_t));
+    {
+        loop_t *lp = lp_new(4, 1, 0, 4);
+        PEXPECT(lp != 0, "(a loop on pattern 5)");
+        if (lp) {
+            memset(lp->ev, 0, sizeof *lp->ev);
+            lp->ev[0].note = 64;
+            lp->ev[0].vel = 100;
+            lp->n = 1;
+            lp->len = 16;
+            lp->on = 1;
+        }
+    }
+    PEXPECT(!prj_save(5) && !prj_load(5) && pat_cur == 4u && seq_lpat == 4u && lp_get(1, 0) != 0,
+            "no steps anywhere, a loop on pattern 5: opens there");
+    lop_clear();
+    memset(pat_store, 0, sizeof pat_store);
+    PEXPECT(!prj_save(5) && !prj_load(5) && pat_cur == 0u, "no notes at all: pattern 1");
     /* the room: every step a note and four locks -- the steps end before the state, the state whole */
     {
         static pat_t pp;
@@ -5631,10 +5656,11 @@ static int cmd_patsnd(void)
     PSNDX(!prj_save(0), "(session 1 saved at pattern 2)");
     lane_snd(0)->fx[X_REV] = 1;
     tempo_set(90);
-    PSNDX(!prj_load(0) && pat_cur == 1u && lane_snd(0)->fx[X_REV] == 33u && tempo_now() == 140 && !pat_dirty,
-            "the session loaded: its pattern's sends and tempo");
+    PSNDX(!prj_load(0) && pat_cur == 0u && lane_snd(0)->fx[X_REV] == 100u && tempo_now() == 100 && !pat_dirty,
+            "the session loaded: at pattern 1, its first with notes (build 120), its sends and tempo");
+    pat_switch(1);
+    PSNDX(lane_snd(0)->fx[X_REV] == 33u && tempo_now() == 140, "and pattern 2's, from the flash");
     pat_switch(0);
-    PSNDX(lane_snd(0)->fx[X_REV] == 100u && tempo_now() == 100, "and pattern 1's, from the flash");
     /* a pattern saved before build 97: no sends, no tempo -- left as they play; its steps as ever */
     {
         pat_t *q = &pat_store[2];
@@ -6032,15 +6058,15 @@ static int cmd_lptrn(const char *dir)
             mix_block(out);
         pat_switch(6);
         XEXPECT(pat_cur == 6u && !prj_save(4), "(session 5 saved at pattern 7)");
-        pj.slot[1] = 0;
-        pat_switch(0);
+        pj.slot[1] = 6;
         pat_poll();
-        XEXPECT(!prj_load(4) && pat_cur == 6u, "(session 5 loaded: pattern 7 playing)");
+        XEXPECT(!prj_load(4) && pat_cur == 0u, "(session 5, saved at pattern 7, loaded: at pattern 1, its first with "
+                                                "notes; build 120)");
         pat_poll();
         grid_open();
-        XEXPECT(ui.page == PG_PAT && pj.slot[1] == 6u, "the grid: its cursor on pattern 7, the one playing");
+        XEXPECT(ui.page == PG_PAT && pj.slot[1] == 0u, "the grid: its cursor on pattern 1, the one playing");
         ui_draw();
-        shot(dir, "pat_grid_loaded7");
+        shot(dir, "pat_grid_loaded1");
         btn(B_SAVE, 0);
     }
     printf("lptrn: %d failures\n", fails);
@@ -6668,7 +6694,9 @@ static int cmd_subtrk(const char *dir)
         sc_lvl[1] = 127;
         mix_block(out);
         SEXPECT(dk_mask == (1u << lb), "only that lane's hits followed");
-        SEXPECT(!prj_save(3) && (sc_sub[1] = 0, !prj_load(3)) && sc_sub[1] == 2u, "kept with the session");
+        seq_note[1][15] = 60;                    /* (a note on pattern 1: the session opens there, build 120) */
+        SEXPECT(!prj_save(3) && (sc_sub[1] = 0, !prj_load(3)) && pat_cur == 0u && sc_sub[1] == 2u, "kept with the session");
+        seq_note[1][15] = 0;
         lane_free(lb);
         sc_apply();
         SEXPECT(sc_ln[1] == lc, "its subtrack given up: the kick again");
@@ -7216,10 +7244,11 @@ static int cmd_patsound(void)
     }
     d->mg[M_DST] = 55;
     mark(3);
-    PSEXPECT(!prj_load(0) && pat_cur == 1u && d->mg[M_DST] == 10u && !memcmp(&ui.snd[4][ui.eng[4]], &s4b, sizeof s4b) &&
-             !pat_dirty, "loaded: pattern 2 playing, its sounds");
+    PSEXPECT(!prj_load(0) && pat_cur == 0u && d->mg[M_DST] == 90u && !memcmp(&ui.snd[4][ui.eng[4]], &s4a, sizeof s4a) &&
+             !pat_dirty, "loaded: at pattern 1, its first with notes (build 120), its sounds");
+    pat_switch(1);
+    PSEXPECT(d->mg[M_DST] == 10u && !memcmp(&ui.snd[4][ui.eng[4]], &s4b, sizeof s4b), "and pattern 2's, from the flash");
     pat_switch(0);
-    PSEXPECT(d->mg[M_DST] == 90u && !memcmp(&ui.snd[4][ui.eng[4]], &s4a, sizeof s4a), "and pattern 1's, from the flash");
     /* switched while playing: at the end of the chosen track's time through */
     seq_run = 1;
     pat_switch(1);
