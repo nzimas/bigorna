@@ -4322,12 +4322,20 @@ static int cmd_trn(const char *dir)
     btn(B_OCTDN, 0);
     ui.sv = 1;
     btn(B_OCTUP, 0);
+    TEXPECT(seq_note[0][0] == 72 && seq_note[0][1] == 76 && seq_note[0][2] == 83 && !ui.trn[0] && ui.oc[0] == 1 &&
+            !ui.oct[0] && seq_note[1][0] == 48 && str_eq(ui.msg, "OCT +1"),
+            "the step view: OCT+ the track's steps an octave up, OCT +1 (build 118)");
+    ui_leds();
+    TEXPECT(host_led[PANEL_BTN[B_OCTUP]] && !host_led[PANEL_BTN[B_OCTDN]], "OCT+ lit: an octave up");
+    btn(B_OCTDN, 0);
+    TEXPECT(seq_note[0][0] == 60 && !ui.oc[0] && str_eq(ui.msg, "OCT 0"), "OCT-: back, OCT 0");
+    trn_track(0, 1);
     TEXPECT(seq_note[0][0] == 62 && seq_note[0][1] == 65 && seq_note[0][2] == 72 && ui.trn[0] == 1 && !ui.oct[0] &&
-            seq_note[1][0] == 48 && !ui.trn[1], "the step view: OCT+ the track's steps a step of the scale up (C E B: D F C)");
+            seq_note[1][0] == 48 && !ui.trn[1], "a step of the scale up (C E B: D F C)");
     ui_draw();
     shot(dir, "trn_step");
-    btn(B_OCTDN, 0);
-    btn(B_OCTDN, 0);
+    trn_track(0, -1);
+    trn_track(0, -1);
     TEXPECT(seq_note[0][0] == 59 && seq_note[0][1] == 62 && seq_note[0][2] == 69 && ui.trn[0] == -1,
             "OCT- twice: a step of the scale below where they were (B D A)");
     ui.sv = 0;
@@ -4345,24 +4353,29 @@ static int cmd_trn(const char *dir)
         ui.sv = 1;
         ui.sel = 0;
         btn(B_OCTUP, 0);
+        TEXPECT(LPN(0, 0, 0) == 72 && LPN(0, 0, 1) == 81 && seq_note[0][0] == 72 && !ui.trn[0],
+                "the step view: OCT+ the track's loop an octave up too, with its steps");
+        btn(B_OCTDN, 0);
+        TEXPECT(LPN(0, 0, 0) == 60 && seq_note[0][0] == 60 && (*HL(0, 1)).ev[0].note == 60, "OCT-: back");
+        trn_track(0, 1);
         TEXPECT(LPN(0, 0, 0) == 62 && LPN(0, 0, 1) == 71 && (*HL(0, 1)).ev[0].note == 60 && seq_note[0][0] == 62 &&
-                ui.trn[0] == 1, "the step view: OCT+ the track's loop up a step of the scale too, with its steps");
+                ui.trn[0] == 1, "the track's loop up a step of the scale too, with its steps");
         ui.sv = 0;                               /* (SHIFT + OCT: every track's on the track's view; build 116) */
         btn(B_OCTDN, 1);
         TEXPECT(LPN(0, 0, 0) == 60 && LPN(0, 0, 1) == 69 && seq_note[0][0] == 60 && !ui.trn[0] && ui.trn[1] == 0,
                 "SHIFT + OCT-: every track's steps and loops down");
         btn(B_OCTUP, 1);                         /* (back as the tests below had it: track 1 at 0, track 2 at +1) */
         ui.sv = 1;
-        btn(B_OCTDN, 0);
+        trn_track(0, -1);
         lop_clear();
     }
     ui.scale = 0;                                /* CHROMATIC: semitones */
     ui.sv = 1;
     ui.sel = 1;
-    btn(B_OCTUP, 0);
+    trn_track(1, 1);
     TEXPECT(seq_note[1][0] == 51 && ui.trn[1] == 2, "CHROMATIC: a semitone");
     ui.scale = 1;
-    btn(B_OCTDN, 0);
+    trn_track(1, -1);
     TEXPECT(seq_note[1][0] == 50 && ui.trn[1] == 1, "a note out of the scale: to the scale's next");
     {   /* (build 116) the step view, SHIFT + OCT: the chosen track's steps a semitone, any note, TRN kept */
         uint8_t n0 = seq_note[0][0];
@@ -4402,6 +4415,18 @@ static int cmd_trn(const char *dir)
     TEXPECT(!ui.trn[0] && ui.trn[1] == 1 && seq_note[0][0] == 60 && seq_note[1][0] == 50, "pattern 1 as it was");
     pat_give(1, 1);
     TEXPECT(ui.trn[0] == 1 && ui.trn[1] == 2 && seq_note[0][0] == 62 && seq_note[1][0] == 52, "pattern 2 as transposed");
+    ui.sel = 1;                                  /* (build 118) the octaves: their count from the pattern given; none
+                                                  * moved past the range */
+    btn(B_OCTUP, 0);
+    TEXPECT(seq_note[1][0] == 64 && ui.oc[1] == 1, "(an octave up)");
+    ps_give(pat_cur);
+    TEXPECT(!ui.oc[1], "a pattern given: counted from 0 again");
+    btn(B_OCTDN, 0);
+    TEXPECT(seq_note[1][0] == 52 && str_eq(ui.msg, "OCT -1"), "(back: OCT -1 from there)");
+    seq_note[1][5] = 110;
+    btn(B_OCTUP, 0);
+    TEXPECT(seq_note[1][0] == 52 && seq_note[1][5] == 110 && str_eq(ui.msg, "OCT MAX"), "a note past 120: none moved, OCT MAX");
+    seq_note[1][5] = 0;
     {   /* (build 73) a loop is its pattern's: pattern 2's not in pattern 1 (playing or not); pattern 2 again, as it
          * was, at its transposition */
         loop_t *lq = HN(1, 0);

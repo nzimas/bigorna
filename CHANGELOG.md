@@ -1,5 +1,18 @@
 # Changelog
 
+## Build 118
+
+Changed
+- In the step view, OCT− / OCT+ move the chosen track's (or subtrack's) steps and its notes in the track's loops an
+  octave down or up (CTRL ALL: the other tracks' too), shown as OCT +1, OCT −2, OCT 0: the octaves moved since the
+  pattern came in. A note that would leave 12 .. 120: none moved, OCT MAX. Before, they moved the track one step of
+  the scale (TRN), which looked like a semitone in CHROMATIC.
+- SHIFT + OCT− / OCT+ in the track's view (every track a step of the scale, TRN ALL) and in the step view (the track a
+  semitone, TRSP) are unchanged.
+
+Compatibility
+- Sessions unchanged: a pattern's TRN count from earlier builds still plays and shows (T+2). Tests: `trn`.
+
 ## Build 117
 
 Changed

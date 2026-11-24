@@ -469,6 +469,7 @@ static void ps_rebase(void)
     uint32_t p;
     for (p = 0; p < PS_BYTES; p++)
         ((uint8_t *)&ps_b)[p] = ps_cur(p);
+    memset(ui.oc, 0, sizeof ui.oc);              /* (build 118) */
     ps_n = 0;
     ps_set = 0;
 }
@@ -534,6 +535,7 @@ static int ps_stash(uint32_t k)
 static void ps_give(uint32_t k)
 {
     uint32_t p, i;
+    memset(ui.oc, 0, sizeof ui.oc);              /* (build 118: the step view's octaves counted from here) */
     if (k >= PAT_SLOTS || !(ps_set >> k & 1u))
         return;
     for (p = 0; p < PS_BYTES; p++)

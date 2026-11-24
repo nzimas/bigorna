@@ -13,8 +13,9 @@
  *   HOME                      a new sound for the track, on its machine (gen.c); SHIFT + HOME: of the same family
  *                             (GEN LOCK on, the session's page: neither does anything; build 85)
  *   OCT- / OCT+               the track's octave, -3 .. +3; on the EDIT page, the page before / after; in the step
- *                             view, the track's steps transposed a step of the scale (build 51); SHIFT: every track's
- *                             (in the step view, SHIFT: the track's steps a semitone instead -- build 116)
+ *                             view, the track's steps and loops an octave (OCT +1; build 118 -- a step of the scale
+ *                             before); SHIFT: every track's a step of the scale (build 51; in the step view, SHIFT: the
+ *                             track's steps a semitone instead -- build 116)
  *   the white keys            play the track in the scale chosen (the first key the root, each the next degree)
  *   the 1st black key         (the track's view, the step view off) CHORD mode on or off for the track (lit while
  *                             on, dim off): each white key then plays a triad from its note, in the scale (after
@@ -211,6 +212,7 @@ static struct {
                                   * build 53) */
     uint32_t ak_t0;
     int8_t trn[NLANE];           /* each lane's transposition in the pattern playing, steps of the scale (build 51) */
+    int8_t oc[NLANE];            /* (build 118) each lane's octaves moved in the step view, since the pattern came in */
     uint8_t gen_den[NLANE], gen_cx[NLANE];   /* the phrase generator's DENSITY and COMPLEXITY, 0 .. 100, a track's */
     uint8_t trig;                /* TRIG on (the 3rd black key): a step held shows its own page */
     uint8_t euc[NLANE];          /* (build 101) EUCLID mode on (the 5th black key, in the step view), a lane's .. */
@@ -685,6 +687,43 @@ static int32_t trn_track(uint32_t t, int32_t d)   /* (t a lane: a subtrack's own
             prj_dirty = 1;
     pat_dirty = 1;
     return d;
+}
+/* (build 118) the step view's OCT- / OCT+: lane t's steps, and its notes in its track's loops (not the one being
+ * recorded), d octaves; ui.oc counts them (from the pattern given: ps_give clears it) */
+static int oct_ok(uint32_t t, int32_t d)         /* (every note stays within 12 .. 120) */
+{
+    uint32_t i, j, s = LANE_S(t);
+    int32_t n;
+    for (i = 0; i < NSTEP; i++)
+        if (seq_note[t][i] && ((n = (int32_t)seq_note[t][i] + 12 * d) < 12 || n > 120))
+            return 0;
+    for (i = 0; i < NLOOP; i++) {
+        const loop_t *p = lp_get(LANE_T(t), i);
+        if (!p || (ui.lrec && ui.lt == LANE_T(t) && ui.ll == i))
+            continue;
+        for (j = 0; j < p->n; j++)
+            if (LEV_SUB(p->ev[j]) == s && ((n = (int32_t)p->ev[j].note + 12 * d) < 12 || n > 120))
+                return 0;
+    }
+    return 1;
+}
+static void oct_track(uint32_t t, int32_t d)
+{
+    uint32_t i, j, s = LANE_S(t);
+    for (i = 0; i < NSTEP; i++)
+        if (seq_note[t][i])
+            seq_note[t][i] = (uint8_t)((int32_t)seq_note[t][i] + 12 * d);
+    for (i = 0; i < NLOOP; i++) {
+        loop_t *p = lp_get(LANE_T(t), i);
+        if (!p || (ui.lrec && ui.lt == LANE_T(t) && ui.ll == i))
+            continue;
+        for (j = 0; j < p->n; j++)
+            if (LEV_SUB(p->ev[j]) == s)
+                p->ev[j].note = (uint8_t)((int32_t)p->ev[j].note + 12 * d);
+        prj_dirty = 1;
+    }
+    ui.oc[t] = (int8_t)clampi(ui.oc[t] + d, -9, 9);
+    pat_dirty = 1;
 }
 static void trn_text(char *b, int32_t v)          /* +2, -1, 0 */
 {
@@ -2610,14 +2649,24 @@ static void ui_input(void)
                     if (t < NTRACK || ln_s[t])
                         trn_track(t, d);
                 str_cpy(m, "TRN ALL ", 16);
-            } else {
-                trn_track(ui.sl, d);
-                for (t = 0; t < NLANE; t++)          /* (CTRL ALL: the other tracks' too) */
-                    if (all_too(t))
-                        trn_track(t, d);
-                str_cpy(m, "TRN ", 16);
+                trn_text(m + str_len(m), ui.trn[ui.sl]);
+            } else {                                 /* (build 118) the step view: the track's steps and loops an
+                                                      * octave (CTRL ALL: the other tracks' too); a note that would
+                                                      * leave 12 .. 120: none moved */
+                uint32_t ok = oct_ok(ui.sl, d);
+                for (t = 0; t < NLANE; t++)
+                    if (all_too(t) && !oct_ok(t, d))
+                        ok = 0;
+                str_cpy(m, "OCT ", 16);
+                if (ok) {
+                    oct_track(ui.sl, d);
+                    for (t = 0; t < NLANE; t++)
+                        if (all_too(t))
+                            oct_track(t, d);
+                    trn_text(m + 4, ui.oc[ui.sl]);
+                } else
+                    str_cpy(m + 4, "MAX", 4);
             }
-            trn_text(m + str_len(m), ui.trn[ui.sl]);
             say(m, 1200);
             ui.force = 1;
         } else {
@@ -3284,8 +3333,8 @@ static void ui_leds(void)
     fm1_led_key(PANEL_BTN[B_SEQ], ui.page == PG_FXP && !fx_arp());
     fm1_led_key(PANEL_BTN[B_ARP], ui.page == PG_SCALE);
     fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD || ui.page == PG_SET || ui.page == PG_PAT);
-    fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || (step_view() ? ui.trn[ui.sl] < 0 : ui.oct[ui.sl] < 0));
-    fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || (step_view() ? ui.trn[ui.sl] > 0 : ui.oct[ui.sl] > 0));
+    fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || (step_view() ? ui.oc[ui.sl] < 0 : ui.oct[ui.sl] < 0));
+    fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || (step_view() ? ui.oc[ui.sl] > 0 : ui.oct[ui.sl] > 0));
     fm1_led_key(PANEL_BTN[B_REC], ui.rec == REC_ON || ui.lrec == 2 ||
                                       ((ui.rec == REC_ARMED || ui.lrec == 1) && (fm1_ms / 250u) & 1u));
     fm1_led_key(PANEL_BTN[B_PLAY], seq_run && (seq_pos[ui.sl] & 3u) == 0u);   /* (the beat, while it plays) */

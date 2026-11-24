@@ -248,8 +248,8 @@ CONTROLS = [
                      '<a href="#step-view">step view</a>: rotate the steps; <b>SHIFT +</b>, in '
                      '<a href="#euclidean-steps">EUCLID mode</a>, a step more or fewer.'),
     ([4], "ALGORITHM", "Chosen track's pan. On the SCALE page: scale. A step held: its pan, locked."),
-    ([5], "OCT−", "Chosen track's octave down. In the step view: its "
-                  '<a href="#transposition">transposition</a>. <b>SHIFT +</b>: every track\'s transposition; in the step '
+    ([5], "OCT−", "Chosen track's octave down. In the step view: its steps and loops an octave down "
+                  '(<a href="#transposition">OCT −1</a>). <b>SHIFT +</b>: every track\'s transposition; in the step '
                   "view, the chosen track's notes a semitone (TRSP). "
                   "On the EDIT and SEQ pages: the page before."),
     ([6], "OCT+", "Same, up."),

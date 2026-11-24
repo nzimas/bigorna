@@ -44,7 +44,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | **SHIFT + PRESETS** | new sound of the family before or after. In the step view, in [EUCLID mode](#euclidean-steps): a step more or fewer. |
 | **HOME** | new sound for the chosen track ([Sounds](#sounds)). Nothing with GEN LOCK on. |
 | **SHIFT + HOME** | new sound of the same family. |
-| **OCT− / OCT+** | chosen track's octave, −3 to +3. In the step view: track's [transposition](#transposition). |
+| **OCT− / OCT+** | chosen track's octave, −3 to +3. In the step view: the track's steps and loops an octave down or up ([transposition](#transposition)). |
 | **SHIFT + OCT− / OCT+** | every track's transposition. In the step view: the chosen track's notes 1 semitone down or up. |
 | white keys | play the chosen track in the scale; the keys that play the root glow dimly. In the step view: track's 16 steps. On the PATTERNS grid: 16 patterns. |
 | black key 1 | [CHORD mode](#chord-mode) on or off. **SHIFT +**: next chord form. |
@@ -268,11 +268,16 @@ JAPANESE IWATO, PELOG, OCTATONIC, PROMETHEUS.
 
 ### Transposition
 
-In the step view, **OCT− / OCT+** move the chosen track's steps and loops 1 step of the scale down or up (in
-CHROMATIC, a semitone). **SHIFT + OCT− / OCT+** in the track's view move every track's. Notes stay in the scale.
-The transposition shows at the top right, under the octave (T+2, T−1), up to 24 steps each way. It is part of the
-pattern: saved with it, and copied with it. It moves only the loops of the pattern playing; a loop being recorded is
-left as it is. The keys' octave does not change.
+**SHIFT + OCT− / OCT+** in the track's view move every track's steps and loops 1 step of the scale down or up (in
+CHROMATIC, a semitone). Notes stay in the scale. The transposition shows at the top right, under the octave (T+2,
+T−1), up to 24 steps each way. It is part of the pattern: saved with it, and copied with it. It moves only the loops
+of the pattern playing; a loop being recorded is left as it is. The keys' octave does not change.
+
+In the step view, **OCT− / OCT+** move the chosen track's (or subtrack's) steps and its notes in the track's loops an
+octave down or up (with CTRL ALL, the other tracks' too). The screen shows OCT and the octaves moved since the pattern
+came in (OCT +1, OCT −2, OCT 0), and OCT− or OCT+ is lit while it is below or above. The notes are moved in place, so
+the pattern keeps them; the count starts again from 0 when a pattern or session is loaded. If a note would go past the
+range (MIDI notes 12 to 120), no note moves and OCT MAX shows. A loop being recorded is left as it is.
 
 In the step view, **SHIFT + OCT− / OCT+** move the chosen track's (or subtrack's) steps 1 semitone down or up, into or
 out of the scale. The screen shows TRSP and the semitones moved: presses less than 2 s apart add up (TRSP +3), a later
