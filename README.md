@@ -772,6 +772,12 @@ Plugged into a computer, a phone or a tablet, the FM-1 is also a USB audio input
 | **STEREO** | 2: the master output, with the effects and the compressor |
 | **TRACKS** | 6: tracks 1–6, each mono, its subtracks in it, after its level, mute and sidechain ducking; before its pan, the DELAY, REVERB and CHORUS and the compressor |
 
+With **TRACKS**, the FM-1 also tells the host where each track is panned, since the channels carry no pan: CC 10 on
+the track's MIDI OUT channel (1–6 at first), whether SEND CC is on or not. It sends a pan as it changes, again at
+every start, and every track's once a second, so a host connected later learns them all. A step's PAN lock is sent
+over the track's pan while it plays. A subtrack's own pan is not in it: the channel carries the track and its
+subtracks together. A track whose OUT channel is OFF sends none.
+
 Record or monitor it like any class-compliant audio interface; nothing to install. The headphone jack plays on as
 usual, the master in both cases. The USB sound does not follow the MASTER knob, so a recording keeps its level
 whatever the headphones are set to. MIDI goes on alongside on the same cable.

@@ -194,7 +194,16 @@ static int32_t usb_trk[NTRACK][CTL];             /* (GLOBAL SETUP's USB TRACKS: 
 #define USB_STEM(tr) (USB_STEMS() ? usb_trk[tr] : (int32_t *)0)
 #else
 #define USB_STEM(tr) ((int32_t *)0)
+#ifdef HOST
+static int host_usb_stems;                       /* (the host tests: TRACKS asked for and read) */
+#define USB_STEMS() host_usb_stems
+#else
+#define USB_STEMS() 0
 #endif
+#endif
+/* (build 121) each track's PAN lock this block, 0 .. 127, 0xFF none (its own lane's, not its subtracks'): the stems
+ * are taken before the pan, so ui.c's midi_poll sends the pan in force to the USB host */
+static volatile uint8_t trk_pan_lock[NTRACK] = {0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu};
 
 /* --------------------------------------------------------------- events --- */
 enum { EV_ON, EV_OFF, EV_STOP, EV_ARP_ON, EV_ARP_OFF, EV_ARP_CLR, EV_PANIC };   /* (EV_ARP_*: build 52; EV_PANIC: build 100) */
@@ -2477,6 +2486,8 @@ FAST static void track_block(uint32_t t, int32_t *mixl, int32_t *mixr, int32_t *
             else if (id >= PL_WRK && id < PL_WRK + (NM - M_FOLD))
                 mg[M_FOLD + id - PL_WRK] = (uint8_t)v;
         }
+        if (t < NTRACK)
+            trk_pan_lock[t] = (uint8_t)(pan >= 0 ? pan : 0xFF);
         if (pan >= 0) {
             uint32_t ph = (uint32_t)pan * (0x40000000u / 127u);
             pl1 = sin_ph(ph + 0x40000000u);

@@ -1624,6 +1624,34 @@ static int snd_cc_set(uint32_t t, uint32_t id, uint32_t j, uint32_t v)
     mark(t);
     return 1;
 }
+/* (build 121) USB audio's TRACKS: each stem is taken after its level and before its pan, so the host is told the pan:
+ * each track's on its OUT channel (CC 10, a step's PAN lock over the track's), SEND CC or not, as it changes, at the
+ * start and once a second, so a host that comes later learns it. A subtrack's own pan is not in it. */
+static uint8_t midi_pe_sent[NTRACK] = {0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu};
+static uint32_t midi_pe_at;
+static uint32_t midi_pan_cc(uint32_t t)
+{
+    uint32_t lk = trk_pan_lock[t];
+    return lk <= 127u ? lk : (uint32_t)((ui.pan[t] + PAN_MAX) * 127 + PAN_MAX) / (2u * PAN_MAX);
+}
+static void midi_stem_pans(void)
+{
+    uint32_t t, all = 0;
+    if (!USB_STEMS())
+        return;
+    if (midi_pan_refresh || fm1_ms - midi_pe_at >= 1000u) {
+        midi_pan_refresh = 0;
+        midi_pe_at = fm1_ms;
+        all = 1;
+    }
+    for (t = 0; t < NTRACK; t++) {
+        uint32_t ch = mcfg.out_ch[t], v = midi_pan_cc(t);
+        if (!ch || (!all && v == midi_pe_sent[t]))
+            continue;
+        midi_pe_sent[t] = (uint8_t)v;
+        midi_main_send(0xB0u | (ch - 1u), CC_PAN, v);
+    }
+}
 /* a CC received for track t: its level (7), pan (10), mute (94), or a parameter of its sound (MIDI_CC) */
 static uint8_t midi_lv_sent[NTRACK], midi_pn_sent[NTRACK], midi_mu_sent[NTRACK];
 static void midi_cc_in(uint32_t t, uint32_t cc, uint32_t v)
@@ -1636,6 +1664,7 @@ static void midi_cc_in(uint32_t t, uint32_t cc, uint32_t v)
         ui.pan[t] = (int8_t)((int32_t)((v * 2u * PAN_MAX + 63u) / 127u) - PAN_MAX);
         level_pan_apply(t);
         midi_pn_sent[t] = (uint8_t)ui.pan[t];
+        midi_pe_sent[t] = (uint8_t)midi_pan_cc(t);   /* (nor by TRACKS' pans, till the next refresh) */
     } else if (cc == CC_MUTE) {
         trk_mute[t] = (uint8_t)(v >= 64u);
         midi_mu_sent[t] = trk_mute[t];
@@ -1672,7 +1701,7 @@ static void midi_poll(void)
         }
         if (midi_pn_sent[t] != (uint8_t)ui.pan[t]) {
             midi_pn_sent[t] = (uint8_t)ui.pan[t];
-            if (mcfg.send_cc && ch)
+            if (mcfg.send_cc && ch && !USB_STEMS())   /* (TRACKS: midi_stem_pans) */
                 midi_main_send(0xB0u | (ch - 1u), CC_PAN, (uint32_t)((ui.pan[t] + PAN_MAX) * 127 + PAN_MAX) / (2u * PAN_MAX));
         }
         if (midi_mu_sent[t] != trk_mute[t]) {
@@ -1681,6 +1710,7 @@ static void midi_poll(void)
                 midi_main_send(0xB0u | (ch - 1u), CC_MUTE, trk_mute[t] ? 127u : 0u);
         }
     }
+    midi_stem_pans();
 }
 
 /* ------------------------------------------------------- MIDI LEARN --- */

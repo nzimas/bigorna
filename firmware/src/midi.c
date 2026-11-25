@@ -235,9 +235,12 @@ static void midi_clock_out(uint32_t adv)
         midi_rt_send(0xF8u);
     }
 }
+/* (build 121) USB audio's TRACKS: the pans out again at the start (ui.c's midi_poll) */
+static volatile uint8_t midi_pan_refresh;
 static void midi_started(uint32_t spp)           /* (the sequencer started, at song position spp: its first pulse
                                                   * with START, sent in this block) */
 {
+    midi_pan_refresh = 1;
     if (mcfg.clk_out) {
         midi_out_event(0x3u | 0xF2u << 8 | (spp & 0x7Fu) << 16 | ((spp >> 7) & 0x7Fu) << 24);
         midi_rt_send(spp ? 0xFBu : 0xFAu);

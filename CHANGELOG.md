@@ -1,5 +1,19 @@
 # Changelog
 
+## Build 121
+
+Changed
+- GLOBAL SETUP > AUDIO > USB TRACKS: the FM-1 sends each track's pan as CC 10 on its MIDI OUT channel, SEND CC on or
+  off, since the six channels are taken before the pan. A pan goes out as it changes, every track's at each start and
+  once a second, so a host that connects later (Amalthea's LIFEBLOOD) places each track where the FM-1 pans it. A
+  step's PAN lock is sent over the track's pan while it plays; a subtrack's own pan is not (the channel carries the
+  track and its subtracks together). With SEND CC on in TRACKS, a pan goes once, not twice; a pan received is not
+  sent back. STEREO unchanged.
+
+Compatibility
+- Sessions and GLOBAL SETUP unchanged. Tests: `projects` (TRACKS: the pans out, a lock, the refreshes, none in
+  STEREO, none on an OFF channel, no echo).
+
 ## Build 120
 
 Changed

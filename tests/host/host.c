@@ -3318,6 +3318,75 @@ static int cmd_projects(const char *dir)
         EXPECT(mm_w - mm_r == 1u && (mm_q[mm_r % MMQ] & 0xFFFFu) == (0xBu | 0xB0u << 8) &&
                ((mm_q[mm_r % MMQ] >> 16) & 0x7Fu) == MIDI_CC[PG_FLT1 * 8u + 4u], "SEND CC: the knob's CC on channel 1");
         mm_r = mm_w;
+        /* (build 121) USB TRACKS: the pans out on the OUT channels, SEND CC or not; a step's PAN lock over the track's;
+         * again once a second and at the start; none in STEREO; a pan received not sent back */
+        {
+            uint32_t k, n, got[NTRACK], seen, sent;
+            int8_t pan0[NTRACK];
+            memcpy(pan0, ui.pan, sizeof pan0);
+#define STEM_PANS()                                                                                         \
+    do {                                                                                                         \
+        seen = sent = 0;                                                                                         \
+        for (n = mm_r; n != mm_w; n++) {                                                                         \
+            uint32_t q = mm_q[n % MMQ];                                                                          \
+            if (((q >> 8) & 0xF0u) == 0xB0u && ((q >> 16) & 0x7Fu) == CC_PAN && ((q >> 8) & 15u) < NTRACK) {   \
+                got[(q >> 8) & 15u] = (q >> 24) & 0x7Fu;                                                         \
+                seen |= 1u << ((q >> 8) & 15u);                                                                  \
+                sent++;                                                                                          \
+            }                                                                                                    \
+        }                                                                                                        \
+        mm_r = mm_w;                                                                                             \
+    } while (0)
+            mcfg = D;
+            mcfg.out_ch[4] = 0;                  /* (track 5's OUT channel OFF: none for it) */
+            for (k = 0; k < NTRACK; k++) {
+                ui.pan[k] = (int8_t)(k == 0 ? 0 : k == 1 ? -PAN_MAX : k == 2 ? PAN_MAX : 5);
+                trk_pan_lock[k] = 0xFFu;
+            }
+            host_usb_stems = 0;
+            midi_poll();
+            STEM_PANS();
+            EXPECT(!seen, "USB STEREO, SEND CC off: no pans out");
+            host_usb_stems = 1;
+            midi_poll();
+            STEM_PANS();
+            EXPECT(seen == 0x2Fu && got[0] == 64u && got[1] == 0u && got[2] == 127u,
+                   "USB TRACKS: every track's pan on its OUT channel (64 the centre), SEND CC off; none on OFF");
+            midi_poll();
+            STEM_PANS();
+            EXPECT(!seen, "USB TRACKS: an unchanged pan is not sent again at once");
+            trk_pan_lock[2] = 10u;
+            midi_poll();
+            STEM_PANS();
+            EXPECT(seen == 1u << 2 && got[2] == 10u, "USB TRACKS: a step's PAN lock is sent over the track's pan");
+            trk_pan_lock[2] = 0xFFu;
+            midi_poll();
+            STEM_PANS();
+            EXPECT(seen == 1u << 2 && got[2] == 127u, "USB TRACKS: the lock gone, the track's pan again");
+            fm1_ms += 1000u;
+            midi_poll();
+            STEM_PANS();
+            EXPECT(seen == 0x2Fu, "USB TRACKS: every pan again once a second");
+            midi_pan_refresh = 1;
+            midi_poll();
+            STEM_PANS();
+            EXPECT(seen == 0x2Fu && !midi_pan_refresh, "USB TRACKS: every pan again at the start");
+            mcfg.send_cc = 1;
+            ui.pan[0] = 3;
+            midi_poll();
+            STEM_PANS();
+            EXPECT(seen == 1u && sent == 1u && got[0] == (uint32_t)((3 + PAN_MAX) * 127 + PAN_MAX) / (2u * PAN_MAX),
+                   "USB TRACKS with SEND CC: the pan once, not twice");
+            midi_cc_in(1, CC_PAN, 100u);
+            midi_poll();
+            STEM_PANS();
+            EXPECT(!(seen & 2u), "USB TRACKS: a pan received is not sent back");
+#undef STEM_PANS
+            host_usb_stems = 0;
+            memcpy(ui.pan, pan0, sizeof pan0);
+            mcfg = D;
+            mm_r = mm_w;
+        }
         /* GLOBAL SETUP: SHIFT + SAVE; MIDI; FILTER; SEND NOTES on; left: in the flash, and read back */
         mcfg = D;
         ui.page = PG_MAIN;
