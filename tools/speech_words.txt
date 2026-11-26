@@ -247,6 +247,7 @@ last	L AE1 S T
 lead	L IY1 D
 length	L EH1 NG K TH
 level	L EH1 V AH0 L
+list	L IH1 S T
 litany	L IH1 T AH0 N IY0
 loaded	L OW1 D IH0 D
 loader	L OW1 D ER0
@@ -591,6 +592,7 @@ scrape	S K R EY1 P
 scream	S K R IY1 M
 screech	S K R IY1 CH
 session	S EH1 SH AH0 N
+set	S EH1 T
 shift	SH IH1 F T
 slam	S L AE1 M
 slc	S L AY1 S

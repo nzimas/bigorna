@@ -38,6 +38,7 @@ build/host patsnd
 build/host patsound
 build/host trkcopy
 build/host patnow
+build/host setnav
 build/host reader
 build/host hang
 build/host brksave build/screens

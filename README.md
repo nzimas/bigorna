@@ -55,7 +55,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | black key 7 | [PERFORMANCE](#performance) on or off (also on the PATTERNS grid; in the step view, **SHIFT +** it). |
 | black key 8 (4th from right) | **SHIFT +**, **held**: [SHUFFLER](#shuffler). On the [TEMPO](#tempo) page: **TAP**, tap the tempo; it blinks at the tempo. |
 | black key 9 (3rd from right) | **STEP**: [step view](#step-view). **SHIFT +**: empty the chosen track's steps. |
-| black key 10 | **EDIT**: [sound pages](#sound-pages-edit). |
+| black key 10 | **EDIT**: [sound pages](#sound-pages-edit). **SHIFT +** it **held**, OCT− / OCT+: the session before or after in the [set list](#sessions), from any page. |
 | black key 11 (last) | **SHIFT**. |
 | **SELECT** knob | chosen track's level. On the SCALE page: root. |
 | **ALGORITHM** knob | chosen track's pan. On the SCALE page: scale. |
@@ -649,6 +649,7 @@ first: NO or YES on PRESETS.
 | Copy a session into another slot | its page, COPY, then the slot |
 | Delete a session | its page, DELETE |
 | Mark a session for a set list | move the cursor onto it with PRESETS, then SHIFT + black key 1 (the 1st from the left). Again: unmarked |
+| Go to the next or previous session in the set list | from any page: hold SHIFT and black key 10 (EDIT, the 2nd from the right), then press OCT+ or OCT− |
 
 **Set list.** A session can be marked as part of a set, for a gig: on the SESSIONS grid, SHIFT + black key 1 marks
 the session under the cursor (SET 3 ON), or unmarks it (SET 3 OFF). A marked session's square is yellow, its number
@@ -657,6 +658,16 @@ square. Empty slots cannot be marked; a marked session deleted stays marked unti
 in the flash, with the note of the last session: while the sequencer plays they show at once and are written when it
 stops (writing the flash pauses the sound), or with the next session loaded or saved. The set list is not in the USB
 backup.
+
+**Moving through the set.** From any page (the track's view, the step view, the PATTERNS and SESSIONS grids, the
+sound and effects pages), hold SHIFT and black key 10 (EDIT, the 2nd black key from the right), and press **OCT+**
+for the next session in the set list or **OCT−** for the one before. It loads at once, as a white key on the SESSIONS
+grid does, but changes not saved are not asked about: they are lost. The screen shows the session's place in the set
+and its slot (SET 2 OF 5, SESSION 9). The set is in slot order. Only marked sessions are visited: a session not marked
+is passed over, and so is a marked slot whose session was deleted. From a session not in the set, OCT+ goes to the
+first marked one after its slot, OCT− to the last one before it. There is no wrap: past the last, SET END shows; before
+the first, SET START; with nothing marked, NO SET. During PERFORMANCE, PERF MODE shows and nothing loads. SHIFT +
+EDIT alone does nothing (SET LIST shows); EDIT alone still opens the sound pages.
 
 Loading a session brings all of it back; while the sequencer plays, its loops start at the next bar. It opens at its
 first pattern with notes, on the steps or in a loop (usually pattern 1), not the pattern it was saved at; with no notes

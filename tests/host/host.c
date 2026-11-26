@@ -5678,6 +5678,76 @@ static int cmd_hang(void)
     printf("hang: %s\n", fails ? "FAILED" : "ok (300 runs of keys, SHIFT, REC, track buttons, PLAY)");
     return fails ? 1 : 0;
 }
+/* build 123: SHIFT and EDIT held, OCT- / OCT+, from any page: the session before / after in the SET loaded at once;
+ * sessions not in it (and marked slots emptied) passed over; no wrap; PERFORMANCE waits; EDIT's pages not opened */
+#define SNX(c, what) do { if (!(c)) { printf("FAIL setnav: %s\n", what); fails++; } } while (0)
+static void sn_oct(int d)                        /* SHIFT and EDIT held, an octave button pressed, all let go */
+{
+    fm1_in.notes |= 1u << KEY_SHIFT | 1u << KEY_EDIT;
+    ui_input();
+    host_press = 1u << PANEL_BTN[d > 0 ? B_OCTUP : B_OCTDN];
+    ui_input();
+    fm1_in.notes &= ~(1u << KEY_SHIFT | 1u << KEY_EDIT);
+    ui_input();
+    fm1_ms += 1000;
+}
+static int cmd_setnav(void)
+{
+    uint32_t k;
+    int32_t oc;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    ui_input();
+    sn_oct(1);
+    SNX(str_eq(ui.msg, "NO SET") && prj_cur < 0, "no SET: nothing loaded");
+    for (k = 0; k < 4u; k++) {                   /* (sessions 2, 5, 9, 12, each its own tempo) */
+        static const uint8_t SL[4] = {1, 4, 8, 11};
+        ui.tempo = (int16_t)(100 + SL[k]);
+        SNX(!prj_save(SL[k]), "(a session saved)");
+    }
+    prj_set = 1u << 1 | 1u << 8 | 1u << 11 | 1u << 14;   /* (2, 9, 12 and 15 -- 15 empty; 5 not in it) */
+    SNX(!prj_load(4) && prj_cur == 4, "(session 5 playing, not in the SET)");
+    ui.page = PG_MAIN;
+    oc = ui.oct[ui.sl];
+    sn_oct(1);
+    SNX(prj_cur == 8 && ui.tempo == 108, "OCT+: from a session not in the SET, the next one in it (9)");
+    SNX(str_eq(ui.flash_l1, "SET 2 OF 3") && str_eq(ui.flash_l2, "SESSION 9"), "OCT+: its place in the SET shown");
+    SNX(ui.page == PG_MAIN && ui.oct[ui.sl] == oc, "SHIFT + EDIT: no EDIT pages, no octave");
+    prj_dirty = 1;
+    sn_oct(1);
+    SNX(prj_cur == 11 && ui.tempo == 111 && !prj_dirty, "OCT+: the next (12), changes not saved or not");
+    sn_oct(1);
+    SNX(prj_cur == 11 && str_eq(ui.msg, "SET END"), "OCT+: the last in the SET (15 empty, passed over): no wrap");
+    ui.page = PG_PAT;
+    sn_oct(-1);
+    SNX(prj_cur == 8 && ui.page == PG_PAT, "OCT-: the one before (9), on the PATTERNS grid too");
+    ui.page = PG_PRJ;
+    sn_oct(-1);
+    SNX(prj_cur == 1 && ui.tempo == 101 && pj.slot[0] == 1u, "OCT-: on the SESSIONS grid, session 2, the cursor on it");
+    sn_oct(-1);
+    SNX(prj_cur == 1 && str_eq(ui.msg, "SET START"), "OCT-: the first in the SET: no wrap");
+    ui.page = PG_MAIN;
+    perf_on = 1;
+    sn_oct(1);
+    SNX(prj_cur == 1 && str_eq(ui.msg, "PERF MODE"), "PERFORMANCE: sessions wait");
+    perf_on = 0;
+    prj_set &= ~(1u << 8);
+    sn_oct(1);
+    SNX(prj_cur == 11, "a session taken out of the SET: passed over");
+    host_press = 1u << PANEL_BTN[B_OCTUP];
+    ui_input();
+    SNX(prj_cur == 11 && ui.oct[ui.sl] == oc + 1, "OCT+ alone: the octave, as before");
+    fm1_in.notes |= 1u << KEY_EDIT;
+    ui_input();
+    fm1_in.notes &= ~(1u << KEY_EDIT);
+    ui_input();
+    SNX(ui.page == PG_EDIT, "EDIT alone: its pages, as before");
+    printf("setnav: %d failures\n", fails);
+    return fails != 0;
+}
 static int cmd_patnow(void)
 {
     int32_t out[2 * CTL];
@@ -7567,6 +7637,8 @@ int main(int argc, char **argv)
         return cmd_hang();
     if (argc >= 2 && !strcmp(argv[1], "patnow"))
         return cmd_patnow();
+    if (argc >= 2 && !strcmp(argv[1], "setnav"))
+        return cmd_setnav();
     if (argc >= 3 && !strcmp(argv[1], "pstate"))
         return cmd_pstate(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "brksave"))

@@ -1,5 +1,21 @@
 # Changelog
 
+## Build 123
+
+Added
+- Set list navigation: from any page, hold SHIFT and black key 10 (EDIT), then press OCT+ for the next session in the
+  set list or OCT− for the one before. The session loads at once; changes not saved are not asked about. Only marked
+  sessions are visited, in slot order (marked slots left empty are passed over); from a session not in the set, the
+  next marked one after its slot, or the one before it. No wrap (SET END, SET START); NO SET with nothing marked;
+  PERF MODE during PERFORMANCE. The screen shows SET n OF m and the session's slot.
+
+Changed
+- SHIFT + EDIT no longer opens the sound pages (SET LIST shows). EDIT alone is unchanged.
+- The screen reader says SET and LIST as words.
+
+Compatibility
+- Sessions and GLOBAL SETUP unchanged. Tests: `setnav`.
+
 ## Build 122
 
 Changed

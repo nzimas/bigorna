@@ -104,6 +104,9 @@
  *   the black key before it   EDIT: the parameter pages of the track's sound -- SYN 1 .. 4, FLTR 1, FLTR 2, AMP,
  *                             FX -- eight parameters a page: KNOB 1 .. 4 its A .. D, or (PRESETS turned right; left
  *                             back) its E .. H; OCT- / OCT+ the page before / after
+ *   SHIFT and EDIT held       (any page; build 123) OCT- / OCT+: the session before / after in the SET (the sessions
+ *                             marked on the SESSIONS grid) loaded at once, changes not saved or not. Sessions not in
+ *                             the SET are passed over; no wrap at either end (SET START, SET END)
  *   ARP                       the SCALE page: SELECT the root, ALGORITHM the scale; ARP again, back (Tonitor's).
  *                             SHIFT + ARP: a scale and root at random, the SCALE page shown 1.5 s. Either way the
  *                             session's notes follow (build 111): every pattern's steps and every loop moved into the
@@ -358,6 +361,7 @@ static void prj_key_save(uint32_t w);
 static int prj_key_lit(uint32_t w);
 static uint32_t pj_cursor(void);                 /* (.. the grid's cursor: build 111) */
 static void prj_key_mark(void);                  /* (.. SHIFT + the 1st black key: the SET; build 107) */
+static void prj_set_step(int d);                 /* (SHIFT and EDIT held, OCT- / OCT+: through the SET; build 123) */
 static void prj_set_poll(void);
 static int perf_enter(void);                     /* (projects.c: PERFORMANCE's keeping and giving back) */
 static int perf_exit(void);
@@ -2728,7 +2732,10 @@ static void ui_input(void)
         }
         say(m, 1200);
     }
-    if (btn_bit(press, B_OCTDN) || btn_bit(press, B_OCTUP)) {
+    if ((btn_bit(press, B_OCTDN) || btn_bit(press, B_OCTUP)) && sh && (fm1_in.notes >> KEY_EDIT & 1u)) {
+        prj_set_step(btn_bit(press, B_OCTUP) ? 1 : -1);   /* (build 123) SHIFT and EDIT held: the session before /
+                                                      * after in the SET, from any page (projects.c) */
+    } else if (btn_bit(press, B_OCTDN) || btn_bit(press, B_OCTUP)) {
         int d = btn_bit(press, B_OCTUP) ? 1 : -1;
         ui.listen = 0;                               /* (MIDI LEARN: another page, nothing waited for) */
         ui.lsel = 0;
@@ -3062,7 +3069,10 @@ static void ui_input(void)
         }
         say(m, 60000);
     }
-    if ((ch & keys) >> KEY_EDIT & 1u) {              /* EDIT: the parameter pages, up or down */
+    if ((ch & keys) >> KEY_EDIT & 1u && sh) {        /* (build 123) SHIFT + EDIT: nothing of its own -- held, OCT- /
+                                                      * OCT+ go through the SET (above) */
+        say("SET LIST", 900);
+    } else if ((ch & keys) >> KEY_EDIT & 1u) {       /* EDIT: the parameter pages, up or down */
         ui.page = ui.page == PG_EDIT ? PG_MAIN : PG_EDIT;
         ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
         if (ui.edit_pg >= pages_n(cur()))

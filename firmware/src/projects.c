@@ -2728,6 +2728,52 @@ static void prj_key_mark(void)
     str_cpy(m + str_len(m), prj_set >> k & 1u ? " ON" : " OFF", 5);
     say(m, 900);
 }
+/* (build 123) SHIFT and EDIT held, OCT- / OCT+: the session before / after the one playing in the SET loaded, from any
+ * page. Only sessions in the SET (and saved: a marked slot emptied is passed over); from a session not in it, the
+ * next one in it by slot. At once, changes not saved or not (a gig: no AGAIN). No wrap at either end */
+static void prj_set_step(int d)
+{
+    int32_t k = prj_cur >= 0 ? prj_cur : d > 0 ? -1 : (int32_t)PRJ_SLOTS, i;
+    uint32_t n = 0, at = 0;
+    int rc;
+    char l1[12] = "SET ", l2[12] = "SESSION ";
+    if (perf_on) {                               /* (PERFORMANCE: sessions wait, as on the grid) */
+        say("PERF MODE", 900);
+        return;
+    }
+    for (i = 0; i < (int32_t)PRJ_SLOTS; i++)
+        n += (prj_set >> i & 1u) && prj_has[i];
+    if (!n) {
+        say("NO SET", 900);
+        return;
+    }
+    for (k += d; k >= 0 && k < (int32_t)PRJ_SLOTS && !((prj_set >> k & 1u) && prj_has[k]); k += d)
+        ;
+    if (k < 0 || k >= (int32_t)PRJ_SLOTS) {
+        say(d > 0 ? "SET END" : "SET START", 900);
+        return;
+    }
+    for (i = 0; i <= k; i++)
+        at += (prj_set >> i & 1u) && prj_has[i];
+    pj.slot[0] = (uint8_t)k;                     /* (the SESSIONS grid's cursor and page with it) */
+    pj.again = 0;
+    pj.ask = PQ_NONE;
+    pj.edit = 0;
+    flash("LOADING", "", C_PRJ);
+    ui_draw();
+    rc = prj_load((uint32_t)k);
+    fmt_int(l1 + 4, (int32_t)at);
+    str_cpy(l1 + str_len(l1), " OF ", 5);
+    fmt_int(l1 + str_len(l1), (int32_t)n);
+    fmt_int(l2 + 8, k + 1);
+    if (!rc)
+        flash(l1, l2, C_OK);
+    else if (rc == -5)
+        flash(l2, "LOOPS LOST", C_BAD);
+    else
+        flash(prj_ok ? "FAILED" : "NO FLASH", "", C_BAD);
+    ui.force = 1;
+}
 /* PRESETS on a page: through the slots, the rows, the slot to copy to, NO / YES, or the value */
 static void prj_preset(int32_t s)
 {
