@@ -293,7 +293,9 @@ CONTROLS = [
      '<b>held</b>: <a href="#shuffler">SHUFFLER</a>.'),
     ([32], "black key 9", '<b>STEP</b>: <a href="#step-view">step view</a>. <b>SHIFT +</b>: empty the '
                           "chosen track's steps."),
-    ([33], "black key 10", '<b>EDIT</b>: <a href="#sound-pages-edit">sound pages</a> (not the EDIT button, T5).'),
+    ([33], "black key 10", '<b>EDIT</b>: <a href="#sound-pages-edit">sound pages</a> (not the EDIT button, T5). '
+                           '<b>SHIFT +</b> it <b>held</b>, OCT− / OCT+: the session before or after in the '
+                           '<a href="#sessions">set list</a>, from any page.'),
     ([34], "black key 11", "<b>SHIFT</b>."),
     ([35], "16 white keys", "Play the chosen track (its subtrack chosen) in the scale; the root's keys glow. In the "
                                 "step view: 16 steps. On the PATTERNS grid: 16 patterns. On the SESSIONS grid: 16 "

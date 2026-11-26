@@ -44,6 +44,29 @@
   <div class="content">
     <main>
 <h1 id="changelog">Changelog</h1>
+<h2 id="build-123">Build 123</h2>
+<p>Added</p>
+<ul>
+<li>Set list navigation: from any page, hold SHIFT and black key 10 (EDIT), then press OCT+ for the next session in the set list or OCT− for the one before. The session loads at once; changes not saved are not asked about. Only marked sessions are visited, in slot order (marked slots left empty are passed over); from a session not in the set, the next marked one after its slot, or the one before it. No wrap (SET END, SET START); NO SET with nothing marked; PERF MODE during PERFORMANCE. The screen shows SET n OF m and the session's slot.</li>
+</ul>
+<p>Changed</p>
+<ul>
+<li>SHIFT + EDIT no longer opens the sound pages (SET LIST shows). EDIT alone is unchanged.</li>
+<li>The screen reader says SET and LIST as words.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions and GLOBAL SETUP unchanged. Tests: <code>setnav</code>.</li>
+</ul>
+<h2 id="build-122">Build 122</h2>
+<p>Changed</p>
+<ul>
+<li>GLOBAL SETUP &gt; AUDIO &gt; USB TRACKS: the six channels are taken before the sends, so the FM-1 now tells the host what its effects do, for a host to run the same ones (Amalthea's LIFEBLOOD compiles fx.c): SysEx F0 7D 46 42 .. F7 with the CHORUS, DELAY, REVERB and COMP parameters and the tempo (as they change, at each start, once a second); each track's three sends in force, its step locks and its subtracks' with it (as they change, at most every 10 ms); and, while a track ducks, the returns' ducking (at most every 4 ms). Sent ahead of the MIDI, never during a backup or an update. STEREO unchanged.</li>
+</ul>
+<p>Compatibility</p>
+<ul>
+<li>Sessions and GLOBAL SETUP unchanged. Tests: <code>projects</code> (TRACKS: the effects, the sends, nothing unchanged again, a change at once, none in STEREO).</li>
+</ul>
 <h2 id="build-121">Build 121</h2>
 <p>Changed</p>
 <ul>
