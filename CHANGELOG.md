@@ -1,5 +1,20 @@
 # Changelog
 
+## Build 124
+
+Changed
+- PATTERNS grid: the black keys do what they do on the track's view, even with the step view on underneath: CHORD
+  mode (SHIFT: the next form, as the key is let go), MUTE mode, BREAK, MIDI LEARN, the arpeggiator (held: its page),
+  PERFORMANCE and its new locks, SHUFFLER (SHIFT + black key 8, held). OCT− / OCT+ set the chosen track's octave
+  (SHIFT: every track's transposition), as on the track's view. STEP leaves the grid for the step view. The white keys
+  are still the patterns; SHIFT + black key 1 held with a white key still empties a pattern, with no chord form change.
+- PATTERNS grid: the title shows what a key just did (CHORDS OFF, ARP ON ..), SHUFFLER while held, MIDI LEARN while on,
+  and PERF in red while PERFORMANCE is on.
+- A page title too long for its large letters is drawn in the smaller ones instead of being cut.
+
+Compatibility
+- Sessions and GLOBAL SETUP unchanged. Tests: `patkeys`.
+
 ## Build 123
 
 Added

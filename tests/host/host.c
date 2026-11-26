@@ -5678,6 +5678,109 @@ static int cmd_hang(void)
     printf("hang: %s\n", fails ? "FAILED" : "ok (300 runs of keys, SHIFT, REC, track buttons, PLAY)");
     return fails ? 1 : 0;
 }
+/* build 124: the PATTERNS grid's black keys are the track view's (CHORD, MUTE, MIDI LEARN, ARP, PERFORMANCE and its
+ * new locks, SHUFFLER, STEP), with the step view on underneath too; its white keys still the patterns; the title says
+ * PERFORMANCE, SHUFFLER, MIDI LEARN and what a key just did */
+#define PKX(c, what) do { if (!(c)) { printf("FAIL patkeys: %s\n", what); fails++; } } while (0)
+static void pk_tap(uint32_t k, int sh)           /* a key pressed and let go, SHIFT held with it or not */
+{
+    if (sh)
+        fm1_in.notes |= 1u << KEY_SHIFT;
+    tap(k);
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    ui_input();
+    fm1_ms += 300;
+}
+static int cmd_patkeys(const char *dir)
+{
+    uint32_t k, kw[16], f0;
+    int32_t o0;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    for (k = 0; k < NKEY; k++)
+        if (white_ix(k) >= 0 && white_ix(k) < 16)
+            kw[white_ix(k)] = k;
+    ui.eng[0] = ENG_FMT;                         /* (track 1 not DRUM: chords) */
+    ui.sel = 0;
+    seq_note[0][0] = 60;
+    PKX(!pat_save(2), "(pattern 3 saved)");
+    ui.sv = 1;                                   /* (the step view on underneath: the grid's keys still the track view's) */
+    ui.page = PG_PAT;
+    ui.force = 1;
+    ui_input();
+    pk_tap(KEY_GEN, 0);
+    PKX(ui.page == PG_PAT && ui.chord_on[0] && !ui.gen_down, "black key 1: CHORD mode on, no phrase");
+    f0 = ui.chord_form[0];
+    pk_tap(KEY_GEN, 1);
+    PKX(ui.chord_form[0] == (f0 + 1u) % CHF_N, "SHIFT + black key 1 let go: the next chord form");
+    fm1_in.notes |= 1u << KEY_SHIFT | 1u << KEY_GEN;   /* (SHIFT and black key 1 held, a white key: emptied) */
+    ui_input();
+    tap(kw[2]);
+    fm1_in.notes &= ~(1u << KEY_SHIFT | 1u << KEY_GEN);
+    ui_input();
+    PKX(!pat_store[2].used && ui.chord_form[0] == (f0 + 1u) % CHF_N, "SHIFT + black key 1 + a white key: emptied, the chord form kept");
+    pk_tap(KEY_TRK, 0);
+    PKX(ui.mute_mode && ui.page == PG_PAT, "black key 2: MUTE mode");
+    pk_tap(KEY_TRK, 0);
+    PKX(!ui.mute_mode, "black key 2 again: off");
+    pk_tap(KEY_MOD, 0);
+    PKX(ui.learn && !ui.mod, "black key 4: MIDI LEARN, not MOD");
+    ui.flash_on = 0;
+    fm1_ms += 2000;
+    ui_draw();
+    shot(dir, "patkeys_learn");
+    pk_tap(KEY_MOD, 0);
+    PKX(!ui.learn, "black key 4 again: off");
+    pk_tap(KEY_ARP, 0);
+    PKX(arp_on[0] && !ui.euc[ui.sl] && ui.page == PG_PAT, "black key 5: the arpeggiator, not EUCLID");
+    pk_tap(KEY_ARP, 0);
+    PKX(!arp_on[0], "black key 5 again: off");
+    pk_tap(KEY_PERF, 0);
+    PKX(perf_on && ui.page == PG_PAT, "black key 7: PERFORMANCE, no SHIFT");
+    fm1_ms += 2000;
+    ui.flash_on = 0;
+    ui_draw();
+    shot(dir, "patkeys_perf");
+    PKX(ui.shown_page == PG_PAT, "(the grid drawn)");
+    pk_tap(KEY_READER, 0);
+    PKX((int32_t)(ui.gen_until - fm1_ms) > -400 && seq_dir[ui.sl] == DIR_FWD, "black key 6 in PERFORMANCE: new locks, no direction");
+    pk_tap(KEY_PERF, 0);
+    PKX(!perf_on, "black key 7 again: off");
+    fm1_in.notes |= 1u << KEY_SHIFT;             /* SHUFFLER: SHIFT and black key 8 held */
+    ui_input();
+    fm1_in.notes |= 1u << KEY_SHF;
+    ui_input();
+    PKX(ui.shf && shf_on && seq_dir[ui.sl] == DIR_FWD, "SHIFT + black key 8 held: SHUFFLER");
+    fm1_in.notes &= ~(1u << KEY_SHIFT);
+    ui_input();
+    ui.flash_on = 0;
+    ui_draw();
+    shot(dir, "patkeys_shuffler");
+    fm1_in.notes &= ~(1u << KEY_SHF);
+    ui_input();
+    PKX(!ui.shf && !shf_on, "black key 8 let go: SHUFFLER off");
+    say("STEPS CLEARED", 1200);                  /* (a message: the title, S when too long for M) */
+    ui_draw();
+    shot(dir, "patkeys_message");
+    pk_tap(KEY_GEN, 0);
+    ui.flash_on = 0;
+    ui_draw();
+    shot(dir, "patkeys_chord");
+    pk_tap(KEY_GEN, 0);
+    o0 = ui.oct[ui.sl];
+    host_press = 1u << PANEL_BTN[B_OCTUP];
+    ui_input();
+    PKX(ui.oct[ui.sl] == o0 + 1, "OCT+: the track's octave, as in the track's view");
+    tap(kw[0]);
+    PKX(ui.page == PG_PAT && (pat_cur == 0u || seq_pend == 1u), "a white key: still a pattern");
+    pk_tap(KEY_STEP, 0);
+    PKX(ui.page == PG_MAIN && ui.sv, "STEP: the grid left, into the step view");
+    printf("patkeys: %d failures\n", fails);
+    return fails != 0;
+}
 /* build 123: SHIFT and EDIT held, OCT- / OCT+, from any page: the session before / after in the SET loaded at once;
  * sessions not in it (and marked slots emptied) passed over; no wrap; PERFORMANCE waits; EDIT's pages not opened */
 #define SNX(c, what) do { if (!(c)) { printf("FAIL setnav: %s\n", what); fails++; } } while (0)
@@ -7639,6 +7742,8 @@ int main(int argc, char **argv)
         return cmd_patnow();
     if (argc >= 2 && !strcmp(argv[1], "setnav"))
         return cmd_setnav();
+    if (argc >= 3 && !strcmp(argv[1], "patkeys"))
+        return cmd_patkeys(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "pstate"))
         return cmd_pstate(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "brksave"))

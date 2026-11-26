@@ -3173,8 +3173,11 @@ static uint16_t pg_col(uint32_t k) { return pg_cur(k) ? (pg_dirty() ? C_DIRTY : 
 /* a page's title, centred (squeezed to fit); the line under it, its colour (half: which page of two, its half thick) */
 static void prj_title(const char *t, int half, uint16_t col, uint16_t line)
 {
+    int32_t n = (int32_t)str_len(t);
+    const font_t *f = text_w(&FONT_M, t) - 6 * (n > 1 ? n - 1 : 0) > 236 ? &FONT_S : &FONT_M;   /* (build 124: too
+                                                  * long for M, squeezed as far as it goes -- S) */
     cv_begin(240, 55, C_BLACK);
-    cv_text_fit((50 - (int32_t)FONT_M.h) / 2, &FONT_M, t, col);
+    cv_text_fit((50 - (int32_t)f->h) / 2, f, t, col);
     cv_rect(0, 52, 240, 3, line);
     if (half)
         cv_rect(half == 1 ? 0 : 120, 47, 120, 8, line);
@@ -3216,6 +3219,16 @@ static void draw_prj_list(void)
     draw_grid(pj.slot[0]);
 }
 /* the PATTERNS grid: the sixteen in four rows of four */
+/* (build 124) what the PATTERNS grid's title shows besides, folded into one number: a message, SHUFFLER, MIDI LEARN,
+ * PERFORMANCE */
+static int32_t pat_banner(void)
+{
+    uint32_t h = 0, i;
+    if ((int32_t)(ui.msg_until - fm1_ms) > 0)
+        for (h = 1, i = 0; ui.msg[i]; i++)
+            h = h * 31u + (uint8_t)ui.msg[i];
+    return (int32_t)((h * 7u + ui.shf * 1000003u + ui.learn * 2000003u + perf_on * 4000037u) & 0x3FFFFFFu);
+}
 static void draw_pat_grid(void)
 {
     uint32_t sel = pj.slot[1];
@@ -3238,6 +3251,11 @@ static void draw_pat_grid(void)
             fmt_int(m + str_len(m), (int32_t)w);
         }
         prj_title(m, 0, C_DIRTY, C_PAT);
+    } else if ((int32_t)(ui.msg_until - fm1_ms) > 0 && !ui.shf) {   /* (build 124: what a black key just did -- CHORDS
+                                                  * OFF, ARP ON, MUTE MODE .. -- as in the track's view) */
+        prj_title(ui.msg, 0, C_WHITE, C_PAT);
+    } else if (ui.shf) {                         /* (SHUFFLER held: build 124) */
+        prj_title("SHUFFLER", 0, C_DIRTY, C_PAT);
     } else if (ui.mute_mode) {                   /* (MUTE mode: the tracks in the title, playing in their colour, muted
                                                   * dark grey; build 63) */
         uint32_t t;
@@ -3249,7 +3267,11 @@ static void draw_pat_grid(void)
         }
         cv_rect(0, 52, 240, 3, C_PAT);
         cv_blit(0, 0);
-    } else
+    } else if (ui.learn)                         /* (MIDI LEARN on: build 124) */
+        prj_title("MIDI LEARN", 0, C_WHITE, C_PAT);
+    else if (perf_on)                            /* (PERFORMANCE on, in red, as in the track's view: build 124) */
+        prj_title("PERF", 0, C_BAD, C_PAT);
+    else
         prj_title("PATTERNS", 0, C_PAT, C_PAT);
     draw_grid(sel);
 }
@@ -3376,7 +3398,8 @@ static void prj_draw(void)
                   pj.val * 31 + pat_cur * 17 + pat_tempo * 11 + pat_dirty * 5 + pat_store[pj.slot[1]].used * 23 +
                   (pat_clip_from + 1) * 41 + (pat_clip_from >= 0 ? (int32_t)((fm1_ms / 400u) & 1u) * 7777 : 0) +
                   (ui.page == PG_PAT && ui.mute_mode ? (int32_t)(64u + px_mutes()) * 100003 : 0) +
-                  (ui.page == PG_PAT && ui.brk ? (int32_t)ui.brk_shown * 3001 + 7 : 0);
+                  (ui.page == PG_PAT && ui.brk ? (int32_t)ui.brk_shown * 3001 + 7 : 0) +
+                  (ui.page == PG_PAT ? pat_banner() : 0);   /* (build 124) */
     if (!ui.force && ui.shown_page == ui.page && key == pj.shown)
         return;
     if (ui.page == PG_PRJ)

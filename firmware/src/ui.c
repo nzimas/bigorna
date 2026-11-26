@@ -210,6 +210,8 @@ static struct {
     uint8_t sv;                  /* the step view on (STEP) */
     uint32_t gen_until;          /* the phrase key lit fully until */
     uint8_t gen_down, gen_long, gen_sh;   /* the phrase key held: since gen_t0; held 0.8 s (its page); SHIFT with it */
+    uint8_t cf_down, cf_used;    /* (build 124) the PATTERNS grid: SHIFT + the 1st black key held -- let go, the next
+                                  * chord form, unless a white key emptied a pattern meanwhile */
     uint32_t gen_t0;
     uint8_t ak_down, ak_long;    /* the 5th black key (the arpeggiator's) held: since ak_t0; held 0.8 s (its page;
                                   * build 53) */
@@ -582,11 +584,12 @@ static uint32_t key_note(uint32_t k, int32_t oct)
     return (uint32_t)clampi(SCALE_BASE + ui.root + 12 * oct + 12 * q + SCALE_STEP[ui.scale][w - q * n], 12, 120);
 }
 static int step_view(void);
+static int sv_keys(void);
 static int key_plays(uint32_t k)
 {
     return k != KEY_SHIFT && k != KEY_EDIT && k != KEY_STEP &&
            ((k != KEY_GEN && k != KEY_TRK && k != KEY_TRIG && k != KEY_MOD && k != KEY_ARP && k != KEY_PERF) ||
-            step_view()) &&
+            sv_keys()) &&   /* (the PATTERNS grid: the track view's black keys; build 124) */
            /* (out of the step view the 1st black key is CHORD mode's, the 2nd MUTE mode's, the 3rd BREAK, the 4th
             * MIDI LEARN) */
            (ui.scale == 0 || white_ix(k) >= 0);
@@ -735,6 +738,8 @@ static void trn_text(char *b, int32_t v)          /* +2, -1, 0 */
     fmt_int(b + str_len(b), v);
 }
 static int step_view(void) { return ui.sv; }
+static int sv_keys(void) { return ui.sv && ui.page != PG_PAT; }   /* (the step view's keys: not on the PATTERNS grid,
+                                                      * whose black keys are the track view's; build 124) */
 static int step_held(void) { return ui.sv && ui.step_key != KEY_NONE; }
 /* the step's own page (NOTE, VEL, LEN, COND), while a step is held and the EDIT pages are not up */
 static int step_page(void)
@@ -2309,11 +2314,28 @@ static void mute_set(uint32_t m)
     for (j = 0; j < NTRACK; j++)
         trk_mute[j] = (uint8_t)(m >> j & 1u);
 }
+/* the 1st black key (the track's view, the PATTERNS grid): CHORD mode on or off; SHIFT, the next form (and on) */
+static void chord_key(int sh)
+{
+    if (ui.eng[ui.sel] == ENG_FMD)
+        say("NO CHORDS", 1000);                  /* (DRUM: none) */
+    else if (sh) {
+        if (ui.chord_on[ui.sel])
+            ui.chord_form[ui.sel] = (uint8_t)((ui.chord_form[ui.sel] + 1u) % CHF_N);
+        ui.chord_on[ui.sel] = 1;
+        say(CH_NAME[ui.chord_form[ui.sel]], 1200);
+    } else {
+        ui.chord_on[ui.sel] = (uint8_t)!ui.chord_on[ui.sel];
+        say(ui.chord_on[ui.sel] ? CH_NAME[ui.chord_form[ui.sel]] : "CHORDS OFF", 1200);
+    }
+    prj_dirty = 1;
+    ui.force = 1;
+}
 static void ui_input(void)
 {
     uint32_t rel, press = fm1_input_edges(&rel), keys, ch, k, t, j;
     int32_t s, e_pre, e_sel, e_alg;
-    int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u);
+    int sh = (int)((fm1_in.notes >> KEY_SHIFT) & 1u), sv;
     sel_sync();                                      /* (the lane chosen, as the track chosen is now) */
     if ((ui.aud_n[0] || ui.aud_n[1] || ui.aud_n[2]) && (int32_t)(fm1_ms - ui.aud_until) >= 0)
         aud_off();                                   /* (the step's note auditioned: its moment over) */
@@ -2749,7 +2771,7 @@ static void ui_input(void)
                 ui.fx_pg = (uint8_t)((ui.fx_pg + NFXP + (uint32_t)(d + (int)NFXP)) % NFXP);
             ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
             ui.force = 1;
-        } else if (sh && step_view()) {             /* (build 116) the step view, SHIFT: the chosen track's steps a
+        } else if (sh && sv_keys()) {               /* (build 116) the step view, SHIFT: the chosen track's steps a
                                                       * semitone, any note (not its loops, not TRN's count; a note that
                                                       * would leave 12 .. 120: none moved) */
             uint32_t i, ok = 1, l = ui.sl;
@@ -2771,7 +2793,7 @@ static void ui_input(void)
                 str_cpy(m + 5, "MAX", 4);
             say(m, 1200);
             ui.force = 1;
-        } else if (sh || step_view()) {             /* transposition: SHIFT every track's steps; the step view the
+        } else if (sh || sv_keys()) {               /* transposition: SHIFT every track's steps; the step view the
                                                       * track's */
             char m[16];
             uint32_t t;
@@ -2943,7 +2965,8 @@ static void ui_input(void)
     /* (build 105) SHUFFLER: SHIFT and the 4th black key from the right held on the track's view (the step view off),
      * the lanes' step events traded among them at random (tracks.c); the key let go, each plays its own again. It
      * plays no note; let go of SHIFT first, it goes on until the key is let go */
-    if (!ui.shf && ((ch & keys) >> KEY_SHF & 1u) && sh && ui.page == PG_MAIN && !step_view() && !ui.lrec_down) {
+    if (!ui.shf && ((ch & keys) >> KEY_SHF & 1u) && sh && ((ui.page == PG_MAIN && !step_view()) || ui.page == PG_PAT) &&
+        !ui.lrec_down) {                             /* (on the PATTERNS grid too: build 124) */
         shf_seed = next_seed() | 1u;
         shf_on = 1;
         ui.shf = 1;
@@ -2951,7 +2974,7 @@ static void ui_input(void)
         ch &= ~(1u << KEY_SHF);
         ui.force = 1;
     } else if (ui.shf) {
-        if (!((keys >> KEY_SHF) & 1u) || ui.page != PG_MAIN || step_view()) {
+        if (!((keys >> KEY_SHF) & 1u) || !((ui.page == PG_MAIN && !step_view()) || ui.page == PG_PAT)) {
             ui.shf = 0;
             shf_on = 0;
             ui.msg_until = fm1_ms;               /* (its name: gone with it) */
@@ -3114,16 +3137,15 @@ static void ui_input(void)
                                                       * loaded; held 0.8 s, the pattern playing saved there (build 72);
                                                       * SHIFT and held, copied -- or, a pattern copied, pasted there
                                                       * (projects.c); SHIFT and the 1st black key held, pressed, emptied.
-                                                      * The 2nd black key: MUTE mode on or off, as in the track's view
-                                                      * (build 63) */
-        if ((ch & keys) >> KEY_TRK & 1u) {
-            ui.mute_mode = (uint8_t)!ui.mute_mode;
-            ui.tb_down = ui.tb_long = 0;
-            ui.force = 1;
+                                                      * (build 124) The black keys: the track view's, below */
+        if (sh && ((ch & keys) >> KEY_GEN & 1u)) {   /* (SHIFT + the 1st black key: the chord form as it is let go,
+                                                      * not if it empties a pattern first) */
+            ui.cf_down = 1;
+            ui.cf_used = 0;
         }
-        if ((ch & keys) >> KEY_PERF & 1u)            /* (PERFORMANCE on or off here too) */
-            perf_toggle();
         for (k = 0; k < NKEY; k++) {
+            if (white_ix(k) < 0)
+                continue;
             if (((ch & ~keys) >> k & 1u) && ui.key_track[k] != KEY_NONE) {   /* (a note held from before: let go) */
                 key_off(k);
                 ui.key_track[k] = KEY_NONE;
@@ -3135,6 +3157,7 @@ static void ui_input(void)
                 ui.key_track[k] = KEY_NONE;
                 if (sh && (keys >> KEY_GEN & 1u)) {   /* (SHIFT and the 1st black key: emptied, nothing loaded) */
                     ui.qk_long = 1;
+                    ui.cf_used = 1;
                     if (perf_on)
                         say("PERF MODE", 900);
                     else
@@ -3161,9 +3184,17 @@ static void ui_input(void)
                     pat_save_as((uint32_t)white_ix(ui.qk));
             }
         }
-        ui.keys = keys;
-        midi_take();
-        return;
+        for (k = 0; k < NKEY; k++)                   /* (the white keys: the grid's alone) */
+            if (white_ix(k) >= 0)
+                ch &= ~(1u << k);
+        if (ui.cf_down) {                            /* (SHIFT + the 1st black key let go: the next chord form) */
+            if ((ch & ~keys) >> KEY_GEN & 1u) {
+                ui.cf_down = 0;
+                if (!ui.cf_used)
+                    chord_key(1);
+            }
+            ch &= ~(1u << KEY_GEN);
+        }
     }
     if (ui.page == PG_PRJ) {                         /* the SESSIONS grid (build 82): a white key let go soon, its
                                                       * session loaded; held 0.8 s, the session playing saved there
@@ -3197,8 +3228,12 @@ static void ui_input(void)
         midi_take();
         return;
     }
-    ui.qk = KEY_NONE;
-    pat_clip_from = -1;                              /* (off the grid: a pattern copied let go) */
+    if (ui.page != PG_PAT) {
+        ui.qk = KEY_NONE;
+        pat_clip_from = -1;                          /* (off the grid: a pattern copied let go) */
+        ui.cf_down = 0;
+    }
+    sv = sv_keys();
     if (ui.sk != KEY_NONE) {                         /* SHIFT and a step held 0.8 s: copied, or pasted */
         if (!((keys >> ui.sk) & 1u))
             ui.sk = KEY_NONE;
@@ -3211,10 +3246,10 @@ static void ui_input(void)
                                                       * held 0.8 s, the PHRASE page up or down */
         if (!((keys >> KEY_GEN) & 1u)) {
             ui.gen_down = 0;
-            if (!ui.gen_long && step_view() && !ui.gen_sh && ui.euc[ui.sl])
+            if (!ui.gen_long && sv && !ui.gen_sh && ui.euc[ui.sl])
                 say("EUCLID ON", 900);               /* (build 102: EUCLID mode lays the steps out; no new phrase
                                                       * while it is on -- new locks, SHIFT, still) */
-            else if (!ui.gen_long && step_view()) {
+            else if (!ui.gen_long && sv) {
                 uint32_t l;
                 if (ui.gen_sh)
                     phrase_relock(ui.sl);
@@ -3267,6 +3302,11 @@ static void ui_input(void)
         steps_clear(ui.sl);
         say("STEPS CLEARED", 1200);
         ui.force = 1;
+    } else if ((ch & keys) >> KEY_STEP & 1u && ui.page == PG_PAT) {   /* (build 124) STEP on the PATTERNS grid: the
+                                                      * grid left, into the step view */
+        ui.page = PG_MAIN;
+        ui.sv = 1;
+        ui.force = 1;
     } else if ((ch & keys) >> KEY_STEP & 1u) {       /* STEP: the step view on or off */
         ui.sv = (uint8_t)!ui.sv;
         if (!ui.sv && ui.step_key != KEY_NONE)
@@ -3278,24 +3318,12 @@ static void ui_input(void)
         ui.force = 1;
     }
     for (k = 0; ch && k < NKEY; k++) {
-        if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_GEN && ui.page == PG_MAIN) {   /* CHORD mode on or
-                                                                         * off; SHIFT: the next form (and on) */
-            if (ui.eng[ui.sel] == ENG_FMD)
-                say("NO CHORDS", 1000);          /* (DRUM: none) */
-            else if (sh) {
-                if (ui.chord_on[ui.sel])
-                    ui.chord_form[ui.sel] = (uint8_t)((ui.chord_form[ui.sel] + 1u) % CHF_N);
-                ui.chord_on[ui.sel] = 1;
-                say(CH_NAME[ui.chord_form[ui.sel]], 1200);
-            } else {
-                ui.chord_on[ui.sel] = (uint8_t)!ui.chord_on[ui.sel];
-                say(ui.chord_on[ui.sel] ? CH_NAME[ui.chord_form[ui.sel]] : "CHORDS OFF", 1200);
-            }
-            prj_dirty = 1;
-            ui.force = 1;
+        if (((ch & keys) >> k & 1u) && !sv && k == KEY_GEN && (ui.page == PG_MAIN || ui.page == PG_PAT)) {   /* CHORD
+                                                                         * mode on or off; SHIFT: the next form (and on) */
+            chord_key(sh);
             continue;
         }
-        if (((ch & keys) >> k & 1u) && k == KEY_READER && perf_on && !step_view() && !pg_any()) {   /* (build 110)
+        if (((ch & keys) >> k & 1u) && k == KEY_READER && perf_on && !sv && (!pg_any() || ui.page == PG_PAT)) {   /* (build 110)
                                                                          * PERFORMANCE, out of the step view: new locks
                                                                          * on every lane with steps, as one (SHIFT with
                                                                          * it: the SCREEN READER, taken above) */
@@ -3313,31 +3341,31 @@ static void ui_input(void)
             ui.force = 1;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && k == KEY_PERF && (step_view() ? sh : !pg_any())) {   /* PERFORMANCE on or off
+        if (((ch & keys) >> k & 1u) && k == KEY_PERF && (sv ? sh : !pg_any() || ui.page == PG_PAT)) {   /* PERFORMANCE on or off
                                                                          * (in the step view: SHIFT with it) */
             perf_toggle();
             continue;
         }
-        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_ARP && !pg_any()) {   /* (build 101) EUCLID mode on or
+        if (((ch & keys) >> k & 1u) && sv && k == KEY_ARP && !pg_any()) {   /* (build 101) EUCLID mode on or
                                                                          * off, the chosen lane's */
             ui.euc[ui.sl] = (uint8_t)!ui.euc[ui.sl];
             say(ui.euc[ui.sl] ? "EUCLID ON" : "EUCLID OFF", 900);
             ui.force = 1;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_ARP && !pg_any()) {   /* the arpeggiator's key: on
+        if (((ch & keys) >> k & 1u) && !sv && k == KEY_ARP && (!pg_any() || ui.page == PG_PAT)) {   /* the arpeggiator's key: on
                                                                          * its release or held */
             ui.ak_down = 1;
             ui.ak_long = 0;
             ui.ak_t0 = fm1_ms;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_MOD &&
-            (ui.page == PG_MAIN || ui.page == PG_EDIT || ui.page == PG_FXP)) {   /* MIDI LEARN on or off */
+        if (((ch & keys) >> k & 1u) && !sv && k == KEY_MOD &&
+            (ui.page == PG_MAIN || ui.page == PG_EDIT || ui.page == PG_FXP || ui.page == PG_PAT)) {   /* MIDI LEARN */
             learn_toggle();
             continue;
         }
-        if (((ch & keys) >> k & 1u) && !step_view() && k == KEY_TRK && ui.page == PG_MAIN) {   /* MUTE mode on or
+        if (((ch & keys) >> k & 1u) && !sv && k == KEY_TRK && (ui.page == PG_MAIN || ui.page == PG_PAT)) {   /* MUTE mode on or
                                                                          * off (the mutes stay as they are) */
             ui.mute_mode = (uint8_t)!ui.mute_mode;
             ui.tb_down = ui.tb_long = 0;
@@ -3345,19 +3373,19 @@ static void ui_input(void)
             ui.force = 1;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_TRK) {   /* the TRACK page, up or down */
+        if (((ch & keys) >> k & 1u) && sv && k == KEY_TRK) {   /* the TRACK page, up or down */
             ui.page = ui.page == PG_TRK ? PG_MAIN : PG_TRK;
             ui.force = 1;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_GEN) {   /* the phrase key: on its release or held */
+        if (((ch & keys) >> k & 1u) && sv && k == KEY_GEN) {   /* the phrase key: on its release or held */
             ui.gen_down = 1;
             ui.gen_long = 0;
             ui.gen_sh = (uint8_t)sh;
             ui.gen_t0 = fm1_ms;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_MOD) {   /* MOD on or off (TRIG off) */
+        if (((ch & keys) >> k & 1u) && sv && k == KEY_MOD) {   /* MOD on or off (TRIG off) */
             ui.mod = (uint8_t)!ui.mod;
             ui.trig = 0;
             ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
@@ -3365,7 +3393,7 @@ static void ui_input(void)
             ui.force = 1;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && step_view() && k == KEY_TRIG) {   /* TRIG on or off (MOD off) */
+        if (((ch & keys) >> k & 1u) && sv && k == KEY_TRIG) {   /* TRIG on or off (MOD off) */
             ui.trig = (uint8_t)!ui.trig;
             ui.mod = 0;
             ui.ehalf = ui.lsel = ui.listen = 0;   /* (MIDI LEARN: from A, nothing waited for) */
@@ -3373,7 +3401,7 @@ static void ui_input(void)
             ui.force = 1;
             continue;
         }
-        if (((ch & keys) >> k & 1u) && step_view() && (k == KEY_DIR[0] || k == KEY_DIR[1] || k == KEY_DIR[2])) {
+        if (((ch & keys) >> k & 1u) && sv && (k == KEY_DIR[0] || k == KEY_DIR[1] || k == KEY_DIR[2])) {
             uint32_t d = k == KEY_DIR[0] ? DIR_REV : k == KEY_DIR[1] ? DIR_PING : DIR_RND;   /* (the track's direction;
                                                                                          * again: forward) */
             seq_dir[ui.sl] = (uint8_t)(seq_dir[ui.sl] == d ? DIR_FWD : d);
@@ -3392,7 +3420,7 @@ static void ui_input(void)
         if ((keys >> k) & 1u) {
             uint32_t note = key_note(k, ui.oct[ui.sl]);
             ui.key_track[k] = KEY_NONE;
-            if (step_view()) {                       /* the step view: the white keys are the steps (SHIFT: copy, paste) */
+            if (sv) {                       /* the step view: the white keys are the steps (SHIFT: copy, paste) */
                 if (white_ix(k) >= 0 && sh && ui.sk == KEY_NONE) {
                     ui.sk = (uint8_t)k;
                     ui.sk_long = 0;
@@ -3467,8 +3495,8 @@ static void ui_leds(void)
     fm1_led_key(PANEL_BTN[B_SEQ], ui.page == PG_FXP && !fx_arp());
     fm1_led_key(PANEL_BTN[B_ARP], ui.page == PG_SCALE);
     fm1_led_key(PANEL_BTN[B_SAVE], ui.page == PG_PRJ || ui.page == PG_PRJD || ui.page == PG_SET || ui.page == PG_PAT);
-    fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || (step_view() ? ui.oc[ui.sl] < 0 : ui.oct[ui.sl] < 0));
-    fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || (step_view() ? ui.oc[ui.sl] > 0 : ui.oct[ui.sl] > 0));
+    fm1_led_key(PANEL_BTN[B_OCTDN], ui.page == PG_EDIT || (sv_keys() ? ui.oc[ui.sl] < 0 : ui.oct[ui.sl] < 0));
+    fm1_led_key(PANEL_BTN[B_OCTUP], ui.page == PG_EDIT || (sv_keys() ? ui.oc[ui.sl] > 0 : ui.oct[ui.sl] > 0));
     fm1_led_key(PANEL_BTN[B_REC], ui.rec == REC_ON || ui.lrec == 2 ||
                                       ((ui.rec == REC_ARMED || ui.lrec == 1) && (fm1_ms / 250u) & 1u));
     fm1_led_key(PANEL_BTN[B_PLAY], seq_run && (seq_pos[ui.sl] & 3u) == 0u);   /* (the beat, while it plays) */
@@ -3526,83 +3554,83 @@ static void ui_leds(void)
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (k == KEY_SHF && (ui.shf || (ui.page == PG_MAIN && !step_view()))) {   /* (SHUFFLER: dim on the track's
+        if (k == KEY_SHF && (ui.shf || (ui.page == PG_MAIN && !sv_keys()) || ui.page == PG_PAT)) {   /* (SHUFFLER: dim on the track's
                                                       * view, lit while held -- build 105; dim, build 106) */
             fm1_led_key(14u + k, ui.shf || ((ui.keys >> k) & 1u));
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (!step_view() && k == KEY_MOD) {     /* (the MIDI LEARN key: lit while on, dim) */
+        if (!sv_keys() && k == KEY_MOD) {     /* (the MIDI LEARN key: lit while on, dim) */
             fm1_led_key(14u + k, ui.learn);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if ((!step_view() || ui.page == PG_PAT) && k == KEY_TRIG) {   /* (the BREAK key: lit while held, dim) */
+        if ((!sv_keys() || ui.page == PG_PAT) && k == KEY_TRIG) {   /* (the BREAK key: lit while held, dim) */
             fm1_led_key(14u + k, ui.brk != 0);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (k == KEY_TRK && (ui.page == PG_PAT || (ui.page == PG_MAIN && !step_view()))) {   /* (the MUTE key: lit
+        if (k == KEY_TRK && (ui.page == PG_PAT || (ui.page == PG_MAIN && !sv_keys()))) {   /* (the MUTE key: lit
                                                                          * while on, dim off) */
             fm1_led_key(14u + k, ui.mute_mode);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (!step_view() && k == KEY_PERF && (!pg_any() || ui.page == PG_PAT)) {   /* (PERFORMANCE: dim, lit while
+        if (!sv_keys() && k == KEY_PERF && (!pg_any() || ui.page == PG_PAT)) {   /* (PERFORMANCE: dim, lit while
                                                                                    * on) */
             fm1_led_key(14u + k, perf_on);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (perf_on && !step_view() && k == KEY_READER && !pg_any()) {   /* (build 110: PERFORMANCE's new locks
+        if (perf_on && !sv_keys() && k == KEY_READER && (!pg_any() || ui.page == PG_PAT)) {   /* (build 110: PERFORMANCE's new locks
                                                                        * key: dim, lit as it draws them) */
             fm1_led_key(14u + k, (int32_t)(ui.gen_until - fm1_ms) > 0);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (!step_view() && k == KEY_ARP && !pg_any()) {   /* (the ARP key: lit while on, dim off) */
+        if (!sv_keys() && k == KEY_ARP && (!pg_any() || ui.page == PG_PAT)) {   /* (the ARP key: lit while on, dim off) */
             fm1_led_key(14u + k, arp_on[ui.sel]);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (!step_view() && k == KEY_GEN && ui.page == PG_MAIN) {   /* (the CHORD key: lit while on, dim off) */
+        if (!sv_keys() && k == KEY_GEN && (ui.page == PG_MAIN || ui.page == PG_PAT)) {   /* (the CHORD key: lit while on, dim off) */
             fm1_led_key(14u + k, ui.chord_on[ui.sel] && ui.eng[ui.sel] != ENG_FMD);
             led_dim_key(14u + k, 1);                 /* (dim on every track: the key has a use here) */
             continue;
         }
-        if (step_view() && k == KEY_GEN) {           /* (the phrase key: dim, lit as it makes one) */
+        if (sv_keys() && k == KEY_GEN) {           /* (the phrase key: dim, lit as it makes one) */
             fm1_led_key(14u + k, (int32_t)(ui.gen_until - fm1_ms) > 0 || ui.page == PG_GEN);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (step_view() && k == KEY_MOD) {           /* (MOD: dim, lit while on) */
+        if (sv_keys() && k == KEY_MOD) {           /* (MOD: dim, lit while on) */
             fm1_led_key(14u + k, ui.mod);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (step_view() && k == KEY_TRIG) {          /* (TRIG: dim, lit while on) */
+        if (sv_keys() && k == KEY_TRIG) {          /* (TRIG: dim, lit while on) */
             fm1_led_key(14u + k, ui.trig);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (step_view() && (k == KEY_DIR[0] || k == KEY_DIR[1] || k == KEY_DIR[2])) {   /* (the directions: the one
+        if (sv_keys() && (k == KEY_DIR[0] || k == KEY_DIR[1] || k == KEY_DIR[2])) {   /* (the directions: the one
                                                                                      * the track goes lit) */
             uint32_t d = k == KEY_DIR[0] ? DIR_REV : k == KEY_DIR[1] ? DIR_PING : DIR_RND;
             fm1_led_key(14u + k, seq_dir[ui.sl] == d);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (step_view() && k == KEY_ARP && !pg_any()) {   /* (EUCLID mode's key: lit while on, dim off) */
+        if (sv_keys() && k == KEY_ARP && !pg_any()) {   /* (EUCLID mode's key: lit while on, dim off) */
             fm1_led_key(14u + k, ui.euc[ui.sl]);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (step_view() && k == KEY_TRK) {           /* (the TRACK key: dim, lit while its page is up) */
+        if (sv_keys() && k == KEY_TRK) {           /* (the TRACK key: dim, lit while its page is up) */
             fm1_led_key(14u + k, ui.page == PG_TRK);
             led_dim_key(14u + k, 1);
             continue;
         }
-        if (step_view() && white_ix(k) >= 0) {       /* (the step view: with a note lit, empty dim, the one playing
+        if (sv_keys() && white_ix(k) >= 0) {       /* (the step view: with a note lit, empty dim, the one playing
                                                       * the other way round; past the track's length, dark) */
             uint32_t i = (uint32_t)white_ix(k), len = seq_len[ui.sl] ? seq_len[ui.sl] : NSTEP;
             int on = seq_note[ui.sl][i] != 0;
@@ -3619,7 +3647,7 @@ static void ui_leds(void)
         fm1_led_key(14u + k, key_plays(k) && ((ui.keys >> k) & 1u) && ui.key_track[k] == ui.sl);
     }
     fm1_led_key(14u + KEY_SHIFT, (ui.keys >> KEY_SHIFT) & 1u);
-    fm1_led_key(14u + KEY_STEP, ui.sv);
+    fm1_led_key(14u + KEY_STEP, sv_keys());
     led_dim_key(14u + KEY_STEP, 1);
     fm1_led_key(14u + KEY_EDIT, ui.page == PG_EDIT);
     led_dim_key(14u + KEY_EDIT, 1);

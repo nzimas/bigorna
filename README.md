@@ -53,7 +53,7 @@ From the command line (macOS or Linux): `./setup.sh` once, then `./install.sh` (
 | black key 4 | [MIDI LEARN](#midi-learn) on or off. |
 | black key 5 | chosen track's [arpeggiator](#arpeggiator) on or off. **Held** (0.8 s): its page. |
 | black key 7 | [PERFORMANCE](#performance) on or off (also on the PATTERNS grid; in the step view, **SHIFT +** it). |
-| black key 8 (4th from right) | **SHIFT +**, **held**: [SHUFFLER](#shuffler). On the [TEMPO](#tempo) page: **TAP**, tap the tempo; it blinks at the tempo. |
+| black key 8 (4th from right) | **SHIFT +**, **held**: [SHUFFLER](#shuffler) (also on the PATTERNS grid). On the [TEMPO](#tempo) page: **TAP**, tap the tempo; it blinks at the tempo. |
 | black key 9 (3rd from right) | **STEP**: [step view](#step-view). **SHIFT +**: empty the chosen track's steps. |
 | black key 10 | **EDIT**: [sound pages](#sound-pages-edit). **SHIFT +** it **held**, OCT− / OCT+: the session before or after in the [set list](#sessions), from any page. |
 | black key 11 (last) | **SHIFT**. |
@@ -359,11 +359,12 @@ playing goes on.
 
 ### SHUFFLER
 
-While the sequencer plays, on the track's view (step view off), **hold SHIFT and black key 8** (the 4th from the
-right). The step events of the tracks and subtracks are traded among them at random: each lane that holds steps plays
+While the sequencer plays, on the track's view (step view off) or the PATTERNS grid, **hold SHIFT and black key 8**
+(the 4th from the right). The step events of the tracks and subtracks are traded among them at random: each lane that holds steps plays
 another lane's trigs, with their velocity, length, trig condition, ratchet, MOD (MUTATE, MIDI FX) and parameter locks.
 Each lane keeps its own sound and its own pitches: on a step it gives no note to, it plays its last note before that
-step. On the track's view black key 8 is dim; it lights while SHUFFLER is on. The lanes are drawn again every 2, 4 or 8
+step. On the track's view and the PATTERNS grid black key 8 is dim; it lights while SHUFFLER is on, and the grid's
+title reads SHUFFLER. The lanes are drawn again every 2, 4 or 8
 sixteenths. SHIFT can be let go once SHUFFLER is on; it lasts until
 black key 8 is let go. Nothing is written into the steps: each lane's position goes on underneath, and let go, every
 lane plays its own steps again. Loops play on as recorded. A lane with no steps stays silent.
@@ -374,7 +375,7 @@ A lock moved to a lane on another machine sets that machine's parameter in the s
 
 Black key 7 (in the step view, SHIFT + black key 7; also on the PATTERNS grid) turns PERFORMANCE on or off, after
 Elektron's temporary edits and CONTROL ALL. The key is lit while it is on, and PERF shows in red at the right of the
-track's view (REC, LOOP or ARM take its place while recording).
+track's view (REC, LOOP or ARM take its place while recording), and as the PATTERNS grid's title.
 
 Turned on, it keeps the state playing: every track's and subtrack's sound, the steps and their locks, lengths, clocks
 and directions, levels, pans, mutes, octaves, chords, arpeggiators, sidechains, the effects, tempo, scale and MUTE
@@ -616,11 +617,23 @@ the white square is the cursor: it opens on the pattern playing, and **PRESETS**
 | Paste it | SHIFT + hold another key 0.8 s |
 | Empty a pattern | hold SHIFT and black key 1, and press its key |
 | Leave the grid | SAVE, or a track button |
+| Use the black keys | as in the track's view: see below |
 
 A changed pattern keeps its changes when you switch away, until the session is saved or loaded. A pattern that
 unmutes a track starts that track cleanly, without notes left over from the muted time. Every note is always saved;
-on a pattern crowded with locks, the last locks may be left out. MUTE mode, BREAK and PERFORMANCE work on the grid
-too, and MIDI program changes 0 to 15 choose patterns 1 to 16 ([MIDI](#midi)).
+on a pattern crowded with locks, the last locks may be left out. MIDI program changes 0 to 15 choose patterns 1 to
+16 ([MIDI](#midi)).
+
+**The black keys on the grid.** Only the white keys belong to the grid. The black keys, OCT− / OCT+ and the knobs do
+what they do on the track's view, even if the step view was on before the grid opened: CHORD mode (SHIFT: the next
+form), MUTE mode, BREAK, MIDI LEARN, the arpeggiator (held 0.8 s: its page), PERFORMANCE (no SHIFT needed), its new
+locks (black key 6), SHUFFLER (SHIFT + black key 8, held), and the panic and the screen reader. STEP leaves the grid
+for the step view, and EDIT for the sound pages. SHIFT + black key 1 held with a white key still empties that pattern;
+let go without one, it picks the next chord form.
+
+The grid's title says what is going on: what a key just did (CHORDS OFF, ARP ON, MUTE MODE ..), SHUFFLER while it is
+held, the tracks while MUTE mode is on, MIDI LEARN while it is on, and PERF in red while PERFORMANCE is on. Otherwise it
+reads PATTERNS.
 
 ## Sessions
 

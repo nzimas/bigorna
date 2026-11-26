@@ -268,7 +268,8 @@ CONTROLS = [
                    "<b>Held</b> (0.8 s): save the session."),
     ([19], "SAVE", '<a href="#patterns">PATTERNS</a> grid. <b>Held</b> (0.8 s): save the session (on the grid: the '
                    'pattern playing, into the slot under the cursor). <b>SHIFT +</b>: <a href="#sessions">SESSIONS</a> '
-                   'list; <b>held</b>: <a href="#global-setup">GLOBAL SETUP</a>.'),
+                   'list; <b>held</b>: <a href="#global-setup">GLOBAL SETUP</a>. On the PATTERNS grid the black keys work '
+                   'as on the track\'s view.'),
     ([20], "ARP", '<a href="#scales">SCALE</a> page. <b>SHIFT +</b>: scale and root at random.'),
     ([21], "SEQ", '<a href="#effects-seq">Effects\' pages</a>, then the chosen track\'s LFOs. '
                   "<b>SHIFT +</b>: its LFOs drawn anew."),
@@ -290,7 +291,7 @@ CONTROLS = [
      '<b>SHIFT +</b> black key 6: <a href="#screen-reader">screen reader</a>. In <a href="#performance">PERFORMANCE</a>, '
      'black key 6: new locks on every track and subtrack. On the <a href="#tempo">TEMPO</a> '
      "page, black key 8: <b>TAP</b>, tap the tempo; it blinks at the tempo. <b>SHIFT +</b> black key 8, "
-     '<b>held</b>: <a href="#shuffler">SHUFFLER</a>.'),
+     '<b>held</b>: <a href="#shuffler">SHUFFLER</a> (also on the PATTERNS grid).'),
     ([32], "black key 9", '<b>STEP</b>: <a href="#step-view">step view</a>. <b>SHIFT +</b>: empty the '
                           "chosen track's steps."),
     ([33], "black key 10", '<b>EDIT</b>: <a href="#sound-pages-edit">sound pages</a> (not the EDIT button, T5). '
