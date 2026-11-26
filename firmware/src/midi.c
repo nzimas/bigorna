@@ -91,6 +91,33 @@ static void midi_main_drain(void)                 /* (the audio ISR's) */
         mm_r++;
     }
 }
+/* (build 122) a SysEx message from the main loop, whole or not at all: into usb.c's SysEx ring (sent ahead of the
+ * MIDI, never split by it) when it has room and no backup or update is sending; 0 when not sent (try again later) */
+static int midi_sysex_send(const uint8_t *p, uint32_t n)
+{
+    uint32_t i = 0;
+#if !defined(HOST) && FELUCCA_OTA
+    if (!usb.config || sx_busy || SXQ - (so_w - so_r) < (n + 2u) / 3u)
+        return 0;
+#elif !defined(HOST)
+    (void)p, (void)n, (void)i;
+    return 0;
+#endif
+    while (i < n) {
+        uint32_t k = n - i >= 3u ? 3u : n - i, pkt;
+        uint32_t cin = k == 3u && i + 3u < n ? 4u : k == 3u ? 7u : 4u + k;   /* 4 continues; 5 / 6 / 7 end */
+        pkt = cin | (uint32_t)p[i] << 8 | (k > 1u ? (uint32_t)p[i + 1u] << 16 : 0u) | (k > 2u ? (uint32_t)p[i + 2u] << 24 : 0u);
+#ifdef HOST
+        midi_out_event(pkt);
+#elif FELUCCA_OTA
+        sx_out_q[so_w % SXQ] = pkt;
+        RING_PUBLISH();
+        so_w++;
+#endif
+        i += k;
+    }
+    return 1;
+}
 /* a track's note on (vel > 0) or off, out on its channel; the notes it has sent on, so each off goes once */
 static uint8_t midi_held[MIDI_TRACKS][16];
 static void midi_note_out(uint32_t t, uint32_t note, uint32_t vel, int muted)
@@ -237,10 +264,12 @@ static void midi_clock_out(uint32_t adv)
 }
 /* (build 121) USB audio's TRACKS: the pans out again at the start (ui.c's midi_poll) */
 static volatile uint8_t midi_pan_refresh;
+static volatile uint8_t midi_mx_refresh;          /* (build 122: the effects' state out again at the start) */
 static void midi_started(uint32_t spp)           /* (the sequencer started, at song position spp: its first pulse
                                                   * with START, sent in this block) */
 {
     midi_pan_refresh = 1;
+    midi_mx_refresh = 1;
     if (mcfg.clk_out) {
         midi_out_event(0x3u | 0xF2u << 8 | (spp & 0x7Fu) << 16 | ((spp >> 7) & 0x7Fu) << 24);
         midi_rt_send(spp ? 0xFBu : 0xFAu);

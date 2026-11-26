@@ -1652,6 +1652,98 @@ static void midi_stem_pans(void)
         midi_main_send(0xB0u | (ch - 1u), CC_PAN, v);
     }
 }
+/* (build 122) USB audio's TRACKS: the stems carry no DELAY, REVERB or CHORUS (they are taken before the sends), so
+ * the host is told what the FM-1's effects do, to run the same ones (Amalthea's LIFEBLOOD compiles fx.c): SysEx
+ * F0 7D 46 42 <kind> .. F7, every byte 7-bit, 14-bit values high byte first.
+ *   01 the effects: 1 (the version), CHORUS 7, DELAY 8, REVERB 7, COMP 8 (fx.c's order, 0 .. 127), the tempo x 10.
+ *      As they change, at the start and once a second.
+ *   02 the sends: each track's CHORUS, DELAY, REVERB send in force (Q15 / 2: 0 .. 16383, 16383 all of it), its
+ *      subtracks' with it, each lane's by its level. As they change (at most every 10 ms), at the start, a second.
+ *   03 the returns' ducking (CHORUS, DELAY, REVERB): each one's gain, Q16 / 4 (16383 none). While some track ducks,
+ *      as they change, at most every 4 ms; once more when ducking stops. */
+#define MX_HEAD 0xF0u, 0x7Du, 0x46u, 0x42u
+static uint8_t mx_fx[33] POOL, mx_fx_ok;
+static uint16_t mx_sd[NTRACK * 3u] POOL, mx_dk[3] POOL;
+static uint32_t mx_fx_at, mx_sd_at, mx_dk_at;
+static uint8_t mx_dk_was;
+static void mx_put14(uint8_t *b, uint32_t v)
+{
+    v = v > 16383u ? 16383u : v;
+    b[0] = (uint8_t)(v >> 7);
+    b[1] = (uint8_t)(v & 0x7Fu);
+}
+static void midi_fx_mirror(void)
+{
+    uint8_t m[42] = {MX_HEAD};
+    uint32_t t, k, all, now = fm1_ms;
+    uint16_t sd[NTRACK * 3u], dk[3];
+    int again = 0;
+    if (!USB_STEMS())
+        return;
+    all = midi_mx_refresh || now - mx_fx_at >= 1000u;   /* (the start, or a second since) */
+    midi_mx_refresh = 0;
+    /* 01: the effects */
+    m[4] = 1u;
+    m[5] = 1u;
+    memcpy(m + 6, fx_ch, NCH);
+    memcpy(m + 6 + NCH, fx_dl, NDL);
+    memcpy(m + 6 + NCH + NDL, fx_rv, NRV);
+    memcpy(m + 6 + NCH + NDL + NRV, fx_cp, NCP);
+    for (k = 6; k < 6u + NCH + NDL + NRV + NCP; k++)
+        m[k] &= 0x7Fu;
+    mx_put14(m + 6 + NCH + NDL + NRV + NCP, (uint32_t)clampi(fx_bpm10, 0, 16383));
+    m[38] = 0xF7u;
+    if ((all || !mx_fx_ok || memcmp(m + 5, mx_fx, 33)) && midi_sysex_send(m, 39)) {
+        memcpy(mx_fx, m + 5, 33);
+        mx_fx_ok = 1;
+        mx_fx_at = now;
+    }
+    /* 02: the sends in force, each track's lanes by their levels */
+    for (t = 0; t < NTRACK; t++) {
+        uint32_t l, w, wsum = 0, acc[3] = {0, 0, 0};   /* (32-bit: a lane's weight < 2^12, a send <= 2^15, <= 4 lanes) */
+        for (l = t; l < NLANE; l = l < NTRACK ? NTRACK : l + 1u) {
+            if (l >= NTRACK && (!ln_s[l] || LANE_T(l) != t))
+                continue;
+            w = ((uint32_t)clampi(trk[l].meter, 0, 65535) >> 4) + 1u;   /* (+1: silent lanes alike) */
+            wsum += w;
+            acc[0] += w * (uint32_t)clampi(trk[l].sc, 0, Q15);
+            acc[1] += w * (uint32_t)clampi(trk[l].sd, 0, Q15);
+            acc[2] += w * (uint32_t)clampi(trk[l].sr, 0, Q15);
+        }
+        for (k = 0; k < 3u; k++) {
+            uint32_t v = acc[k] / wsum >> 1;
+            sd[t * 3u + k] = (uint16_t)(v > 16383u ? 16383u : v);
+            again |= absi((int32_t)sd[t * 3u + k] - (int32_t)mx_sd[t * 3u + k]) >= 16;
+        }
+    }
+    if ((all || (again && now - mx_sd_at >= 10u))) {
+        m[4] = 2u;
+        for (k = 0; k < NTRACK * 3u; k++)
+            mx_put14(m + 5 + 2u * k, sd[k]);
+        m[41] = 0xF7u;
+        if (midi_sysex_send(m, 42)) {
+            memcpy(mx_sd, sd, sizeof sd);
+            mx_sd_at = now;
+        }
+    }
+    /* 03: the returns' ducking */
+    again = 0;
+    for (k = 0; k < 3u; k++) {
+        dk[k] = (uint16_t)clampi(dk_on ? dk_rg[k] >> 2 : 16383, 0, 16383);
+        again |= absi((int32_t)dk[k] - (int32_t)mx_dk[k]) >= 8;
+    }
+    if ((dk_on || mx_dk_was) && (again || all) && now - mx_dk_at >= 4u) {
+        uint8_t d[12] = {MX_HEAD, 3u};
+        for (k = 0; k < 3u; k++)
+            mx_put14(d + 5 + 2u * k, dk[k]);
+        d[11] = 0xF7u;
+        if (midi_sysex_send(d, 12)) {
+            memcpy(mx_dk, dk, sizeof dk);
+            mx_dk_at = now;
+            mx_dk_was = dk_on;
+        }
+    }
+}
 /* a CC received for track t: its level (7), pan (10), mute (94), or a parameter of its sound (MIDI_CC) */
 static uint8_t midi_lv_sent[NTRACK], midi_pn_sent[NTRACK], midi_mu_sent[NTRACK];
 static void midi_cc_in(uint32_t t, uint32_t cc, uint32_t v)
@@ -1711,6 +1803,7 @@ static void midi_poll(void)
         }
     }
     midi_stem_pans();
+    midi_fx_mirror();
 }
 
 /* ------------------------------------------------------- MIDI LEARN --- */

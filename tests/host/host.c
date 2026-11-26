@@ -3381,6 +3381,70 @@ static int cmd_projects(const char *dir)
             midi_poll();
             STEM_PANS();
             EXPECT(!(seen & 2u), "USB TRACKS: a pan received is not sent back");
+            /* (build 122) USB TRACKS: the effects' state out as SysEx (F0 7D 46 42 kind ..): the effects, the sends in
+             * force, the returns' ducking only while some track ducks; none in STEREO */
+            {
+                uint8_t got1[64], got2[64];
+                uint32_t n1 = 0, n2 = 0, n3 = 0, p, j;
+#define MX_SCAN()                                                                                         \
+    do {                                                                                                  \
+        uint8_t b[64];                                                                                    \
+        uint32_t bn = 0;                                                                                  \
+        n1 = n2 = n3 = 0;                                                                                 \
+        for (p = mo0; p < host_mo_n && p < 4096u; p++) {                                                  \
+            uint32_t q = host_mo[p], cin = q & 15u, c = cin == 5u ? 1u : cin == 6u ? 2u : 3u;             \
+            if (cin < 4u || cin > 7u)                                                                     \
+                continue;                                                                                 \
+            for (j = 0; j < c && bn < 64u; j++)                                                           \
+                b[bn++] = (uint8_t)(q >> (8u * (j + 1u)));                                                \
+            if (cin != 4u) {                                                                              \
+                if (bn > 5u && b[1] == 0x7Du && b[2] == 0x46u && b[3] == 0x42u) {                         \
+                    if (b[4] == 1u) { memcpy(got1, b, bn); n1 = bn; }                                     \
+                    if (b[4] == 2u) { memcpy(got2, b, bn); n2 = bn; }                                     \
+                    if (b[4] == 3u) n3 = bn;                                                              \
+                }                                                                                         \
+                bn = 0;                                                                                   \
+            }                                                                                             \
+        }                                                                                                 \
+        mo0 = host_mo_n;                                                                                  \
+    } while (0)
+                uint32_t mo0 = host_mo_n;
+                host_usb_stems = 0;
+                fm1_ms += 1000u;
+                midi_poll();
+                MX_SCAN();
+                EXPECT(!n1 && !n2 && !n3, "USB STEREO: no effects state out");
+                host_usb_stems = 1;
+                fx_rv[RV_DEC] = 99;
+                fx_bpm10 = 1275;
+                trk[2].sr = 16384;                   /* (track 3's reverb send half way) */
+                trk[2].sd = 0;
+                trk[2].sc = Q15;
+                fm1_ms += 1000u;
+                midi_poll();
+                MX_SCAN();
+                EXPECT(n1 == 39u && got1[5] == 1u && got1[6 + NCH + NDL + RV_DEC] == 99u &&
+                       (got1[36] << 7 | got1[37]) == 1275u && got1[38] == 0xF7u,
+                       "USB TRACKS: the effects out (REVERB's DECAY, the tempo x 10)");
+                EXPECT(n2 == 42u && (got2[5 + 2 * 8] << 7 | got2[6 + 2 * 8]) == 8192u &&
+                       (got2[5 + 2 * 7] << 7 | got2[6 + 2 * 7]) == 0u && (got2[5 + 2 * 6] << 7 | got2[6 + 2 * 6]) == 16383u,
+                       "USB TRACKS: track 3's sends in force (reverb half, delay none, chorus all)");
+                EXPECT(!n3 || !dk_on, "USB TRACKS: no ducking out while no track ducks");
+                midi_poll();
+                MX_SCAN();
+                EXPECT(!n1 && !n2, "USB TRACKS: nothing unchanged sent again at once");
+                fx_rv[RV_DEC] = 100;
+                fm1_ms += 20u;
+                midi_poll();
+                MX_SCAN();
+                EXPECT(n1 == 39u && got1[6 + NCH + NDL + RV_DEC] == 100u, "USB TRACKS: an effect's change goes out at once");
+                trk[2].sr = 0;
+                midi_poll();
+                MX_SCAN();
+                EXPECT(n2 == 42u && (got2[5 + 2 * 8] << 7 | got2[6 + 2 * 8]) == 0u, "USB TRACKS: a send's change goes out");
+                host_usb_stems = 0;
+#undef MX_SCAN
+            }
 #undef STEM_PANS
             host_usb_stems = 0;
             memcpy(ui.pan, pan0, sizeof pan0);

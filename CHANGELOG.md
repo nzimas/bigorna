@@ -1,5 +1,19 @@
 # Changelog
 
+## Build 122
+
+Changed
+- GLOBAL SETUP > AUDIO > USB TRACKS: the six channels are taken before the sends, so the FM-1 now tells the host what
+  its effects do, for a host to run the same ones (Amalthea's LIFEBLOOD compiles fx.c): SysEx F0 7D 46 42 .. F7 with
+  the CHORUS, DELAY, REVERB and COMP parameters and the tempo (as they change, at each start, once a second); each
+  track's three sends in force, its step locks and its subtracks' with it (as they change, at most every 10 ms); and,
+  while a track ducks, the returns' ducking (at most every 4 ms). Sent ahead of the MIDI, never during a backup or an
+  update. STEREO unchanged.
+
+Compatibility
+- Sessions and GLOBAL SETUP unchanged. Tests: `projects` (TRACKS: the effects, the sends, nothing unchanged again, a
+  change at once, none in STEREO).
+
 ## Build 121
 
 Changed

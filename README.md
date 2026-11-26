@@ -778,6 +778,11 @@ every start, and every track's once a second, so a host connected later learns t
 over the track's pan while it plays. A subtrack's own pan is not in it: the channel carries the track and its
 subtracks together. A track whose OUT channel is OFF sends none.
 
+The channels carry no DELAY, REVERB or CHORUS either (they are taken before the sends), so with **TRACKS** the FM-1
+also sends what its effects do, as SysEx (`F0 7D 46 42` ..): their parameters and the tempo, each track's sends in
+force, and the returns' ducking. A host can run the same effects on the tracks it receives: Amalthea's LIFEBLOOD runs
+the FM-1's own code for them after its network.
+
 Record or monitor it like any class-compliant audio interface; nothing to install. The headphone jack plays on as
 usual, the master in both cases. The USB sound does not follow the MASTER knob, so a recording keeps its level
 whatever the headphones are set to. MIDI goes on alongside on the same cable.
