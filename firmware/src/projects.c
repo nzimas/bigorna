@@ -506,16 +506,117 @@ static void ps_say_full(void)
         say("PATTERN FULL", 1500);
     }
 }
-/* the sounds playing kept as pattern k's (0; -1: no room -- what k held kept, PATTERN FULL said) */
-static int ps_stash(uint32_t k)
+/* ------------------------------------------------------------ the session's sounds re-chosen (build 125) ---
+ * Patterns copied from one another hold the same changes, each counted against the session's sounds as they were
+ * loaded: ten copies of a pattern that differs in 300 bytes take 3000 of the 3072. So when the room is short, and at
+ * every session SAVE, the session's sounds are chosen again, byte by byte: the value most of the patterns holding
+ * sounds have (the session's as it was on a tie), each pattern then holding only what differs from that. What any
+ * pattern plays is the same; a pattern that holds no sounds of its own (empty, or saved before build 113) plays the
+ * session's sounds when the session loads at it, now the ones most patterns share. */
+static uint32_t ps_key(uint32_t i) { return ps_pos(&ps_pool[3u * i]) << 4 | ps_pat(&ps_pool[3u * i]); }
+static void ps_swap(uint32_t a, uint32_t b)
+{
+    uint8_t t[3];
+    memcpy(t, &ps_pool[3u * a], 3u);
+    memcpy(&ps_pool[3u * a], &ps_pool[3u * b], 3u);
+    memcpy(&ps_pool[3u * b], t, 3u);
+}
+static void ps_sift(uint32_t r, uint32_t n)
+{
+    for (;;) {
+        uint32_t c = 2u * r + 1u;
+        if (c >= n)
+            return;
+        if (c + 1u < n && ps_key(c + 1u) > ps_key(c))
+            c++;
+        if (ps_key(r) >= ps_key(c))
+            return;
+        ps_swap(r, c);
+        r = c;
+    }
+}
+static void ps_sort(void)                        /* the pool by byte, then pattern (heapsort: no RAM) */
+{
+    uint32_t i, n = ps_n;
+    for (i = n / 2u; i-- > 0;)
+        ps_sift(i, n);
+    for (i = n; i-- > 1u;) {
+        ps_swap(0, i);
+        ps_sift(0, i);
+    }
+}
+/* the changes left with the session's sounds chosen again among the patterns holding sounds, pattern k not one of
+ * them (PAT_SLOTS: none) -- with live, k votes as it plays and its changes are counted. With write: chosen (ps_b and
+ * the pool; k's changes dropped, its bit cleared), in place -- at each byte the new value is the base's or one more
+ * patterns hold, so no byte takes more entries than it held */
+static uint32_t ps_vote(uint32_t k, int live, int write)
+{
+    uint32_t p, i = 0, o = 0, total = 0, j;
+    uint32_t who = ps_set & ~(k < PAT_SLOTS ? 1u << k : 0u);
+    live = live && k < PAT_SLOTS;
+    ps_sort();
+    for (p = 0; p < PS_BYTES; p++) {
+        uint8_t base = ((const uint8_t *)&ps_b)[p], v[PAT_SLOTS], best = base;
+        uint32_t bc = 0, at = i;
+        while (i < ps_n && ps_pos(&ps_pool[3u * i]) == p)
+            i++;
+        if (at == i && (!live || ps_cur(p) == base))
+            continue;                            /* (nothing differs here) */
+        for (j = 0; j < PAT_SLOTS; j++)
+            v[j] = base;
+        for (; at < i; at++)
+            v[ps_pat(&ps_pool[3u * at])] = ps_pool[3u * at + 2u];
+        if (live)
+            v[k] = ps_cur(p);
+        for (j = 0; j < PAT_SLOTS; j++)          /* (the base's count first: it wins a tie) */
+            bc += ((who >> j & 1u) || (live && j == k)) && v[j] == base;
+        for (j = 0; j < PAT_SLOTS; j++) {
+            uint32_t c = 0, m;
+            if (!((who >> j & 1u) || (live && j == k)) || v[j] == best)
+                continue;
+            for (m = 0; m < PAT_SLOTS; m++)
+                c += ((who >> m & 1u) || (live && m == k)) && v[m] == v[j];
+            if (c > bc) {
+                bc = c;
+                best = v[j];
+            }
+        }
+        for (j = 0; j < PAT_SLOTS; j++)
+            if (((who >> j & 1u) || (live && j == k)) && v[j] != best) {
+                total++;
+                if (write && j != k) {
+                    uint8_t *e = &ps_pool[3u * o++];
+                    e[0] = (uint8_t)(j << 4 | p >> 8);
+                    e[1] = (uint8_t)p;
+                    e[2] = v[j];
+                }
+            }
+        if (write)
+            ((uint8_t *)&ps_b)[p] = best;
+    }
+    if (write) {
+        ps_n = (uint16_t)o;
+        if (k < PAT_SLOTS)
+            ps_set &= (uint16_t)~(1u << k);
+    }
+    return total;
+}
+static uint8_t ps_failed;                        /* (a stash found no room: the save says so) */
+/* the sounds playing kept as pattern k's (0; -1: no room -- what k held kept, PATTERN FULL said); short of room, or
+ * with vote, the session's sounds chosen again first (build 125) */
+static int ps_keep(uint32_t k, int vote)
 {
     uint32_t need, p;
     if (k >= PAT_SLOTS)
         return 0;
     need = ps_diff();
-    if (need > PS_ROOM - ps_n + ps_of(k)) {
-        ps_say_full();
-        return -1;
+    if (vote || need > PS_ROOM - ps_n + ps_of(k)) {
+        if (ps_vote(k, 1, 0) > PS_ROOM) {
+            ps_failed = 1;
+            ps_say_full();
+            return -1;
+        }
+        ps_vote(k, 1, 1);
     }
     ps_drop(k);
     for (p = 0; p < PS_BYTES; p++) {
@@ -530,6 +631,7 @@ static int ps_stash(uint32_t k)
     ps_set |= (uint16_t)(1u << k);
     return 0;
 }
+static int ps_stash(uint32_t k) { return ps_keep(k, 0); }
 /* pattern k's sounds given: the session's, its own over them; each sound changed published again (one that never
  * took any: as they play) */
 static void ps_give(uint32_t k)
@@ -558,8 +660,12 @@ static int ps_copy(uint32_t from, uint32_t to)
         return 0;
     }
     if (ps_of(from) > PS_ROOM - ps_n + ps_of(to)) {
-        ps_say_full();
-        return -1;
+        ps_vote(to, 0, 1);                       /* (short: the session's sounds chosen again, build 125) */
+        if (ps_of(from) > PS_ROOM - ps_n) {
+            ps_failed = 1;
+            ps_say_full();
+            return -1;
+        }
     }
     ps_drop(to);
     for (i = 0, n0 = ps_n; i < n0; i++)
@@ -601,8 +707,8 @@ static void ps_poll(void)
     if ((uint32_t)(fm1_ms - ps_poll_t) < 250u)
         return;
     ps_poll_t = fm1_ms;
-    if (pat_dirty && ps_diff() > PS_ROOM - ps_n + ps_of(pat_cur))
-        ps_say_full();
+    if (pat_dirty && ps_diff() > PS_ROOM - ps_n + ps_of(pat_cur) && ps_vote(pat_cur, 1, 0) > PS_ROOM)
+        ps_say_full();                           /* (no room even with the session's sounds chosen again) */
 }
 /* in the loops' stream, after the loops: 0xA5, 1, ps_set (2 bytes), the changes' count (2), the changes */
 #define PS_MARK 0xA5u
@@ -1943,6 +2049,7 @@ static void pat_save_as(uint32_t k)
     int rc, lr = 0;
     if (k >= PAT_SLOTS)
         return;
+    ps_failed = 0;
     if (perf_on) {                               /* (PERFORMANCE: the session as it plays now kept with it) */
         perf_commit |= 1u << k;
         perf_keep();
@@ -1994,7 +2101,10 @@ static void pat_save_as(uint32_t k)
         rc = pat_flush(k);
     }
     fmt_int(n + 8, (int32_t)k + 1);
-    flash(rc ? "FAILED" : "SAVED", rc ? "" : lr ? "LOOPS LOST" : n, rc || lr ? C_BAD : C_OK);
+    if (!rc && ps_failed)                        /* (build 125: its sounds found no room) */
+        flash("PATTERN FULL", "STEPS ONLY", C_BAD);
+    else
+        flash(rc ? "FAILED" : "SAVED", rc ? "" : lr ? "LOOPS LOST" : n, rc || lr ? C_BAD : C_OK);
     ui.force = 1;
 }
 /* the PATTERNS grid, SHIFT and a white key held: pattern k copied (the one playing as it plays, its changes too); a pattern
@@ -2016,6 +2126,7 @@ static void pat_copy_hold(uint32_t k)
     }
     if (pat_clip_from >= 0) {                    /* pasted (its loops too: build 73) */
         int lr = lp_copy_pat((uint32_t)pat_clip_from, k);
+        ps_failed = 0;
         if ((uint32_t)pat_clip_from == pat_cur)  /* (its sounds with it, as they are now: build 113) */
             ps_stash(pat_cur);
         ps_copy((uint32_t)pat_clip_from, k);
@@ -2025,7 +2136,10 @@ static void pat_copy_hold(uint32_t k)
         pat_switch(k);
         pat_clip_from = -1;
         prj_dirty = 1;
-        flash(rc ? "FAILED" : "PASTED", rc ? "" : lr ? "LOOPS LOST" : n, rc || lr ? C_BAD : C_OK);
+        if (!rc && ps_failed)                    /* (build 125: its sounds found no room) */
+            flash("PATTERN FULL", "STEPS ONLY", C_BAD);
+        else
+            flash(rc ? "FAILED" : "PASTED", rc ? "" : lr ? "LOOPS LOST" : n, rc || lr ? C_BAD : C_OK);
         return;
     }
     if (k == pat_cur)
@@ -2275,7 +2389,9 @@ static int prj_save(uint32_t k)              /* the loops into the store, the pa
     int rc;
     if (!prj_ok || k >= PRJ_SLOTS)
         return -1;
-    ps_stash(pat_cur);                           /* (the pattern playing's sounds, before the stream: build 113) */
+    ps_failed = 0;
+    ps_keep(pat_cur, 1);                         /* (the pattern playing's sounds, before the stream: build 113; the
+                                                  * session's sounds chosen again with them, build 125) */
     if ((rc = lop_save(k, &gen, &nsec)) != 0)
         return rc;
     pat_take(&pat_store[pat_cur]);
@@ -2497,7 +2613,10 @@ static void prj_done(int rc, const char *what, uint32_t k)
     char n[12];
     str_cpy(n, pg_pat() ? "PATTERN " : "SESSION ", 12);
     fmt_int(n + 8, (int32_t)k + 1);
-    if (!rc)
+    if (!rc && ps_failed && !pg_pat() && what[0] != 'L' && what[0] != 'C' && what[0] != 'D')   /* (build 125: a
+                                                  * session SAVE, the pattern playing's sounds found no room) */
+        flash("PATTERN FULL", "STEPS ONLY", C_BAD);
+    else if (!rc)
         flash(what, n, C_OK);
     else if (rc == -4)
         flash("NO ROOM", "FOR LOOPS", C_BAD);    /* (the loop store full: nothing saved) */

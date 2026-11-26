@@ -1,5 +1,20 @@
 # Changelog
 
+## Build 125
+
+Changed
+- Patterns' sounds: when the room for them runs short, and at every session SAVE, the session's sounds are chosen again,
+  value by value, as the one most patterns holding sounds have (the old one on a tie); each pattern then holds only what
+  differs from that. Patterns copied from one another no longer each hold the same changes: a session with ten copies
+  of a pattern whose sounds differ in 294 values from the session's used 2937 of the 3072; chosen again, 108. What each
+  pattern plays is unchanged. A pattern holding no sounds of its own plays the session's sounds, as chosen, when the
+  session loads at it.
+- A pattern saved, pasted or a session saved with its sounds not fitting says PATTERN FULL / STEPS ONLY instead of
+  SAVED: the steps are kept, the sounds are not.
+
+Compatibility
+- Sessions and GLOBAL SETUP unchanged (the same format). Tests: `psvote`; `patsound`'s full room and session record.
+
 ## Build 124
 
 Changed

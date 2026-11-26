@@ -7545,8 +7545,8 @@ static int cmd_patsound(void)
     PSEXPECT(!prj_save(0), "(session 1 saved, at pattern 2)");
     {
         const prj_body_t *b = (const prj_body_t *)(void *)(host_flash + prj_sector(0, 0) + sizeof(prj_head_t));
-        PSEXPECT(b->snd[3][e3].mg[M_DST] == 0u && !memcmp(&b->snd[4][ui.eng[4]], &s4a, sizeof s4a),
-                 "the session record: the session's sounds, not the pattern's");
+        PSEXPECT(!memcmp(b->snd, ps_b.t, sizeof b->snd) && !memcmp(b->lsnd, ps_b.l, sizeof b->lsnd),
+                 "the session record: the session's sounds (chosen again at SAVE, build 125), not the pattern's");
     }
     d->mg[M_DST] = 55;
     mark(3);
@@ -7586,19 +7586,23 @@ static int cmd_patsound(void)
     /* the room full: the pattern left keeps what it held, PATTERN FULL said */
     {
         uint16_t n0 = ps_n;
-        uint32_t of0 = ps_of(0);
-        while (ps_n < PS_ROOM) {                 /* (the room taken by pattern 16) */
-            uint8_t *e = &ps_pool[3u * ps_n++];
-            e[0] = (uint8_t)(15u << 4);
-            e[1] = 0;
-            e[2] = 0;
-        }
+        uint32_t of0 = ps_of(0), p, j;
+        for (p = 0; ps_n < PS_ROOM; p++)        /* (the room taken by patterns 9 .. 16, each its own value at each
+                                                  * byte: nothing a vote could share, build 125) */
+            for (j = 8; j < PAT_SLOTS && ps_n < PS_ROOM; j++) {
+                uint8_t *e = &ps_pool[3u * ps_n++];
+                e[0] = (uint8_t)(j << 4 | p >> 8);
+                e[1] = (uint8_t)p;
+                e[2] = (uint8_t)(((const uint8_t *)&ps_b)[p] + 1u + j);
+                ps_set |= (uint16_t)(1u << j);
+            }
         gen_sound(&ui.snd[2][ui.eng[2]], ui.eng[2], -1, -1, 4242u);
         mark(2);
         ui.msg[0] = 0;
         PSEXPECT(ps_stash(0) == -1 && ps_of(0) == of0 && !strcmp(ui.msg, "PATTERN FULL"),
                  "no room: pattern 1 keeps what it held, PATTERN FULL");
-        ps_drop(15);
+        for (j = 8; j < PAT_SLOTS; j++)
+            ps_drop(j);
         PSEXPECT(ps_n == n0 && !ps_stash(0), "(the room back: kept)");
     }
     /* a session of an earlier build: no pattern holds sounds -- each plays the sounds as they are */
@@ -7608,6 +7612,80 @@ static int cmd_patsound(void)
     pat_switch(1);
     PSEXPECT(d->mg[M_DST] == 33u, "a pattern that never took its sounds (an earlier build's): the sounds as they play");
     printf("patsound: %d failures\n", fails);
+    return fails != 0;
+}
+
+/* (build 125) session 7's case: one pattern's new sounds saved into ten more slots -- the same changes in each. The
+ * session's sounds chosen again (short of room, at SAVE): all eleven kept, each pattern's sounds as they were, after
+ * a session SAVE and LOAD too; a pattern that differs keeps only what differs; truly full still PATTERN FULL */
+#define PVEXPECT(c, what) do { if (!(c)) { printf("FAIL psvote: %s\n", what); fails++; } } while (0)
+static uint8_t pv_want[PAT_SLOTS][PS_BYTES];
+static void pv_take(uint32_t k)
+{
+    uint32_t p;
+    for (p = 0; p < PS_BYTES; p++)
+        pv_want[k][p] = ps_cur(p);
+}
+static int pv_same(uint32_t k)
+{
+    uint32_t p;
+    for (p = 0; p < PS_BYTES; p++)
+        if (pv_want[k][p] != ps_cur(p))
+            return 0;
+    return 1;
+}
+static int cmd_psvote(void)
+{
+    uint32_t k, t, n1, ok;
+    int fails = 0;
+    memset(host_flash, 0xFF, sizeof host_flash);
+    prj_scan(1);
+    tracks_init();
+    ui_init();
+    fm1_ms = 5000;
+    PVEXPECT(!prj_save(0), "(session 1 saved as it starts)");
+    for (t = 0; t < NTRACK; t++) {               /* (new sounds on every track's every machine: far from the session's) */
+        uint32_t e;
+        for (e = 0; e < NENG; e++)
+            gen_sound(&ui.snd[t][e], e, -1, -1, 900u + t * 7u + e);
+        mark(t);
+    }
+    PVEXPECT(ps_diff() > PS_ROOM / 4u, "(the sounds playing: four copies past the room, counted from the session.s)");
+    ps_failed = 0;
+    pat_save_as(0);
+    pv_take(0);
+    for (k = 1; k <= 10u; k++) {                 /* (saved into ten more slots, as on the grid) */
+        pat_save_as(k);
+        pv_take(k);
+    }
+    PVEXPECT(!ps_failed && ps_set == 0x7FFu, "eleven copies: all kept, no PATTERN FULL");
+    PVEXPECT(ps_n == 0u, "the session's sounds now theirs: no pattern holds a change");
+    pat_switch(3);
+    ui.snd[2][ui.eng[2]].amp[0] ^= 0x15u;        /* (pattern 4: one byte its own) */
+    mark(2);
+    ps_failed = 0;
+    pat_save_as(3);
+    pv_take(3);
+    PVEXPECT(!ps_failed && ps_of(3) == 1u && ps_n == 1u, "a pattern that differs: only what differs held");
+    for (t = 0; t < 2u; t++)                     /* (two more patterns, sounds of their own) */
+        gen_sound(&ui.snd[t][ui.eng[t]], ui.eng[t], -1, -1, 4000u + t), mark(t);
+    pat_save_as(11);
+    pv_take(11);
+    n1 = ps_n;
+    PVEXPECT(!ps_failed && ps_of(11) > 0u, "(pattern 12: its own sounds on two tracks)");
+    for (ok = 1, k = 0; k <= 11u; k++) {
+        pat_switch(k);
+        ok &= (uint32_t)pv_same(k);
+    }
+    PVEXPECT(ok, "each pattern given: its sounds, byte for byte");
+    PVEXPECT(!prj_save(0) && !ps_failed && ps_n <= n1, "session SAVE: kept, no more changes than before");
+    PVEXPECT(!prj_load(0), "(session 1 loaded)");
+    for (ok = 1, k = 0; k <= 11u; k++) {
+        pat_switch(k);
+        ok &= (uint32_t)pv_same(k);
+    }
+    PVEXPECT(ok, "loaded: each pattern's sounds, byte for byte");
+    printf("psvote: %d failures\n", fails);
     return fails != 0;
 }
 
@@ -7758,6 +7836,8 @@ int main(int argc, char **argv)
         return cmd_arp(argv[2]);
     if (argc >= 3 && !strcmp(argv[1], "trn"))
         return cmd_trn(argv[2]);
+    if (argc >= 2 && !strcmp(argv[1], "psvote"))
+        return cmd_psvote();
     if (argc >= 2 && !strcmp(argv[1], "patsound"))
         return cmd_patsound();
     if (argc >= 2 && !strcmp(argv[1], "trkcopy"))

@@ -599,8 +599,14 @@ How the sounds are kept: the session holds a set of sounds, and each pattern hol
 takes its sounds as you leave it (switch away, save it, or save the session). An empty pattern, and a pattern saved
 before build 113 that has not been left since, starts with the sounds playing as you switch to it. All 16 patterns of a
 session share room for about 3000 changed values, each sound parameter counting once (a 4-OP ratio twice). A new sound
-from HOME changes about 80. When a pattern's changes do not fit, PATTERN FULL shows and the pattern keeps the sounds it
-held before. Emptying a pattern frees its room. The patterns' sounds are written to the flash with the session (hold
+from HOME changes about 80. Patterns that share sounds (copies of one pattern, a sound changed and saved into several)
+share the room too: when the room runs short, and each time the session is saved, the session's sounds are chosen
+again, each value being the one most patterns have, and each pattern then holds only what differs from that. What each
+pattern plays does not change. A pattern with no sounds of its own (an empty one, or one saved before build 113) plays
+those session sounds when the session loads at it. The room is used up only by patterns whose sounds really differ
+from one another: about three patterns each with new sounds on every machine of every track. When a pattern's changes
+do not fit even then, PATTERN FULL shows, the pattern keeps the sounds it held before, and a save says PATTERN FULL /
+STEPS ONLY: its steps are saved, its sounds are not. Emptying a pattern frees its room. The patterns' sounds are written to the flash with the session (hold
 SAVE), with the loops: saving a pattern on the grid keeps them in the session until then, and the session shows as
 changed. Sessions saved before build 113 load as they were.
 
